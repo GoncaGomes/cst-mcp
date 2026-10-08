@@ -1,0 +1,8 @@
+/runs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.tmp
+run_batch.py.lock
+test_run_batch.py.lock

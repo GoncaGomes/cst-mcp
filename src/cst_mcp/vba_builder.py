@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from cst_mcp.validators import validate_name, validate_vba_input
+from cst_mcp.vba_safety import vba_escape
 
 _DANGEROUS_IN_STRINGS = re.compile(
     r'"\s*[&+]\s*(Shell|CreateObject|GetObject)', re.IGNORECASE
@@ -44,6 +45,28 @@ def _format_number(value: float) -> str:
     if value == int(value) and abs(value) < 1e15:
         return str(int(value))
     return f"{value:.10g}"
+
+
+def _format_expression(value: float | str) -> str:
+    """Serialize a finite JSON number or nonempty CST expression as a VBA literal.
+
+    Preserve expression text for CST's parameter/history evaluator. This is
+    string serialization, not an expression parser: CST reports malformed
+    arithmetic, undefined parameters and other semantic errors. Quoted input
+    stays inside one literal; all line-breaking characters and NUL are rejected.
+    Numeric formatting remains identical to the number-only builder methods.
+    """
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("CST expression must be nonempty")
+        vba_escape(value, "CST expression")  # Check the full line-break set.
+        return '"' + _escape_vba_string(value) + '"'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("CST expression must be a JSON number or a string expression")  # noqa: TRY004
+    try:
+        return '"' + _format_number(value) + '"'
+    except OverflowError:
+        raise ValueError("CST expression number must be finite and representable") from None
 
 
 class VBABuilder:
@@ -90,6 +113,13 @@ class VBABuilder:
     def set_double(self, prop: str, v1: float, v2: float) -> VBABuilder:
         """Set a double-value property: .Prop "v1", "v2" """
         self._with_block.append(f'.{prop} "{_format_number(v1)}", "{_format_number(v2)}"')
+        return self
+
+    def set_expression_pair(
+        self, prop: str, v1: float | str, v2: float | str
+    ) -> VBABuilder:
+        """Set a range with quoted numbers/unevaluated CST parameter expressions."""
+        self._with_block.append(f'.{prop} {_format_expression(v1)}, {_format_expression(v2)}')
         return self
 
     def set_triple(self, prop: str, v1: float, v2: float, v3: float) -> VBABuilder:

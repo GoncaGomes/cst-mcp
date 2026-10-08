@@ -184,6 +184,10 @@ def check_arguments(
     for tool in tools or ():
         if getattr(tool, "name", None) == name:
             schema = getattr(tool, "inputSchema", None)
+            if schema is None:
+                # SDK 2.x exposes snake_case attributes; 1.x uses camelCase.
+                # Keep the same schema checks active under both supported SDKs.
+                schema = getattr(tool, "input_schema", None)
             break
     _check_value(arguments, schema or {}, "", allow_multiline)
 

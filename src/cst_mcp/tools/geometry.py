@@ -27,19 +27,35 @@ TOOLS: list[Tool] = [
     # 1. Brick
     Tool(
         name="cst_create_brick",
-        description="Create a rectangular brick (box) in CST Studio.",
+        description=(
+            "Create a rectangular brick (box) in CST Studio. Bounds accept JSON numbers "
+            "or nonempty, single-line CST parameter names/arithmetic expressions, mixed "
+            "in the same call. Expressions remain in model history for parameter rebuilds; "
+            "CST validates their syntax and parameter references. Does not edit existing solids."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "component": {"type": "string", "description": "Component name (e.g. 'Antenna')"},
                 "name": {"type": "string", "description": "Solid name (e.g. 'Substrate')"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
-                "x_min": {"type": "number", "description": "X range minimum"},
-                "x_max": {"type": "number", "description": "X range maximum"},
-                "y_min": {"type": "number", "description": "Y range minimum"},
-                "y_max": {"type": "number", "description": "Y range maximum"},
-                "z_min": {"type": "number", "description": "Z range minimum"},
-                "z_max": {"type": "number", "description": "Z range maximum"},
+                **{
+                    bound: {
+                        "type": ["number", "string"],
+                        "minLength": 1,
+                        "description": (
+                            f"{bound[0].upper()} range {end}: finite JSON number or nonempty "
+                            "single-line CST parameter/arithmetic expression (e.g. 'PBrick_L', "
+                            "'200+PBrick_L', 'PBrick_H/2'); preserved in model history. "
+                            "CST reports malformed expressions or undefined parameters."
+                        ),
+                    }
+                    for bound, end in (
+                        ("x_min", "minimum"), ("x_max", "maximum"),
+                        ("y_min", "minimum"), ("y_max", "maximum"),
+                        ("z_min", "minimum"), ("z_max", "maximum"),
+                    )
+                },
             },
             "required": ["component", "name", "x_min", "x_max", "y_min", "y_max", "z_min", "z_max"],
         },
@@ -450,9 +466,9 @@ def _build_brick(args: dict) -> str:
         .set("Name", name)
         .set("Component", component)
         .set("Material", material)
-        .set_double("Xrange", args["x_min"], args["x_max"])
-        .set_double("Yrange", args["y_min"], args["y_max"])
-        .set_double("Zrange", args["z_min"], args["z_max"])
+        .set_expression_pair("Xrange", args["x_min"], args["x_max"])
+        .set_expression_pair("Yrange", args["y_min"], args["y_max"])
+        .set_expression_pair("Zrange", args["z_min"], args["z_max"])
         .call("Create")
     )
     return vba.build()
