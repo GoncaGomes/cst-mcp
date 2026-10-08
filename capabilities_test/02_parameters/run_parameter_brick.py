@@ -27,8 +27,8 @@ from mcp.client.stdio import stdio_client
 
 ROOT = Path(__file__).resolve().parents[2]
 BATCH = Path(__file__).resolve().parent
-WORK = BATCH / "artifacts"
-FIRST_BATCH = ROOT / "capabilities_test" / "01_project_geometry_materials"
+WORK = BATCH / "artifacts" / "01_brick"
+FIRST_BATCH = ROOT / "capabilities_test" / "01_project_geometry_materials" 
 sys.path.insert(0, str(FIRST_BATCH))
 # Reuse batch 01's SDK preservation and lossless response/strict output helpers.
 # These imports do not import server handlers or construct a CST instance.
@@ -92,7 +92,7 @@ Volume/area readbacks do not independently prove dimensions, position or
 expression association. GetLooseBoundingBoxOfShape is non-tight and is not
 an exact dimensional measurement; this script does not use it.
 
-Open artifacts/project.cst manually after successful completion. Close it
+Open artifacts/01_brick/project.cst manually after successful completion. Close it
 before another invocation; avoid edits/saving during inspection because
 the fixture's last saved file fingerprint is checked before reuse.
 

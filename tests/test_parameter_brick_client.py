@@ -23,8 +23,8 @@ spec.loader.exec_module(batch)
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    work = tmp_path / "artifacts"
-    work.mkdir()
+    work = tmp_path / "artifacts" / "01_brick"
+    work.mkdir(parents=True)
     source = tmp_path / "source" / "project.cst"
     source.parent.mkdir()
     source.write_bytes(b"saved source project")

@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://cst-mcp.akdag.dev/sitemap.xml

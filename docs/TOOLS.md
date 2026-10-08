@@ -74,6 +74,13 @@ Create, open, save projects and check CST connection.
 | `cst_create_ecylinder` | Create an elliptical cylinder in CST Studio. |
 | `cst_create_polygon_extrude` | Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and ex… |
 
+The selected dimensions of cylinder, cone, sphere, elliptical cylinder and torus,
+and each Polygon3D point coordinate, accept finite numbers or single-line CST
+expressions. Expressions stay quoted in model history. Other fields keep their
+existing contracts. CST torus radii are the outer and inner surface extents, not
+the major radius and tube radius. See
+[`Batch 02`](../capabilities_test/02_parameters/README.md) for fields and commands.
+
 ### Boolean operations (4)
 
 Combine solids: add, subtract, intersect, insert.

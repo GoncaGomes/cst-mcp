@@ -1,24 +1,29 @@
-# cst-studio-mcp
+# cst-mcp
 
-**Python-first MCP server for CST Studio Suite · version 1.1.0**
+**MCP server for CST Studio Suite automation**
 
-Drive CST from an AI assistant: open projects, build geometry, set materials and ports,
-run solvers, read S-parameters and farfield metrics, and generate design reports — through
-structured MCP tools on your Windows machine.
+The server exposes MCP tools for project management, parametric modeling, simulation,
+and results extraction on Windows. Tools can open and save projects, create geometry,
+configure materials and ports, run solvers, and read results.
+
+Capabilities are under development and validation. The catalog describes the exposed
+tools; it does not establish complete coverage of CST operations or validation of every tool.
 
 | | |
 |--|--|
-| **Package** | `cst-studio-mcp` · entry point `cst-studio-mcp` |
+| **Package** | `cst-studio-mcp` · module `cst_mcp` · entry point `cst-studio-mcp` |
 | **Tools** | 180+ (workflows, geometry, antennas, solvers, results, PCB, …) |
 | **Python** | 3.10+ (3.12 recommended) |
 | **OS** | Windows 10/11 + licensed CST Studio Suite |
-| **Docs** | Interactive EN/TR browser: [`docs/index.html`](docs/index.html) |
+| **Docs** | Interactive tool browser: [`docs/index.html`](docs/index.html) |
 
-Project presentation: [`presentation/index.html`](presentation/index.html), a self-contained
-Turkish architecture and validation overview. See [the reliability review](docs/RELIABILITY_REVIEW.md)
-for historical checks. Current evidence and limits are in the [2026 API review](docs/API_REVIEW_2026.md).
+Project presentation: [`presentation/index-en.html`](presentation/index-en.html), an inherited
+architecture and validation overview. The [reliability review](docs/RELIABILITY_REVIEW.md)
+and [2026 API review](docs/API_REVIEW_2026.md) record upstream checks and their limits.
 
-Start with the [agent installation and acceptance guide](docs/AGENT_SETUP.md). Official Python results were verified against all 4 × 4,001 complex samples in a completed CST 2026 project; an isolated modeler fixture also passed. The full tool catalog is not a blanket certification of advanced CST features.
+Start with the [agent installation and acceptance guide](docs/AGENT_SETUP.md), using the
+clone URL below for this version. See [validation status](#validation-status) for the
+distinction between upstream evidence and checks performed for this version.
 
 ```
 Agent (Cursor / Claude / …)
@@ -56,15 +61,38 @@ Agent (Cursor / Claude / …)
 
 ## What you get
 
-- **Full tool surface** — project control, geometry, booleans, transforms, materials, ports,
+- **Tool categories:** project control, geometry, booleans, transforms, materials, ports,
   boundaries, mesh, solvers, simulation control, results, import/export, parameters,
-  optimization helpers, antenna templates, arrays, PCB/SI, matching networks, VBA escape hatch.
-- **Workflow helpers** — one-shot patch antenna, solve + S11, design report, structure views,
+  optimization helpers, antenna templates, arrays, PCB/SI, matching networks, and raw VBA.
+- **Workflow helpers:** patch antenna construction, solve + S11, design report, structure views,
   farfield discovery/metrics.
-- **Portable paths** — auto-detects CST on any drive letter; prefers `AMD64\python_cst_libraries`
+- **Installation discovery:** auto-detects CST on any drive letter; prefers `AMD64\python_cst_libraries`
   (CST 2024–2026). No hard-coded `E:\` in library code.
-- **Bilingual docs** — English / Türkçe tool browser with light/dark theme.
-- **Offline fallback** — if CST is unreachable, many tools still return VBA for manual paste.
+- **Tool documentation:** searchable tool browser with light/dark theme.
+- **Offline fallback:** if CST is unreachable, many tools still return VBA for manual paste.
+
+### Origin and maintenance
+
+This version is based on the original
+[ismailakdag/cst-studio-mcp project](https://github.com/ismailakdag/cst-studio-mcp).
+Gonçalo Gomes independently maintains this version at
+[GoncaGomes/cst-mcp](https://github.com/GoncaGomes/cst-mcp).
+The inherited implementation, documentation, and contributions originate in the upstream
+project. Existing copyright, attribution, and MIT license notices remain applicable.
+
+### Validation status
+
+- **Upstream, CST 2026:** the [2026 API review](docs/API_REVIEW_2026.md) reports
+  comparisons of saved complex S-parameter results and a limited live modeler fixture.
+  These are upstream validation reports, not checks performed for this version.
+- **This version, CST 2025:** the user manually confirmed creation of a parameterized
+  brick, use of `PBrick_L = 12` and `PBrick_H = 6` in the solid definition, correct placement
+  in the component tree, and persistence after saving, closing, and reopening the project.
+  This confirmation does not establish validation of other tools or simulation behavior.
+
+The [project, geometry, and materials scenario](capabilities_test/01_project_geometry_materials/README.md)
+and [parameter-driven brick scenario](capabilities_test/02_parameters/README.md) describe
+the CST 2025 procedures and evidence limits. The parameter documentation and its
 
 ---
 
@@ -73,9 +101,9 @@ Agent (Cursor / Claude / …)
 | Component | Notes |
 |-----------|--------|
 | **Windows** | 10 or 11 (64-bit) |
-| **CST Studio Suite** | Core paths tested on **2026**; its Python result reader supports saved 2025/2026 files. Other versions need local acceptance |
+| **CST Studio Suite** | This version has the limited CST 2025 confirmation described above. Upstream reports checks on CST 2026. Validate required operations on your installed version. |
 | **CST license** | Valid license for the solver you use |
-| **Python** | **3.10 – 3.13** (3.12 works well with CST’s bundled `cp312` libs) |
+| **Python** | **3.10+**, as declared in `pyproject.toml`. Match the runtime to your CST Python libraries; the capability clients select Python 3.12. |
 | **Disk** | CST install + project work directory (simulations can be large) |
 
 CST Python libraries ship with the product, typically:
@@ -96,9 +124,12 @@ Examples:
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/ismailakdag/cst-studio-mcp.git
-cd cst-studio-mcp
+git clone https://github.com/GoncaGomes/cst-mcp.git
+cd cst-mcp
 ```
+
+The repository name is `cst-mcp`. The package and executable retain the name
+`cst-studio-mcp`; the Python module remains `cst_mcp`.
 
 ### 2. Create a virtual environment and install (recommended)
 
@@ -117,7 +148,7 @@ This installs:
 - Console script: **`cst-studio-mcp`** (also at `.\.venv\Scripts\cst-studio-mcp.exe`)
 - Dev extras: `pytest`, `pytest-asyncio`, `ruff`
 
-> Tip: open [`docs/index.html`](docs/index.html) — the **Setup** section has **Copy** buttons for every PowerShell block, and a form that fills **CST_PATH / PYTHONPATH / MCP JSON** from the path you type.
+> Open [`docs/index.html`](docs/index.html). The **Setup** section has **Copy** buttons for PowerShell blocks and a form that fills **CST_PATH / PYTHONPATH / MCP JSON** from the installation path.
 
 ### 3. Point Python / MCP at your CST install
 
@@ -126,7 +157,10 @@ You must tell the process where CST lives. Typical roots:
 - `C:\Program Files\CST Studio Suite 2026`
 - `E:\CST Studio Suite 2026`
 
-**Not** the `AMD64` folder itself — one level above. `PYTHONPATH` then points at:
+The examples use CST 2026 paths. For CST 2025, substitute your installation root
+and set `CST_VERSION` to `2025`.
+
+Set `CST_PATH` to the installation root, one level above `AMD64`. `PYTHONPATH` points at:
 
 `%CST_PATH%\AMD64\python_cst_libraries`
 
@@ -150,7 +184,8 @@ New-Item -ItemType Directory -Force -Path $env:CST_WORK_DIR | Out-Null
 [Environment]::SetEnvironmentVariable("CST_WORK_DIR", "C:\cst_projects", "User")
 ```
 
-For **Cursor / Claude / other MCP clients**, prefer putting the same keys in the server **`env`** block (next section) — that is what the AI process actually sees.
+For **Cursor / Claude / other MCP clients**, put the same keys in the server **`env`**
+block shown below. Those values are available to the MCP server process.
 
 ---
 
@@ -168,7 +203,7 @@ Nothing in the library hard-codes a drive letter. Discovery order:
 | `PYTHONPATH` | **Strongly recommended** | Official CST Python package path | `…\AMD64\python_cst_libraries` |
 | `CST_WORK_DIR` | Optional | Projects, exports, reports | `%USERPROFILE%\cst_projects` |
 | `CST_VERSION` | Optional | Year for auto-detect (default `2026`) | `2026` |
-| `CST_QUIET` | Legacy | Accepted for compatibility; connecting no longer changes the user's CST UI mode | `1` |
+| `CST_QUIET` | Legacy | Parsed for compatibility. It does not suppress dialogs or change CST UI mode when connecting. | `1` |
 | `CST_CONNECT_MODE` | Optional | Startup behavior: `auto`, `manual`, or `disabled` (default `manual`) | `manual` |
 | `CST_LOG_LEVEL` | Optional | Logging level | `INFO` |
 | `CST_TOOLSETS` | Optional | Comma-separated tool categories to expose (default: all). Alias `core` = connection + official + project + workflows + simulation + results. Connection tools are always exposed. Use it to reduce the number of tool schemas sent to the model | `core,geometry` |
@@ -210,7 +245,7 @@ Local machine paths: **`.mcp.json`** (edit paths only; keep out of shared commit
 If `cst-studio-mcp` is not on `PATH` (for example a venv), use the full executable:
 
 ```json
-"command": "C:\\path\\to\\cst-studio-mcp\\.venv\\Scripts\\cst-studio-mcp.exe"
+"command": "C:\\path\\to\\cst-mcp\\.venv\\Scripts\\cst-studio-mcp.exe"
 ```
 
 Or:
@@ -229,7 +264,7 @@ backslashes intact; replace the example paths with your local installation paths
 
 ```toml
 [mcp_servers.cst-studio]
-command = 'C:\path\to\cst-studio-mcp\.venv\Scripts\cst-studio-mcp.exe'
+command = 'C:\path\to\cst-mcp\.venv\Scripts\cst-studio-mcp.exe'
 args = []
 
 [mcp_servers.cst-studio.env]
@@ -263,7 +298,7 @@ Edit the Claude Desktop config JSON (Windows typically under `%APPDATA%\Claude\`
 Register the server in one line (user scope; use `--scope project` to write a shared `.mcp.json` instead):
 
 ```powershell
-claude mcp add cst-studio --scope user -e CST_PATH="C:\Program Files\CST Studio Suite 2026" -e PYTHONPATH="C:\Program Files\CST Studio Suite 2026\AMD64\python_cst_libraries" -e CST_WORK_DIR="C:\cst_projects" -e CST_CONNECT_MODE=manual '--' "C:\path\to\cst-studio-mcp\.venv\Scripts\cst-studio-mcp.exe"
+claude mcp add cst-studio --scope user -e CST_PATH="C:\Program Files\CST Studio Suite 2026" -e PYTHONPATH="C:\Program Files\CST Studio Suite 2026\AMD64\python_cst_libraries" -e CST_WORK_DIR="C:\cst_projects" -e CST_CONNECT_MODE=manual '--' "C:\path\to\cst-mcp\.venv\Scripts\cst-studio-mcp.exe"
 ```
 
 Everything after `--` is the server command. In PowerShell keep the quotes around `'--'`: if `claude` resolves to the npm `.ps1` shim, PowerShell otherwise strips a bare `--`. Check it with `claude mcp list` (or `/mcp` inside a session). Alternatively, add the same `command` + `env` to your MCP config JSON. Restart the session after edits.
@@ -328,14 +363,15 @@ python -m pytest tests/ -q
 
 From an MCP client, call:
 
-1. `cst_connect` — explicitly attach to CST when ready (or opt into `CST_CONNECT_MODE=auto`); then `cst_connection_status` reports the session. With `disabled`, the server remains offline.
+1. Call `cst_connect` to attach to CST when ready (or opt into `CST_CONNECT_MODE=auto`); then `cst_connection_status` reports the session. With `disabled`, the server remains offline.
 2. Prefer workflows for smoke tests (see below)
 
 ---
 
 ## Quick start (agents)
 
-Recommended order for a first successful run:
+The following workflow sequence is inherited from upstream. Check each operation
+on your installed CST version before relying on the complete workflow:
 
 | Step | Tool | Purpose |
 |------|------|---------|
@@ -355,40 +391,75 @@ blocking `cst_run_simulation` queues other CST tools but no longer freezes the M
 
 Other useful entry points:
 
-- `cst_antenna_patch` — template builder (similar geometry stack)
-- `cst_design_patch_only` — offline dimension calculator (no CST)
-- `cst_export_structure_views` — multi-view structure images
-- `cst_discover_farfield_monitors` — find farfield results on disk
+- `cst_antenna_patch`: template builder (similar geometry stack)
+- `cst_design_patch_only`: offline dimension calculator (no CST)
+- `cst_export_structure_views`: structure images from multiple views
+- `cst_discover_farfield_monitors`: find farfield results on disk
 
 Publication figures (install the extra: `pip install -e ".[figures]"`, i.e. numpy + matplotlib):
 
-- `cst_plot_1d_results` — IEEE-style S11 / S-parameters / VSWR / Smith / impedance / phase /
+- `cst_plot_1d_results`: IEEE-style S11 / S-parameters / VSWR / Smith / impedance / phase /
   efficiency figures read directly from a saved `.cst` (no GUI), with resonance and −10 dB band
   annotation, run comparison and measured-CSV overlay. Returns `no_results` with next steps when
   the project has not been solved.
-- `cst_plot_farfield` — polar E/H cuts, rectangular cuts, θ–φ or u–v heatmaps and 3D patterns,
+- `cst_plot_farfield`: polar E/H cuts, rectangular cuts, θ–φ or u–v heatmaps and 3D patterns,
   with max gain, HPBW, F/B, SLL and XPD. Works offline from a CST farfield ASCII export or exports
   it itself when connected; `no_results` distinguishes a missing monitor from an unsolved one.
-- `cst_technical_drawing` — dimensioned orthographic drawing (top/front/side/iso) of the model with
+- `cst_technical_drawing`: dimensioned orthographic drawing (top/front/side/iso) of the model with
   title block and parameter table, as PDF/SVG/PNG. Exports each solid as STL (in mm) without
   touching model history, or renders offline from an existing STL folder.
 
-**Parametric tip:** dimensions should live in the CST Parameter List and geometry history
-should use **expressions** (for example `patch_L/2`). Then parameter change → delete results →
-rebuild → solve updates the model without rewriting history by hand.
+### Parametric brick geometry
+
+`cst_create_brick` accepts finite JSON numbers or nonempty, single-line CST parameter
+names and arithmetic expressions in all six bounds: `x_min`, `x_max`, `y_min`, `y_max`,
+`z_min`, and `z_max`. Numbers and expressions can be mixed. Expressions remain in the
+solid's model-history definition rather than being evaluated in Python. CST checks
+expression syntax and parameter references.
+
+Parameters must exist in the project before geometry references them. In an open project,
+create `PBrick_L = 12` and `PBrick_H = 6` with `cst_set_parameter` using its `name` and
+`value` arguments, or define them in CST's Parameter List. Then call `cst_create_brick`
+with these arguments:
+
+```json
+{
+  "component": "ParameterTest",
+  "name": "ParametricBrick",
+  "material": "PEC",
+  "x_min": 200,
+  "x_max": "200+PBrick_L",
+  "y_min": 40,
+  "y_max": 46,
+  "z_min": 0,
+  "z_max": "PBrick_H/2"
+}
+```
+
+The coordinates use the project's current length unit. `cst_set_parameter` stores a value
+and, by default, performs a separate model rebuild. With `rebuild=false`, it changes the
+Parameter List without rebuilding geometry. Rebuild the model in CST or use
+`cst_set_parameter` with `rebuild=true` to apply changed values to dependent geometry.
+Rebuilding does not run a simulation. For a solved project, export results you need,
+then explicitly delete them before making model changes.
+
+This expression support applies to `cst_create_brick`. It does not establish expression
+support for other primitives or convert existing numeric solid definitions into parametric
+ones. See the [parameter scenario](capabilities_test/02_parameters/README.md) for details.
 
 ---
 
 ## Farfield & results notes
 
-These details matter for reliable automation on CST 2026:
+These inherited notes describe CST 2026 behavior reported upstream. They do not establish
+farfield or simulation validation for this version on CST 2025.
 
 | Topic | Guidance |
 |-------|----------|
 | **Monitor VBA** | Official `Monitor` API: `.Frequency`, `FieldType "Farfield"`, frequency domain. Prefer `EnableNearfieldCalculation "True"`. |
 | **Tree path** | After TD solve: `Farfields\farfield (f=2.4) [1]` (port excitation suffix `[1]`). |
 | **Metrics API** | Prefer `FarfieldPlot.Plot` then **`GetMax` / `GetRadiationEfficiency`**. Do not rely on `ASCIIExportSummary` (often fails with export/HEX mesh errors and Message spam). |
-| **MCP tool** | `cst_get_farfield_metrics` — 1D Results (S11, efficiencies) + GetMax when the tree item is available. |
+| **MCP tool** | `cst_get_farfield_metrics`: 1D Results (S11, efficiencies) + GetMax when the tree item is available. |
 | **1D Results** | `cst.results.ProjectFile` is reliable for S-parameters and efficiencies when the `.cst` path is known. |
 
 ---
@@ -423,11 +494,12 @@ Official VBA object dump for alignment: `vba_cst/`.
 
 | Path | Content |
 |------|---------|
-| [`docs/index.html`](docs/index.html) | **Interactive** EN/TR tool browser, light/dark, search, copy full tool text, install guide |
+| [`docs/index.html`](docs/index.html) | Interactive tool browser in English and Turkish, light/dark theme, search, tool text copying, and installation guide |
 | [`docs/TOOLS.md`](docs/TOOLS.md) | Markdown catalog |
 | [`docs/tools.json`](docs/tools.json) | Machine-readable schemas |
 | [`docs/VBA_ALIGNMENT.md`](docs/VBA_ALIGNMENT.md) | VBA fixes vs CST Online Help dump |
 | [`docs/README.md`](docs/README.md) | How to open/rebuild docs |
+| [`presentation/index-en.html`](presentation/index-en.html) | Inherited architecture and validation overview in English. [Turkish version](presentation/index.html). |
 
 ```powershell
 # Open UI
@@ -452,7 +524,16 @@ python scripts/build_docs.py
 ruff check src tests
 ```
 
-Optional live CST scripts under `scripts/` (require license). Prefer unit tests for offline checks.
+Offline tests under `tests/` check server contracts, generated VBA, and behavior using
+substitutes. They do not establish correct geometry, rebuilds, or simulation results in CST.
+Live capability scenarios in [`capabilities_test/`](capabilities_test/) require CST and a
+license. They assess actual execution and separate tool responses from independent
+readbacks and manual inspection. Optional live scripts also exist under `scripts/`.
+
+The capability clients select Python 3.12. Batch 01 uses `BaseExceptionGroup`, which is
+unavailable in Python 3.10; use the client's documented runtime. The package requirement
+remains Python `>=3.10`. The [parameter review](capabilities_test/02_parameters/REVIEW.md)
+records existing Ruff diagnostics in `geometry.py`.
 
 ---
 
@@ -466,8 +547,8 @@ Optional live CST scripts under `scripts/` (require license). Prefer unit tests 
 | Port “floating” in air | Free port plane with `PortOnBound False` flush to feed edge (workflow port helper). |
 | Farfield Message spam / “No HEX mesh” | Avoid `ASCIIExportSummary` spam. Use `cst_get_farfield_metrics`. Create monitor before solve. |
 | SelectTreeItem fails for farfield | Full path `Farfields\farfield (f=<freq>) [1]`. |
-| Parameter List empty / rebuild no shape change | History must use **parameter expressions**, not only bare numbers. |
-| Dialogs block automation | `CST_QUIET=1`; diagnostics / dismiss-dialog tools. |
+| Parameter List empty / rebuild no shape change | Create parameters before referencing them in brick bounds. Use expressions in history and rebuild after changing values. See [parametric brick geometry](#parametric-brick-geometry). |
+| Dialogs block automation | Inspect the dialog in CST or call `cst_dismiss_dialogs` with `read_only=true`, then resolve or dismiss it as appropriate. `CST_QUIET` does not suppress dialogs. |
 | `results_exist` error, or CST frozen on "Results May Get Incompatible With Model" | Editing the model of a solved project makes CST open that modal dialog inside the automation call, where it cannot be answered. Model-editing tools now refuse with `results_exist` instead; export what you need, call `cst_delete_results`, then retry. If an older build already froze CST, it must be force-quit. |
 | pytest plugin import errors | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` plus `-p asyncio` (e.g. `python -m pytest tests/ -q -p asyncio`); without `-p asyncio` the async tests fail. |
 
@@ -485,9 +566,9 @@ MIT
 <!-- TOOL_CATALOG_START -->
 ## Full tool catalog (192 tools)
 
-Interactive bilingual docs: open [`docs/index.html`](docs/index.html) (EN/TR toggle, search, full-width cards). Rebuild: `python scripts/build_docs.py`.
+Tool documentation: open [`docs/index.html`](docs/index.html) (English / Turkish, search, and full tool descriptions). Rebuild: `python scripts/build_docs.py`.
 
-VBA for geometry/ports/transforms is cross-checked against the CST help dump in [`vba_cst/`](vba_cst/).
+The inherited CST help dump is in [`vba_cst/`](vba_cst/). Reference comparisons do not establish successful execution in CST.
 
 ### Official API and saved results (4)
 
@@ -545,7 +626,7 @@ Create, open, save projects and check CST connection.
 
 | Tool | What it does |
 |------|--------------|
-| `cst_create_brick` | Create a rectangular brick (box) in CST Studio. |
+| `cst_create_brick` | Create a rectangular brick. All six bounds accept numbers or CST parameter/arithmetic expressions preserved in model history. Parameters must already exist. |
 | `cst_create_cylinder` | Create a cylinder in CST Studio. Use inner_radius=0 for a solid cylinder. |
 | `cst_create_cone` | Create a cone or truncated cone in CST Studio. |
 | `cst_create_sphere` | Create a sphere in CST Studio. |

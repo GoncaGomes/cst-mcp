@@ -133,14 +133,14 @@ def test_expression_numbers_match_number_only_builder():
 
 
 @pytest.mark.parametrize("bad", ["PBrick_L", "1", True, float("inf")])
-def test_unrelated_numeric_only_tool_still_rejects_expressions(bad):
+def test_unchanged_numeric_only_field_still_rejects_expressions(bad):
     client = RecordingClient()
-    args = {"component": "c", "name": "s", "radius": bad}
+    args = {"component": "c", "name": "s", "radius": 2, "segments": bad}
     assert call(args, client, "cst_create_sphere")["status"] == "error"
     assert client.codes == []
 
 
-def test_only_brick_bound_schemas_change():
+def test_brick_bounds_and_unchanged_segments_schemas():
     tools = {tool.name: tool for tool in geometry.TOOLS}
     for bound in BOUNDS:
         spec = tools["cst_create_brick"].model_dump(by_alias=True)["inputSchema"]["properties"][
@@ -149,7 +149,7 @@ def test_only_brick_bound_schemas_change():
         assert spec["type"] == ["number", "string"]
         assert "history" in spec["description"]
     schema = tools["cst_create_sphere"].model_dump(by_alias=True)["inputSchema"]
-    assert schema["properties"]["radius"]["type"] == "number"
+    assert schema["properties"]["segments"]["type"] == "integer"
 
 
 @pytest.mark.parametrize("attribute", ["inputSchema", "input_schema"])

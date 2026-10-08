@@ -1,13 +1,14 @@
-# Batch 02: parameter-driven brick
+# Batch 02: parameter-driven geometry
 
 This deterministic Python 3.12 client uses a real MCP stdio session with
 `sys.executable -m cst_mcp.server`. No LLM/SLM is involved. Creation and parameter
 changes use dedicated MCP tools; the client never imports server handlers or
-calls CST APIs directly. **Live CST validation is still pending.**
+calls CST APIs directly. The brick and primitive clients have separate fixed
+workspaces. Live CST validation of the new primitive scenario is still pending.
 
 ## Server change
 
-Only `cst_create_brick` gains expression inputs. All six bounds now accept a
+The existing `cst_create_brick` support is the reference. All six bounds accept a
 finite JSON number or a nonempty, single-line CST parameter name/arithmetic
 expression. Numeric and expression bounds can be mixed. For example:
 
@@ -33,7 +34,9 @@ line-breaking characters, NUL, booleans, null, unsupported types and nonfinite
 numbers are rejected before execution. Existing builder injection checks remain.
 
 There is no retroactive geometry-edit tool. Existing number-only builder methods,
-other primitive schemas, loft, faces, sweeps, optimization and solvers are unchanged.
+extrusions, wires, analytical curves, transformations, loft, faces, workflows,
+sweeps, optimization and solvers are unchanged. The six additional primitive
+contracts are listed below.
 `cst_set_parameter` is reused without modification: it stores values outside model
 history and performs a separate native rebuild. Its returned `value` is an input
 echo; the test separately reads actual values using the parameter query tools.
@@ -45,7 +48,7 @@ both SDK 1.x `inputSchema` and SDK 2.x `input_schema`. Previously SDK 2.x silent
 bypassed handler schema checks. This restores existing numeric restrictions across
 guarded tools; it does not extend their input contracts.
 
-## Commands
+## Brick commands
 
 Run from `C:\dev\cst-studio-mcp`. Inline PEP 723 metadata selects Python 3.12
 and the existing `mcp>=1.29,<3` and `jsonschema>=4.20` dependencies.
@@ -68,8 +71,8 @@ uv run capabilities_test\02_parameters\run_parameter_brick.py --reset
 uv run capabilities_test\02_parameters\run_parameter_brick.py --reset --source-project "C:\path\source.cst"
 
 # After successful completion, open the saved owned copy for final inspection
-Invoke-Item capabilities_test\02_parameters\artifacts\project.cst
-notepad capabilities_test\02_parameters\artifacts\manual_inspection.md
+Invoke-Item capabilities_test\02_parameters\artifacts\01_brick\project.cst
+notepad capabilities_test\02_parameters\artifacts\01_brick\manual_inspection.md
 ```
 
 `--cst-path "D:\CST Studio Suite 2025"` selects another installation for the test
@@ -80,13 +83,13 @@ every planned call schema and number/expression samples in all six bounds, then
 checks offline brick generation and negative inputs. It cannot be combined with
 `--reset`. Offline generation is not native CST validation.
 
-## Persistent workspace, source and reset
+## Brick workspace, source and reset
 
-Every invocation uses **one fixed directory**:
+Every brick invocation uses **one fixed directory**:
 
-`C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts`
+`C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\01_brick`
 
-The owned project is `artifacts\project.cst`; its companion is `artifacts\project\`.
+The owned project is `artifacts\01_brick\project.cst`; its companion is `artifacts\01_brick\project\`.
 There are no timestamped run folders or fresh project copies on each invocation.
 An OS file lock prevents concurrent script use. `workspace.lock` is retained;
 its OS lock releases when the process exits. CST project locks are treated separately.
@@ -197,7 +200,7 @@ Pressing Enter resumes but does not automatically mark manual checks passed.
 
 ## Logs, transport and failures
 
-Stable files under `artifacts`:
+Stable brick files under `artifacts\01_brick`:
 
 | File | Behavior |
 | --- | --- |
@@ -243,11 +246,11 @@ Argparse also uses `2` for invalid CLI input before an invocation starts.
 Repository tests use substitutes/generated VBA and do not contact CST:
 
 ```powershell
-uv run --python 3.12 --extra dev pytest tests\test_brick_expressions.py tests\test_parameter_brick_client.py tests\test_vba_and_patch.py tests\test_vba_injection.py tests\test_vba_security.py tests\test_parameter_optimization_tools.py tests\test_tools_registry.py tests\test_stdio_transport.py -q
-uv run --python 3.12 --extra dev ruff check src\cst_mcp\vba_builder.py src\cst_mcp\vba_safety.py tests\test_brick_expressions.py tests\test_parameter_brick_client.py capabilities_test\02_parameters\run_parameter_brick.py
+uv run --python 3.12 --extra dev pytest tests\test_primitive_expressions.py tests\test_parameter_primitives_client.py tests\test_brick_expressions.py tests\test_parameter_brick_client.py tests\test_vba_and_patch.py tests\test_vba_injection.py tests\test_vba_security.py tests\test_tools_registry.py -q
+uv run --python 3.12 --extra dev ruff check src\cst_mcp\vba_builder.py src\cst_mcp\vba_safety.py tests\test_primitive_expressions.py tests\test_parameter_primitives_client.py tests\test_brick_expressions.py tests\test_parameter_brick_client.py capabilities_test\02_parameters\run_parameter_primitives.py capabilities_test\02_parameters\run_parameter_brick.py
 ```
 
-The new tests cover all six bounds, numeric formatting, names/arithmetic/mixed
+Brick tests cover all six bounds, numeric formatting, names/arithmetic/mixed
 inputs, malformed-but-contained expressions, invalid types/nonfinite numbers,
 escaping and handler rejection, plus both SDK schema attribute names. Client
 substitutes cover source-copy provenance, lock handling, reset scope, reruns,
@@ -257,5 +260,193 @@ substitute checks orchestration and duplicate prevention; it is not CST evidence
 
 Full-file Ruff checking of `geometry.py` reports nine diagnostics also present
 at the inspected HEAD. They are unrelated to this change and remain untouched.
-The changed helpers and new files have no new lint diagnostics. See `REVIEW.md`
-for the review/verification record and pending live validation.
+The changed helpers and new files have no new lint diagnostics.
+
+## Additional primitive contracts
+
+These tools now accept finite JSON numbers or nonempty, single-line CST
+expressions in the listed fields. Calls may mix numbers and expressions.
+
+| Tool | Expression-capable fields |
+| --- | --- |
+| `cst_create_cylinder` | `outer_radius`, `inner_radius`, `center_x`, `center_y`, `center_z`, `range_min`, `range_max` |
+| `cst_create_cone` | `bottom_radius`, `top_radius`, `center_x`, `center_y`, `center_z`, `range_min`, `range_max` |
+| `cst_create_sphere` | `radius`, `center_x`, `center_y`, `center_z` |
+| `cst_create_ecylinder` | `x_radius`, `y_radius`, `center_x`, `center_y`, `center_z`, `range_min`, `range_max` |
+| `cst_create_torus` | `outer_radius`, `inner_radius`, `center_x`, `center_y`, `center_z` |
+| `cst_create_polygon3d` | Every coordinate in every `[x, y, z]` point |
+
+The builders reuse `_format_expression` and `set_expression_pair`, with new
+`set_expression` and `set_expression_triple` helpers for radii, centers and
+points. Number-only builder methods are unchanged. Names, materials, axes,
+segments and unrelated fields keep their existing contracts. Forbidden control
+characters are rejected by the shared expression formatter, including controls
+that do not break a line. Python never evaluates caller expressions.
+
+Numeric cylinder inner radius and cone radii remain non-negative. Cylinder outer
+radius, sphere radius, elliptical cylinder radii and both torus radii remain
+positive. Expressions are serialized safely and CST validates their meaning.
+`cst_set_parameter` is unchanged.
+
+CST `OuterRadius` and `InnerRadius` are the large and small radii measured from
+the axis to the outer and inner surfaces. They are not the major and tube radii.
+Numeric tool inputs still pass through unchanged. Installed references inspected:
+
+- `Online Help/mergedProjects/VBA_3D/common_vbabasicsolids/common_vbatorus_object.htm`
+- `Online Help/mergedProjects/3D/common_struct/common_struct_torus.htm`
+- `Online Help/mergedProjects/3D/common_modi/common_modi_torusmode.htm`
+- `Online Help/mergedProjects/3D/image/torus.gif`, which labels both surface extents.
+
+These paths are relative to `C:\Program Files (x86)\CST Studio Suite 2025`.
+
+## Validation scopes and brick relocation
+
+Scripts stay directly under `capabilities_test\02_parameters`. Each scope owns
+a fixed workspace:
+
+- `artifacts\01_brick`: `run_parameter_brick.py`, including its copied project.
+- `artifacts\02_primitives`: `run_parameter_primitives.py`, with a new blank MWS project.
+
+Each workspace owns its project and companion data, retained workspace lock,
+manifest, MCP/CST/stderr logs, invocation metadata, effective tool catalog and
+latest `summary.json` and `summary.md`. Logs append records with invocation IDs
+and UTC timestamps. Latest reports use fixed paths. There are no timestamped
+run directories. Future scopes such as `03_extrusions` do not change these paths.
+Artifacts and generated Python files remain ignored by Git.
+
+The existing root-level brick contents were relocated on 8 October 2026 after
+inventorying all 15 top-level entries. The project companion held 106 files;
+the parent `Cache` and `Temp` directories were empty. All 138 original file and
+directory entries, including empty directories, were verified after relocation.
+The move rejected unidentified entries, links, junctions and destination
+collisions. Exclusive access checks covered every file and the retained
+`workspace.lock` was held with an OS lock during the move. No CST project locks
+were present. No process was terminated and no CST connection was made.
+
+`artifacts\01_brick\workspace.before_relocation.json` preserves the original
+manifest bytes. `relocation.json` records paths, inventories, SHA-256 fingerprints,
+move progress and verification. Only the operational `project` path in
+`workspace.json` changed. Historical calls, summaries, metadata, source-copy
+provenance, fixture state and checkpoint identifiers retain their original facts
+and paths. Existing user notes were preserved without editing.
+
+The brick project still differs from the saved checkpoint:
+
+- Retained `saved_sha256`: `490f5597d9f2dd1083367c21db1ad0a18e949ee9448343426507924eae53b49c`
+- Current file: `92fb5dde4d9b11eb4c8c50f052431adf91dbd0195049fcfeb5c6e31563de8065`
+
+Ordinary brick reuse remains blocked. Inspect and restore the understood saved
+checkpoint or use the existing explicit reset procedure with a saved, closed
+source. Relocation did not adopt the current file or bypass that guard.
+
+## Primitive commands and ownership
+
+Run from `C:\dev\cst-studio-mcp`:
+
+```powershell
+uv run capabilities_test\02_parameters\run_parameter_primitives.py --preflight
+uv run capabilities_test\02_parameters\run_parameter_primitives.py
+
+# Explicit recovery of verified owned primitive project files only
+uv run capabilities_test\02_parameters\run_parameter_primitives.py --reset
+```
+
+Python 3.12 and the inline dependencies match the brick client. The new client
+uses a real stdio session with `sys.executable -m cst_mcp.server`. It imports
+only inspected stateless helpers and constants from the existing clients. Those
+modules define classes and functions but do not construct a client or CST
+instance at import time. No brick client is instantiated or brick file written.
+
+Preflight sets `CST_CONNECT_MODE=disabled` only in the child server environment.
+It validates the effective catalog and planned schemas, then checks generated
+VBA for all six tools with mixed and numeric inputs and representative invalid
+inputs. It never calls connect, create/open/save/close, reset or disconnect.
+It writes only this scope's logs and reports, and can run without a project.
+
+The first live invocation reserves ownership locally and creates a new blank
+MWS project through `cst_create_project`. It does not copy either earlier project.
+Later invocations require a complete owned checkpoint and reuse its fixtures.
+The `.cst` hash and companion/sidecar file inventory must match the saved
+checkpoint. Missing files, external changes, incomplete invocation state,
+unrecognized project paths or invalid ownership block reuse. Locks are never
+removed or declared stale. The OS workspace lock and CST project locks are
+distinct. Close projects normally before another invocation.
+
+`--reset` requires a verified primitive manifest and checks all target paths and
+project locks before removing only owned `project.cst`, `project` and recorded
+same-stem sidecars. Logs, reports, caches, user notes and sibling workspaces
+are retained. Unidentified files require investigation, not automatic deletion.
+Preflight and reset cannot be combined. Timeout options and server-only transport
+preservation follow the brick client. Child environment settings include raw VBA
+permission, the selected toolsets and this scope's `CST_WORK_DIR`; the parent's
+environment is unchanged.
+
+## Primitive scenario and verification coverage
+
+Five separated PEC solids and one rectangular Polygon3D curve share these states:
+
+| State | `PGeom_R` | `PGeom_H` | `PGeom_Shift` |
+| --- | --- | --- | --- |
+| Initial | 2 | 6 | 0 |
+| Updated and reopened | 3 | 8 | 2 |
+| Final | 2.5 | 5 | 1 |
+
+The component is `ParameterPrimitives`. Stable solid names are `Cylinder`,
+`Cone`, `Sphere`, `ECylinder` and `Torus`. Their X centers are respectively
+`Shift`, `30+Shift`, `60+Shift`, `90+Shift` and `120+Shift` mm. The sphere's
+Z center is `R`; the other centers use numeric zeros. Axial ranges are `0..H`.
+The curve `Curves:ParametricRectangle` begins at X=`150+Shift`, Y=20, Z=0,
+with width `2R` and height `H`. Its first point is repeated to close it.
+The maximum torus outer radius is 9 mm, so fixtures remain separated.
+
+The cylinder has outer radius `R` and inner radius `R/4`; the cone has bottom
+radius `R` and top radius `R/2`; the sphere has radius `R`; the elliptical
+cylinder has radii `R` and `R/2`; the torus uses CST radii `3R` and `2R`.
+Tool arguments contain numeric constants and quoted expressions.
+
+Live execution verifies a newly started DesignEnvironment with no adopted
+projects. It creates or opens only the owned project, sets mm/GHz/ns and reads
+all three units independently before creating geometry. Initial parameter
+assignments precede fixture creation and need no rebuild on a blank project.
+On reuse and later changes, only the last assignment triggers the native rebuild.
+Fixed setup creates the component and curve group; six dedicated geometry tools
+create the fixtures once. No solver runs.
+
+The client reads actual parameters and units, enumerates named solids/materials
+and measures initial geometry. It changes parameters and repeats measurements,
+saves, closes and reopens, then repeats persistence checks before applying the
+final state, measuring, saving, closing and disconnecting.
+
+Read-only measurement blocks use the existing output-capture path outside model
+history. `Solid.GetVolume` is compared with analytic volume for every solid.
+`Solid.GetArea` is compared with exact smooth area for the hollow cylinder,
+truncated cone, sphere and torus. For torus expectations only, the major radius
+is `(outer+inner)/2` and tube radius is `(outer-inner)/2`. No conversion occurs
+in geometry tool inputs. Elliptical cylinder area is recorded without comparison;
+no approximate ellipse perimeter is used as an exact reference.
+
+`Curve.IsClosed` verifies the named curve item's closure. The installed help
+describes `GetNumberOfPoints` as a maximum; the client records it and checks only
+an integer lower bound of four, without claiming an exact vertex count.
+`GetPointCoordinates` takes a string point ID and returns false when absent.
+The help does not define complete ID enumeration, so no point IDs or coordinates
+are guessed. Complete curve coordinate verification remains unsupported.
+
+Measurements record actual and expected values, mm^3/mm^2 units, parameter state,
+absolute and relative tolerances of `1e-6`, exact query text and installed-reference
+paths/hashes. Native outputs reject duplicate, missing or nonfinite records.
+Volume and area cannot prove every position, dimension or expression association.
+No loose bounding box is used as exact dimensional evidence. These limits remain
+in reports; there is no new manual-validation suite.
+
+MCP logs retain complete arguments, responses, errors and timing. CST checkpoints
+retain complete returned payloads and compare message content with prior
+checkpoints. Baseline messages may be inherited; repeated messages and newly
+observed content are separated without assigning error causality to the last
+command. Server tails may be truncated. After an interrupted in-flight request,
+timeout, transport loss or unknown outcome, all later calls are forbidden,
+including queries, save/close/reset/disconnect. Only local reporting and Python
+server teardown proceed. CST is never killed to recover a test.
+
+Focused offline tests, lint and the real disabled-server preflight are recorded
+in `REVIEW.md`. Live CST validation is still pending.

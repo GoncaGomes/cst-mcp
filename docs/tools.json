@@ -914,56 +914,77 @@
             },
             {
               "name": "outer_radius",
-              "type": "number",
-              "description": "Outer radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Outer radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "inner_radius",
-              "type": "number",
-              "description": "Inner radius (0 for solid)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Inner radius (0 for solid): finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1021,56 +1042,77 @@
             },
             {
               "name": "bottom_radius",
-              "type": "number",
-              "description": "Bottom radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Bottom radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "top_radius",
-              "type": "number",
-              "description": "Top radius (0 for pointed cone)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Top radius (0 for pointed cone): finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1117,32 +1159,44 @@
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "radius",
-              "type": "number",
-              "description": "Sphere radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Sphere radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1205,40 +1259,55 @@
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "outer_radius",
-              "type": "number",
-              "description": "Major radius (center to tube center)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "CST outer (large) radius, from axis to outer surface: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "inner_radius",
-              "type": "number",
-              "description": "Minor radius (tube radius)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "CST inner (small) radius, from axis to inner surface: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1510,7 +1579,7 @@
             {
               "name": "points",
               "type": "array",
-              "description": "List of [x, y, z] coordinate triples",
+              "description": "List of [x, y, z] triples; each coordinate accepts a finite number or nonempty single-line CST expression, preserved in model history",
               "default": null,
               "enum": null,
               "required": true
@@ -1663,56 +1732,77 @@
             },
             {
               "name": "x_radius",
-              "type": "number",
-              "description": "Radius in local X direction",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Radius in local X direction: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "y_radius",
-              "type": "number",
-              "description": "Radius in local Y direction",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Radius in local Y direction: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true

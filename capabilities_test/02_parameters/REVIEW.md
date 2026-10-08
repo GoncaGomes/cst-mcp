@@ -61,6 +61,90 @@ Actual source SHA-256 recorded by the final preflight (45,283 bytes):
 This is an observation of the current saved source, not copy-time provenance;
 the live initializer separately records and verifies copy-time fingerprints.
 
-**No live-mode script execution, CST connection, project opening, model rebuild
-or simulation was executed by this implementation task. Live CST validation and manual
-dimensions/position/expression inspection remain pending.**
+## Primitive extension and scope relocation, 8 October 2026
+
+The earlier sections describe the original brick implementation and its historical
+baseline. This extension was inspected on `feat/brick-parameter-expressions` at
+`59b52b7f9673b7932b981f2ee45bf2541b9fbd96`. No applicable `AGENTS.md` was found in
+the repository or its ancestors. Existing root README edits, Batch 02 documentation
+edits and unrelated presentation/site deletions were present. Unrelated work was
+preserved. No branch switch, commit, push or discard was performed.
+
+The cylinder, cone, sphere, elliptical cylinder, torus and Polygon3D schemas and
+builders now support the selected expression dimensions. The helpers are
+`geometry._expression_field`, `geometry._radius_expression`,
+`VBABuilder.set_expression` and `VBABuilder.set_expression_triple`; the existing
+expression formatter and pair helper are reused. The formatter additionally
+rejects non-line-breaking forbidden controls. Numeric formatting, defaults and
+numeric radius sign rules are retained. Number-only builder methods,
+`vba_safety.py` and `cst_set_parameter` were not changed by this extension.
+
+Installed CST 2025 Torus VBA help, the torus dialog/creation-mode help and its
+diagram were inspected. CST's large/small radii are outer/inner surface extents.
+The misleading major/tube-radius descriptions in the geometry catalog and bundled
+VBA reference were corrected without converting numeric inputs. The six entries
+in the static tool catalog and embedded documentation were updated in place.
+Other tool contracts remain unchanged.
+
+The primitive client uses only `artifacts\02_primitives`, starts its own new
+DesignEnvironment, creates a blank MWS project and guards subsequent reuse with
+ownership, OS/project locks, checkpoint hashes and companion inventories. Its
+reset is confined to verified project paths. Imported helpers were inspected for
+side effects; no imported client is constructed. Parameter storage remains outside
+model history and assignments rebuild only when required. Read-only queries use
+native output capture. Unknown execution stops every further MCP call and transport
+shutdown is restricted to the server process.
+
+The brick relocation inspected 15 identified top-level entries: `project.cst`,
+the 106-file `project` companion, empty `Cache` and `Temp`, MCP/CST/stderr logs,
+reports, metadata, catalog, manifest, user notes and retained `workspace.lock`.
+All 138 original files/directories were moved into `artifacts\01_brick` through
+a collision-checked staging directory and verified by inventories and SHA-256.
+Links, junctions, ambiguous entries and collisions were refused. Exclusive access
+to every file and an OS lock on the retained workspace lock established inactivity.
+There were no CST project locks. No locks were removed or judged stale.
+
+The original manifest bytes are in `workspace.before_relocation.json`; the local
+`relocation.json` records progress, both inventories and verification. Only the
+operational project path changed in `workspace.json`. Historical logs/reports,
+metadata, notes and source-copy evidence remain byte-preserved. The original
+saved hash, fixture state and checkpoint ID remain unchanged:
+
+- Saved: `490f5597d9f2dd1083367c21db1ad0a18e949ee9448343426507924eae53b49c`
+- Current project: `92fb5dde4d9b11eb4c8c50f052431adf91dbd0195049fcfeb5c6e31563de8065`
+- Checkpoint invocation: `4bb6ff44ae794d35910ede3e9bffe822`, phase `final_geometry`
+
+The mismatch still blocks ordinary brick reuse. The existing checkpoint recovery
+or explicit reset-from-closed-source procedure is required. Relocation did not
+adopt the current project fingerprint. Brick preflight was not rerun against the
+real workspace, preserving its existing latest historical reports.
+
+The final semantic audit caught automatic date normalization by the relocation
+serializer. The operational manifest was restored from its preserved original
+bytes with only the project-path token replaced. The correction is recorded in
+`relocation.json`; every original provenance/checkpoint field now compares exactly.
+
+Offline verification for this extension:
+
+- Focused handler/helper, client ownership/isolation, VBA/security and registry
+  selection: **453 passed**. Tests used temporary files and substitutes without CST.
+- Primitive real MCP `--preflight`: **passed**, CST access disabled. It checked all
+  six effective schemas, numeric/mixed generation and invalid inputs. No project
+  was created, opened or reset.
+  The final audit found three append-preserved preflight invocations, each with
+  45 complete request/response pairs. The latest metadata matches the final script.
+- Changed/new Python files pass focused Ruff checks. Full-file `geometry.py`
+  retains the nine pre-existing Ruff diagnostics, with no new diagnostics.
+- Python compilation, numeric-output compatibility and `git diff --check` are
+  checked offline. The final artifact audit verifies original brick fingerprints
+  and preserved manifest fields, ignored scope files and preflight call isolation.
+
+Volume is checked analytically for all five solids and exact area for four.
+Elliptical-cylinder area is recorded without an approximate exact reference.
+Curve closure and its documented maximum point count are recorded. Installed help
+does not specify complete point-ID enumeration, so coordinate verification is
+unsupported. Volume/area do not prove all positions, dimensions or expression
+associations. No loose-box or manual-validation suite was added.
+
+Live CST connection, project opening, model rebuild or simulation was performed
+by this extension task. 

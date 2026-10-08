@@ -59,6 +59,8 @@ def _format_expression(value: float | str) -> str:
     if isinstance(value, str):
         if not value.strip():
             raise ValueError("CST expression must be nonempty")
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
+            raise ValueError("CST expression must not contain control characters")
         vba_escape(value, "CST expression")  # Check the full line-break set.
         return '"' + _escape_vba_string(value) + '"'
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -120,6 +122,20 @@ class VBABuilder:
     ) -> VBABuilder:
         """Set a range with quoted numbers/unevaluated CST parameter expressions."""
         self._with_block.append(f'.{prop} {_format_expression(v1)}, {_format_expression(v2)}')
+        return self
+
+    def set_expression(self, prop: str, value: float | str) -> VBABuilder:
+        """Set one quoted number or unevaluated CST parameter expression."""
+        self._with_block.append(f'.{prop} {_format_expression(value)}')
+        return self
+
+    def set_expression_triple(
+        self, prop: str, v1: float | str, v2: float | str, v3: float | str
+    ) -> VBABuilder:
+        """Set a point/center with quoted numbers or CST expressions."""
+        self._with_block.append(
+            f'.{prop} {_format_expression(v1)}, {_format_expression(v2)}, {_format_expression(v3)}'
+        )
         return self
 
     def set_triple(self, prop: str, v1: float, v2: float, v3: float) -> VBABuilder:

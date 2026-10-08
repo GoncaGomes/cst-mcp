@@ -13,7 +13,7 @@ from mcp.types import TextContent, Tool
 
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.vba_builder import VBABuilder, VBAScript
+from cst_mcp.vba_builder import VBABuilder, VBAScript, _format_expression
 from cst_mcp.validators import validate_name, validate_positive, validate_non_negative
 from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.vba_safety import vba_number as _vba_number
@@ -22,6 +22,20 @@ from cst_mcp.vba_safety import vba_string_literal as _vba_string_literal
 # ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
+
+
+def _expression_field(description: str, **settings) -> dict:
+    """Schema for the selected primitive dimensions, retaining numeric defaults."""
+    return dict(
+        type=["number", "string"],
+        minLength=1,
+        description=(
+            description + ": finite JSON number or nonempty single-line CST expression; "
+            "preserved in model history. CST reports semantic expression errors."
+        ),
+        **settings,
+    )
+
 
 TOOLS: list[Tool] = [
     # 1. Brick
@@ -72,13 +86,13 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Solid name"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
                 "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "Cylinder axis"},
-                "outer_radius": {"type": "number", "description": "Outer radius"},
-                "inner_radius": {"type": "number", "description": "Inner radius (0 for solid)", "default": 0},
-                "center_x": {"type": "number", "description": "Center X coordinate", "default": 0},
-                "center_y": {"type": "number", "description": "Center Y coordinate", "default": 0},
-                "center_z": {"type": "number", "description": "Center Z coordinate", "default": 0},
-                "range_min": {"type": "number", "description": "Axis range minimum"},
-                "range_max": {"type": "number", "description": "Axis range maximum"},
+                "outer_radius": _expression_field("Outer radius"),
+                "inner_radius": _expression_field("Inner radius (0 for solid)", default=0),
+                "center_x": _expression_field("Center X coordinate", default=0),
+                "center_y": _expression_field("Center Y coordinate", default=0),
+                "center_z": _expression_field("Center Z coordinate", default=0),
+                "range_min": _expression_field("Axis range minimum"),
+                "range_max": _expression_field("Axis range maximum"),
             },
             "required": ["component", "name", "axis", "outer_radius", "range_min", "range_max"],
         },
@@ -95,13 +109,13 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Solid name"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
                 "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "Cone axis"},
-                "bottom_radius": {"type": "number", "description": "Bottom radius"},
-                "top_radius": {"type": "number", "description": "Top radius (0 for pointed cone)"},
-                "center_x": {"type": "number", "description": "Center X coordinate", "default": 0},
-                "center_y": {"type": "number", "description": "Center Y coordinate", "default": 0},
-                "center_z": {"type": "number", "description": "Center Z coordinate", "default": 0},
-                "range_min": {"type": "number", "description": "Axis range minimum"},
-                "range_max": {"type": "number", "description": "Axis range maximum"},
+                "bottom_radius": _expression_field("Bottom radius"),
+                "top_radius": _expression_field("Top radius (0 for pointed cone)"),
+                "center_x": _expression_field("Center X coordinate", default=0),
+                "center_y": _expression_field("Center Y coordinate", default=0),
+                "center_z": _expression_field("Center Z coordinate", default=0),
+                "range_min": _expression_field("Axis range minimum"),
+                "range_max": _expression_field("Axis range maximum"),
             },
             "required": ["component", "name", "axis", "bottom_radius", "top_radius", "range_min", "range_max"],
         },
@@ -117,10 +131,10 @@ TOOLS: list[Tool] = [
                 "component": {"type": "string", "description": "Component name"},
                 "name": {"type": "string", "description": "Solid name"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
-                "center_x": {"type": "number", "description": "Center X coordinate", "default": 0},
-                "center_y": {"type": "number", "description": "Center Y coordinate", "default": 0},
-                "center_z": {"type": "number", "description": "Center Z coordinate", "default": 0},
-                "radius": {"type": "number", "description": "Sphere radius"},
+                "center_x": _expression_field("Center X coordinate", default=0),
+                "center_y": _expression_field("Center Y coordinate", default=0),
+                "center_z": _expression_field("Center Z coordinate", default=0),
+                "radius": _expression_field("Sphere radius"),
                 "segments": {"type": "integer", "description": "Number of segments (0=auto)", "default": 0},
             },
             "required": ["component", "name", "radius"],
@@ -138,11 +152,11 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Solid name"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
                 "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "Torus axis"},
-                "center_x": {"type": "number", "description": "Center X coordinate", "default": 0},
-                "center_y": {"type": "number", "description": "Center Y coordinate", "default": 0},
-                "center_z": {"type": "number", "description": "Center Z coordinate", "default": 0},
-                "outer_radius": {"type": "number", "description": "Major radius (center to tube center)"},
-                "inner_radius": {"type": "number", "description": "Minor radius (tube radius)"},
+                "center_x": _expression_field("Center X coordinate", default=0),
+                "center_y": _expression_field("Center Y coordinate", default=0),
+                "center_z": _expression_field("Center Z coordinate", default=0),
+                "outer_radius": _expression_field("CST outer (large) radius, from axis to outer surface"),
+                "inner_radius": _expression_field("CST inner (small) radius, from axis to inner surface"),
             },
             "required": ["component", "name", "axis", "outer_radius", "inner_radius"],
         },
@@ -293,7 +307,7 @@ TOOLS: list[Tool] = [
                     "type": "array",
                     "items": {
                         "type": "array",
-                        "items": {"type": "number"},
+                        "items": _expression_field("Point coordinate"),
                         "minItems": 3,
                         "maxItems": 3,
                     },
@@ -354,13 +368,13 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Solid name"},
                 "material": {"type": "string", "description": "Material name", "default": "PEC"},
                 "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "Cylinder axis"},
-                "x_radius": {"type": "number", "description": "Radius in local X direction"},
-                "y_radius": {"type": "number", "description": "Radius in local Y direction"},
-                "center_x": {"type": "number", "description": "Center X coordinate", "default": 0},
-                "center_y": {"type": "number", "description": "Center Y coordinate", "default": 0},
-                "center_z": {"type": "number", "description": "Center Z coordinate", "default": 0},
-                "range_min": {"type": "number", "description": "Axis range minimum"},
-                "range_max": {"type": "number", "description": "Axis range maximum"},
+                "x_radius": _expression_field("Radius in local X direction"),
+                "y_radius": _expression_field("Radius in local Y direction"),
+                "center_x": _expression_field("Center X coordinate", default=0),
+                "center_y": _expression_field("Center Y coordinate", default=0),
+                "center_z": _expression_field("Center Z coordinate", default=0),
+                "range_min": _expression_field("Axis range minimum"),
+                "range_max": _expression_field("Axis range maximum"),
             },
             "required": ["component", "name", "axis", "x_radius", "y_radius", "range_min", "range_max"],
         },
@@ -455,6 +469,15 @@ TOOLS: list[Tool] = [
 # ---------------------------------------------------------------------------
 
 
+def _radius_expression(value: float | str, field: str, *, allow_zero=False) -> float | str:
+    """Validate serialization first, then apply the existing numeric radius contract."""
+    _format_expression(value)
+    if not isinstance(value, str):
+        validator = validate_non_negative if allow_zero else validate_positive
+        validator(value, field)
+    return value
+
+
 def _build_brick(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
@@ -479,8 +502,8 @@ def _build_cylinder(args: dict) -> str:
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
     axis = args["axis"]
-    outer_radius = validate_positive(args["outer_radius"], "outer_radius")
-    inner_radius = validate_non_negative(args.get("inner_radius", 0), "inner_radius")
+    outer_radius = _radius_expression(args["outer_radius"], "outer_radius")
+    inner_radius = _radius_expression(args.get("inner_radius", 0), "inner_radius", allow_zero=True)
     cx = args.get("center_x", 0)
     cy = args.get("center_y", 0)
     cz = args.get("center_z", 0)
@@ -495,12 +518,12 @@ def _build_cylinder(args: dict) -> str:
         .set("Component", component)
         .set("Material", material)
         .set("Axis", axis)
-        .set_number("Outerradius", outer_radius)
-        .set_number("Innerradius", inner_radius)
-        .set_number("Xcenter", cx)
-        .set_number("Ycenter", cy)
-        .set_number("Zcenter", cz)
-        .set_double(range_prop, args["range_min"], args["range_max"])
+        .set_expression("Outerradius", outer_radius)
+        .set_expression("Innerradius", inner_radius)
+        .set_expression("Xcenter", cx)
+        .set_expression("Ycenter", cy)
+        .set_expression("Zcenter", cz)
+        .set_expression_pair(range_prop, args["range_min"], args["range_max"])
         .call("Create")
     )
     return vba.build()
@@ -511,8 +534,8 @@ def _build_cone(args: dict) -> str:
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
     axis = args["axis"]
-    bottom_radius = validate_non_negative(args["bottom_radius"], "bottom_radius")
-    top_radius = validate_non_negative(args["top_radius"], "top_radius")
+    bottom_radius = _radius_expression(args["bottom_radius"], "bottom_radius", allow_zero=True)
+    top_radius = _radius_expression(args["top_radius"], "top_radius", allow_zero=True)
     cx = args.get("center_x", 0)
     cy = args.get("center_y", 0)
     cz = args.get("center_z", 0)
@@ -527,12 +550,12 @@ def _build_cone(args: dict) -> str:
         .set("Component", component)
         .set("Material", material)
         .set("Axis", axis)
-        .set_number("Bottomradius", bottom_radius)
-        .set_number("Topradius", top_radius)
-        .set_number("Xcenter", cx)
-        .set_number("Ycenter", cy)
-        .set_number("Zcenter", cz)
-        .set_double(range_prop, args["range_min"], args["range_max"])
+        .set_expression("Bottomradius", bottom_radius)
+        .set_expression("Topradius", top_radius)
+        .set_expression("Xcenter", cx)
+        .set_expression("Ycenter", cy)
+        .set_expression("Zcenter", cz)
+        .set_expression_pair(range_prop, args["range_min"], args["range_max"])
         .call("Create")
     )
     return vba.build()
@@ -542,7 +565,7 @@ def _build_sphere(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
-    radius = validate_positive(args["radius"], "radius")
+    radius = _radius_expression(args["radius"], "radius")
     cx = args.get("center_x", 0)
     cy = args.get("center_y", 0)
     cz = args.get("center_z", 0)
@@ -557,10 +580,10 @@ def _build_sphere(args: dict) -> str:
         .set("Component", component)
         .set("Material", material)
         .set("Axis", "z")
-        .set_number("CenterRadius", radius)
+        .set_expression("CenterRadius", radius)
         .set_number("TopRadius", 0)
         .set_number("BottomRadius", 0)
-        .set_triple("Center", cx, cy, cz)
+        .set_expression_triple("Center", cx, cy, cz)
         .set_number("Segments", segments)
         .call("Create")
     )
@@ -572,8 +595,8 @@ def _build_torus(args: dict) -> str:
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
     axis = args["axis"]
-    outer_radius = validate_positive(args["outer_radius"], "outer_radius")
-    inner_radius = validate_positive(args["inner_radius"], "inner_radius")
+    outer_radius = _radius_expression(args["outer_radius"], "outer_radius")
+    inner_radius = _radius_expression(args["inner_radius"], "inner_radius")
     cx = args.get("center_x", 0)
     cy = args.get("center_y", 0)
     cz = args.get("center_z", 0)
@@ -585,11 +608,11 @@ def _build_torus(args: dict) -> str:
         .set("Component", component)
         .set("Material", material)
         .set("Axis", axis)
-        .set_number("OuterRadius", outer_radius)
-        .set_number("InnerRadius", inner_radius)
-        .set_number("Xcenter", cx)
-        .set_number("Ycenter", cy)
-        .set_number("Zcenter", cz)
+        .set_expression("OuterRadius", outer_radius)
+        .set_expression("InnerRadius", inner_radius)
+        .set_expression("Xcenter", cx)
+        .set_expression("Ycenter", cy)
+        .set_expression("Zcenter", cz)
         .call("Create")
     )
     return vba.build()
@@ -787,7 +810,7 @@ def _build_wire(args: dict) -> str:
 
 def _build_polygon3d(args: dict) -> str:
     name = validate_name(args["name"], "name")
-    points: list[list[float]] = args["points"]
+    points: list[list[float | str]] = args["points"]
 
     vba = (
         VBABuilder("Polygon3D")
@@ -796,7 +819,7 @@ def _build_polygon3d(args: dict) -> str:
         .set("Curve", "Curves")
     )
     for pt in points:
-        vba.set_triple("Point", pt[0], pt[1], pt[2])
+        vba.set_expression_triple("Point", pt[0], pt[1], pt[2])
     vba.call("Create")
     return vba.build()
 
@@ -841,8 +864,8 @@ def _build_ecylinder(args: dict) -> str:
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
     axis = args["axis"]
-    x_radius = validate_positive(args["x_radius"], "x_radius")
-    y_radius = validate_positive(args["y_radius"], "y_radius")
+    x_radius = _radius_expression(args["x_radius"], "x_radius")
+    y_radius = _radius_expression(args["y_radius"], "y_radius")
     cx = args.get("center_x", 0)
     cy = args.get("center_y", 0)
     cz = args.get("center_z", 0)
@@ -857,12 +880,12 @@ def _build_ecylinder(args: dict) -> str:
         .set("Component", component)
         .set("Material", material)
         .set("Axis", axis)
-        .set_number("XRadius", x_radius)
-        .set_number("YRadius", y_radius)
-        .set_number("Xcenter", cx)
-        .set_number("Ycenter", cy)
-        .set_number("Zcenter", cz)
-        .set_double(range_prop, args["range_min"], args["range_max"])
+        .set_expression("XRadius", x_radius)
+        .set_expression("YRadius", y_radius)
+        .set_expression("Xcenter", cx)
+        .set_expression("Ycenter", cy)
+        .set_expression("Zcenter", cz)
+        .set_expression_pair(range_prop, args["range_min"], args["range_max"])
         .call("Create")
     )
     return vba.build()
