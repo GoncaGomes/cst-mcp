@@ -1673,7 +1673,7 @@
         },
         {
           "name": "cst_create_face_from_curves",
-          "description": "Create a planar face from one or more closed curves in CST Studio.",
+          "description": "Create a planar sheet consisting of one face from exactly one qualified closed planar curve reference (curvegroup:curveitem) in CST Studio. CST reports native geometric errors. Connected curve items may be included by CST.",
           "category_id": "geometry",
           "params": [
             {
@@ -1687,7 +1687,7 @@
             {
               "name": "name",
               "type": "string",
-              "description": "Face/solid name",
+              "description": "Sheet/face name",
               "default": null,
               "enum": null,
               "required": true
@@ -1695,7 +1695,7 @@
             {
               "name": "curve_names",
               "type": "array",
-              "description": "List of curve names to form the face boundary",
+              "description": "Exactly one qualified curve reference, e.g. 'Curves:Rectangle'. Independent profile lists are unsupported; the curve must be closed and planar.",
               "default": null,
               "enum": null,
               "required": true

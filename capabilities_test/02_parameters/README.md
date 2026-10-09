@@ -3,7 +3,7 @@
 This deterministic Python 3.12 client uses a real MCP stdio session with
 `sys.executable -m cst_mcp.server`. No LLM/SLM is involved. Creation and parameter
 changes use dedicated MCP tools; the client never imports server handlers or
-calls CST APIs directly. The brick, primitive, extrusion and analytical-curve clients have separate fixed
+calls CST APIs directly. The brick, primitive, extrusion, analytical-curve and face-from-curves clients have separate fixed
 workspaces. The recorded primitive live scenario completed within its stated
 coverage. Extrusion live validation of creation, parametric reconstruction, hole
 effects and persistence also completed within the recorded measurement coverage.
@@ -36,7 +36,7 @@ line-breaking characters, NUL, booleans, null, unsupported types and nonfinite
 numbers are rejected before execution. Existing builder injection checks remain.
 
 There is no retroactive geometry-edit tool. Existing number-only builder methods,
-wires, transformations, loft, faces, workflows,
+wires, transformations, loft, workflows,
 sweeps, optimization and solvers are unchanged. The six additional primitive
 contracts, extrusion extension and analytical-curve bounds are listed below.
 `cst_set_parameter` is reused without modification: it stores values outside model
@@ -767,3 +767,125 @@ states. Avoid saving inspection edits because reuse checks the saved fingerprint
 
 Focused offline tests and both disabled-server preflights are recorded in
 `REVIEW.md`. No analytical-curve live scenario was run during implementation.
+
+## Face from curves: contract and commands
+
+`cst_create_face_from_curves` creates a planar sheet consisting of one face.
+The compatible `curve_names` array now requires exactly one qualified reference,
+such as `Curves:Rectangle`, with one colon and two separately validated names.
+The generated sequence is `CoverCurve.Reset`, `Name`, `Component`, `Curve`,
+`Create`. It retains the native default material, Vacuum. General name validation
+is unchanged. CST reports geometric errors for open or nonplanar profiles.
+Connected items may be included by CST; arbitrary independent profiles, holes
+and thickness are unsupported. Loft corrections are outside this change.
+
+The deterministic Python 3.12 client is `run_face_from_curves.py`, directly in
+`02_parameters`. Its inline dependencies match the other clients. It launches
+the Python server with `sys.executable -m cst_mcp.server` and uses real MCP stdio.
+Only inspected stateless helpers are reused, without constructing earlier
+clients or changing their globals. Its fixed evidence workspace is:
+
+`C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\05_face_from_curves`
+
+Run from `C:\dev\cst-studio-mcp`:
+
+```powershell
+# Offline schemas and generated VBA through a server with CST disabled
+uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
+
+# First live initialization and scenario, pending execution and review
+uv run capabilities_test\02_parameters\run_face_from_curves.py
+
+# Explicit scoped reset and live scenario, after saving and closing the owned project
+uv run capabilities_test\02_parameters\run_face_from_curves.py --reset
+
+# Open the retained project only after a successful live run
+Invoke-Item "C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\05_face_from_curves\project.cst"
+```
+
+`--cst-path "D:\CST Studio Suite 2025"` overrides the default installation,
+`C:\Program Files (x86)\CST Studio Suite 2025`. `--connection-timeout` defaults
+to 120 seconds and `--call-timeout` to 60 seconds. Native server timeouts are
+independent. Preflight sets `CST_CONNECT_MODE=disabled` in the child environment,
+checks effective catalog schemas for planned calls, retrieves generated geometry
+and fixed setup/query VBA, and checks representative rejections. It never
+prepares or resets a project, connects to CST, or calls project lifecycle tools.
+`--preflight` cannot be combined with `--reset`.
+
+First live initialization creates a new blank owned MWS project, `project.cst`
+with companion `project\`. A retained `workspace.lock` supplies an OS lock;
+`workspace.json` records ownership/state and saved project/companion/sidecar
+fingerprints. Ready, unchanged checkpoints can be reopened without duplicate
+creation, but reuse without reset remains outside required live validation.
+Explicit reset checks every target before deleting only manifest-owned project
+files inside `05_face_from_curves`. Logs, notes and scopes 01 through 04 remain.
+Unknown project files, incomplete reuse state, links/junctions or project locks
+stop the operation. Locks are never removed as stale.
+
+`mcp_calls.jsonl`, `cst_messages.jsonl`, `metadata.jsonl` and `server_stderr.log`
+are append-only. `metadata.json`, `tool_catalog.json`, `summary.json` and
+`summary.md` are fixed latest reports. There are no timestamped run directories.
+Generic VBA is enabled only for the child server and restricted by the client
+to fixed setup and read-only queries. Queries use output capture outside model
+history. Timeout, transport loss, interrupted in-flight requests or unknown
+execution state stop all subsequent MCP calls, including diagnostics, save,
+close and disconnect. Local reporting and Python-server-only transport teardown
+continue through the established CST-preservation mechanism. Known failures can
+collect diagnostics while execution state remains known.
+
+## Face from curves: scenario and verification limits
+
+Fixed setup creates component `FaceFromCurves` and group `Curves`. Dedicated
+`cst_create_polygon3d` creates `Curves:Rectangle` with these points in mm:
+`(0,0,2)`, `(6,0,2)`, `(6,4,2)`, `(0,4,2)`, `(0,0,2)`. Repeating the first
+point closes the 6 by 4 mm rectangle at z=2 mm. Before conversion, a read-only
+`Curve.IsClosed` query must report true. Dedicated `cst_create_face_from_curves`
+then creates the distinct shape `FaceFromCurves:RectangleSheet`.
+
+Native readbacks confirm the named shape and default material using
+`Solid.GetNumberOfShapes`, `GetNameOfShapeFromIndex`, and
+`GetMaterialNameForShape`. `Solid.DoesExist` must report true,
+`Solid.IsSolidShape` false, and `Solid.GetAnyFaceIdFromSolid` a nonnegative ID.
+These documented queries confirm sheet type and face presence, without using
+volume as proof. The curve may be consumed by conversion; its continued presence
+is neither assumed nor required.
+
+Boolean readbacks accept the native VBA representations `True`/`-1` and
+`False`/`0`, ignoring case and surrounding whitespace. Unexpected values stop
+the check. Original response text is retained in the evidence. The initial live
+attempt returned `CLOSED=-1` and stopped because the client previously accepted
+only textual `True`; no face conversion was attempted in that invocation.
+
+Installed CST 2025 `Solid.GetArea` documents surface area of a shape without an
+explicit sheet counting convention. The user-initiated sheet run reported
+**48 mm²** without a native error, while existence, sheet type and face presence
+checks passed. This is consistent with counting both sides, but that explanation
+remains an unconfirmed hypothesis.
+
+Reports separate the analytic **24 mm²** `expected_planar_area` from the raw
+`native_shape_area`. `measured_planar_area` remains null and its verification
+stays pending manual inspection. No division by two or other normalization is
+applied. The raw response and ratio to the analytic area are retained without
+claiming that aggregate shape area independently verifies one-sided face area.
+Unavailable, invalid or nonpositive raw results are explicitly recorded.
+
+The scenario continues through save, close and reopen. Named-sheet, type, face,
+units and raw area readbacks are repeated. Available raw shape areas before and
+after reopening must match with relative and absolute tolerances of `1e-6`;
+a mismatch fails the persistence check. If either raw readback is unavailable
+or unusable, that persistence measurement also stays pending. The project is
+then saved and closed for inspection. This persistence comparison does not
+verify the one-sided area or establish the counting convention.
+
+Reports retain actual mm/GHz/ns readbacks, full native responses, query text,
+expected/measured quantities, pending reasons and installed-reference paths and
+SHA-256 hashes for CoverCurve, Polygon3D, Curve and Solid. Width, height and z
+are fixture predictions, not independent coordinate measurements. Aggregate
+area and face presence do not prove every coordinate or exact face count.
+Inspect the saved shape's single-face sheet geometry, 6 by 4 mm dimensions,
+z=2 mm plane and one-sided face area manually; confirm the face count and the
+meaning of CST's raw shape-area result. Record the invocation, method, units
+and measured values before any area normalization is adopted. Close without
+saving inspection edits to preserve
+the checkpoint fingerprints. Live validation remains pending user execution
+and review. Offline results are recorded in `REVIEW.md`.

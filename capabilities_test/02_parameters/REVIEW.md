@@ -281,3 +281,122 @@ complete point-ID enumeration. No measurements or IDs were invented; length,
 endpoints and stored history association remain pending manual inspection.
 Reuse without reset is deferred. No CST connection, launch, live validation,
 commit or push was performed during implementation.
+
+## 2026-10-09: face-from-curves correction and deterministic client
+
+Confirmed the old builder validated whole curve references with `validate_name`
+and emitted `CoverCurve.AddCurve`. Installed CST 2025 CoverCurve, Polygon3D,
+Curve and Solid references were inspected. The correction retains `curve_names`
+but requires exactly one qualified reference, validates both names separately,
+and safely emits `Reset`, `Name`, `Component`, `Curve`, `Create`. The result is
+one planar sheet/face, retaining the native Vacuum default. General name
+validation and loft behavior are unchanged.
+
+`run_face_from_curves.py` owns only `artifacts/05_face_from_curves`. It reuses
+inspected stateless helpers and existing lifecycle/transport conventions. Its
+prepared live scenario closes a 6 by 4 mm Polygon3D at z=2 mm, reads closure
+before conversion, then queries named-sheet existence, type, face presence and
+available area before and after save/close/reopen. No volume proves success and
+no retained source curve is assumed. `Solid.GetArea` documents shape surface
+area without explicitly guaranteeing sheet support. Finite positive native
+area is compared with 24 mm²; unavailable/invalid area stays pending manual
+inspection. Timeout or unknown execution stops every subsequent MCP call.
+
+Actual offline validation:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_tools_registry.py tests/test_docs_catalog.py tests/test_vba_and_patch.py tests/test_vba_injection.py tests/test_vba_security.py -q
+uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
+uv run ruff format
+uv run ruff format --check
+uv run ruff check
+```
+
+- Focused tests: **159 passed**. Eleven compact regressions were added to the
+  existing geometry-builder test file. Rejection tests record attempted
+  execution calls and assert that none occurred.
+- Final disabled-server preflight: **passed**, 27 checks and 18 responses,
+  invocation `dd54320a1cf3471bb0a6cfddd4a15ea4`. MCP 2.3.0 and jsonschema 4.26.0
+  ran on Python 3.12. The final script hash matches the metadata. No project or
+  ownership manifest was created and no connection or project lifecycle tool
+  was called. Evidence is retained in the fixed scope 05 reports.
+- Repository-wide Ruff formatting, format-check and lint: **passed**, 142 files.
+  Exception logging was corrected during lint review; no rules were weakened.
+- All **468 existing files** in scopes 01 through 04 retain their hashes, sizes,
+  modification times and inventory. Only this tool's entries changed in the
+  four catalogs; the static and embedded JSON catalogs agree.
+
+Live creation, native sheet area support and persistence remain pending user
+execution and inspection. Aggregate area does not measure dimensions or exact
+face count. Reuse without reset remains unvalidated. No CST connection, launch,
+live validation, commit or push was performed.
+
+## 2026-10-09: native Boolean readback correction
+
+The user-initiated invocation `920d1bcf8ad74e72ac5b8d2592e98e53` created the
+rectangle and received `CLOSED=-1` successfully. The client incorrectly required
+textual `True` and stopped before face conversion. A local strict Boolean parser
+now accepts `True`/`-1` and `False`/`0` for closure, shape existence and sheet
+type, retaining original response text and rejecting unexpected values.
+One small regression in the existing primitive-client test file replays the
+observed closure response and covers numeric sheet readbacks and invalid values.
+
+Validation for this fix:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_parameter_primitives_client.py -k 'face_from_curves or face_client_native_boolean_readbacks' -q
+uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
+uv run ruff format
+uv run ruff format --check
+uv run ruff check
+```
+
+Focused tests passed: **12 passed, 25 deselected**. Disabled-server preflight
+passed with **27 checks and 18 responses**. All repository-wide Ruff checks
+passed, with 142 files. No additional CST calls or live validation were made.
+Existing append-only evidence was retained; latest summaries reflect preflight.
+Scopes 01 through 04, the saved project file and ownership manifest were
+preserved. Open CST continued updating companion autosave/temporary files;
+those files and project locks were left alone. Native face conversion, area and
+persistence remain pending. Save and close the owned project normally before
+the explicit `--reset` rerun; no reset was performed for this fix.
+
+## 2026-10-09: separate raw shape area from one-sided face area
+
+The user-initiated invocation `e208659f1590475b93d1a71794dc7671` created the
+named sheet and passed closure, existence, sheet-type and face-presence checks.
+`Solid.GetArea` returned 48 mm² without a native error, then the client stopped
+because it compared that raw result directly with the analytic one-sided area
+of 24 mm². Counting both sides is consistent with this result but remains an
+unconfirmed hypothesis.
+
+Reports now retain `native_shape_area` separately from `expected_planar_area`.
+`measured_planar_area` stays null with verification pending manual inspection.
+No area normalization is applied. Available raw areas are compared only across
+save/reopen for persistence, using existing `1e-6` tolerances. Changed raw area
+fails persistence; unavailable or unusable readbacks leave it pending. Sheet
+checks and all timeout/unknown-state stops remain enforced. The scenario can
+continue to save/reopen without treating 48 mm² as a verified face area.
+
+Offline validation:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_parameter_primitives_client.py -k 'face_from_curves or face_client' -q
+uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
+uv run ruff format
+uv run ruff format --check
+uv run ruff check
+```
+
+Focused tests: **14 passed, 25 deselected**. Two compact regressions cover the
+observed 48 mm² response, both real measurement-method stages using fixed
+offline responses, raw-area persistence/mismatch/unavailability and native
+timeout propagation. No fake CST interpreter or new client suite was added.
+Disabled-server preflight passed with **27 checks and 18 responses**. All
+repository-wide Ruff checks passed, with 142 files. Existing logs retained
+their prefixes; scopes 01 through 04, the saved project file and ownership
+manifest were preserved. Latest reports reflect the offline preflight.
+
+No additional CST calls, project reset, live validation, commit or push were
+performed. Live save/reopen remains pending. One-sided face area, exact face
+count and CST's sheet-area counting convention require manual confirmation.

@@ -370,17 +370,25 @@ TOOLS: list[Tool] = [
     # 11. Face from curves
     Tool(
         name="cst_create_face_from_curves",
-        description="Create a planar face from one or more closed curves in CST Studio.",
+        description=(
+            "Create a planar sheet consisting of one face from exactly one qualified closed "
+            "planar curve reference (curvegroup:curveitem) in CST Studio. CST reports native "
+            "geometric errors. Connected curve items may be included by CST."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "component": {"type": "string", "description": "Component name"},
-                "name": {"type": "string", "description": "Face/solid name"},
+                "name": {"type": "string", "description": "Sheet/face name"},
                 "curve_names": {
                     "type": "array",
                     "items": {"type": "string"},
                     "minItems": 1,
-                    "description": "List of curve names to form the face boundary",
+                    "maxItems": 1,
+                    "description": (
+                        "Exactly one qualified curve reference, e.g. 'Curves:Rectangle'. "
+                        "Independent profile lists are unsupported; the curve must be closed and planar."
+                    ),
                 },
             },
             "required": ["component", "name", "curve_names"],
@@ -971,14 +979,25 @@ def _build_analytical_curve(args: dict) -> str:
 def _build_face_from_curves(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
-    curve_names: list[str] = args["curve_names"]
+    curve_names = args["curve_names"]
+    if not isinstance(curve_names, list) or len(curve_names) != 1:
+        raise ValueError("curve_names must contain exactly one qualified curve reference")
+    reference = curve_names[0]
+    if not isinstance(reference, str) or reference.count(":") != 1:
+        raise ValueError("Curve reference must use 'curvegroup:curveitem' format")
+    group, item = reference.split(":")
+    validate_name(group, "curve group")
+    validate_name(item, "curve item")
 
-    vba = VBABuilder("CoverCurve").call("Reset").set("Name", name).set("Component", component)
-    for curve_name in curve_names:
-        validate_name(curve_name, "curve_name")
-        vba.set("AddCurve", curve_name)
-    vba.call("Create")
-    return vba.build()
+    return (
+        VBABuilder("CoverCurve")
+        .call("Reset")
+        .set("Name", name)
+        .set("Component", component)
+        .set("Curve", reference)
+        .call("Create")
+        .build()
+    )
 
 
 def _build_ecylinder(args: dict) -> str:

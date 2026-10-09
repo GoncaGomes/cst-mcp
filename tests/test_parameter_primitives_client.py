@@ -19,6 +19,90 @@ batch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(batch)
 
 
+def test_face_client_native_boolean_readbacks():
+    import run_face_from_curves as face
+
+    # Replay the actual closure response that stopped the first live invocation.
+    closed = face.parse_records("CLOSED\t-1\nDONE\n", {"CLOSED"})
+    assert face.parse_native_bool(closed["CLOSED"]) is True
+    sheet = face.parse_records("EXISTS\t-1\nIS_SOLID\t0\nDONE\n", {"EXISTS", "IS_SOLID"})
+    assert face.parse_native_bool(sheet["EXISTS"]) is True
+    assert face.parse_native_bool(sheet["IS_SOLID"]) is False
+    assert face.parse_native_bool(" True ") is True
+    assert face.parse_native_bool("FALSE") is False
+    for unexpected in ("", "unknown", "2"):
+        with pytest.raises(face.StopTest, match="Unexpected native Boolean"):
+            face.parse_native_bool(unexpected)
+    assert closed == {"CLOSED": "-1"}  # Retain the native text for evidence.
+
+
+@pytest.mark.asyncio
+async def test_face_client_raw_area_and_persistence():
+    from unittest.mock import AsyncMock, Mock
+
+    import run_face_from_curves as face
+
+    # Actual native response from the user's successful sheet-area query.
+    payload = {
+        "status": "ok",
+        "output": "AREA_ERROR_NUMBER\t0\nAREA_ERROR_DESCRIPTION\t[]\nAREA\t48\nDONE\n",
+    }
+    before = face.interpret_area_readback(payload)
+    assert before["expected_planar_area"] == 24
+    assert before["native_shape_area"] == 48
+    assert before["measured_planar_area"] is None
+    assert before["measurement_status"] == "pending manual inspection"
+    assert before["normalization_applied"] is False
+    assert before["native_records"]["AREA"] == "48"
+    assert "unconfirmed hypothesis" in before["area_interpretation"]
+    after = face.interpret_area_readback(payload)
+    same = face.compare_native_area_persistence(before, after)
+    assert same["passed"] is True
+    assert same["one_sided_area_verified"] is False
+    different = face.interpret_area_readback(
+        dict(payload, output=payload["output"].replace("AREA\t48", "AREA\t40"))
+    )
+    assert face.compare_native_area_persistence(before, different)["passed"] is False
+    unavailable = face.interpret_area_readback({"status": "unavailable"})
+    assert face.compare_native_area_persistence(before, unavailable)["passed"] is None
+
+    # Exercise the real measurement method without constructing a workspace or CST session.
+    instance = face.FaceTest.__new__(face.FaceTest)
+    instance.phase = "sheet_readback"
+    instance.measurements = []
+    instance.checks = []
+    instance.actual_units = {"Length": "mm", "Frequency": "GHz", "Time": "ns"}
+    instance.metadata = {"references": {"solid": {"path": "installed Solid reference"}}}
+    instance.tag = lambda record: record
+    instance.event = Mock()
+    instance.owned_info = AsyncMock()
+    instance.units = AsyncMock()
+    instance.shapes = AsyncMock(return_value={face.SHAPE: "Vacuum"})
+    instance.accepted = AsyncMock(
+        return_value={"output": "EXISTS\t-1\nIS_SOLID\t0\nFACE_ID\t1\nDONE\n"}
+    )
+    instance.request = AsyncMock(return_value=payload)
+    instance.messages_at = AsyncMock()
+    await instance.measure(None)
+    instance.phase = "reopened_persistence"
+    await instance.measure(None)
+    assert [m["native_shape_area"] for m in instance.measurements] == [48, 48]
+    assert all(m["measured_planar_area"] is None for m in instance.measurements)
+    assert instance.measurements[-1]["native_shape_area_persistence"]["passed"] is True
+    instance.messages_at.assert_awaited()
+
+
+def test_face_client_native_area_timeout_still_stops():
+    import run_face_from_curves as face
+
+    payload = {
+        "status": "ok",
+        "output": "AREA_ERROR_NUMBER\t5\nAREA_ERROR_DESCRIPTION\t[timed out]\nAREA\t0\nDONE\n",
+    }
+    with pytest.raises(face.UnknownState, match="timeout"):
+        face.interpret_area_readback(payload)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     work = tmp_path / "artifacts" / "02_primitives"

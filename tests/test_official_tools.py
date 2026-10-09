@@ -202,6 +202,63 @@ def test_official_builder_signatures():
     assert code.count(".AddSequence") == 3 and code.count(".AddParameter_ArbitraryPoints") == 3
 
 
+def test_face_from_curves_qualified_reference():
+    from cst_mcp.tools.geometry import TOOLS, _build_face_from_curves
+
+    code = _build_face_from_curves(
+        {"component": "Faces", "name": "RectangleSheet", "curve_names": ["Curves:Rectangle"]}
+    )
+    assert code.splitlines() == [
+        "With CoverCurve",
+        "  .Reset",
+        '  .Name "RectangleSheet"',
+        '  .Component "Faces"',
+        '  .Curve "Curves:Rectangle"',
+        "  .Create",
+        "End With",
+    ]
+    assert ".AddCurve" not in code
+    tool = next(t for t in TOOLS if t.name == "cst_create_face_from_curves")
+    schema = tool.model_dump(by_alias=True)["inputSchema"]
+    assert schema["properties"]["curve_names"]["minItems"] == 1
+    assert schema["properties"]["curve_names"]["maxItems"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "references",
+    [
+        [],
+        ["Curves:Rectangle", "Curves:Other"],
+        ["Rectangle"],
+        ["Curves:Rectangle:Other"],
+        [":Rectangle"],
+        ["Curves:"],
+        ["Bad/Group:Rectangle"],
+        ['Curves:Bad"Item'],
+        ["Curves:Bad\nItem"],
+        [None],
+    ],
+)
+async def test_face_from_curves_rejected_before_execution(references):
+    from cst_mcp.tools import geometry
+
+    attempted = []
+
+    class Client:
+        def execute_vba(self, code):
+            attempted.append(code)
+            return {"status": "executed"}
+
+    result = await geometry.handle(
+        "cst_create_face_from_curves",
+        {"component": "Faces", "name": "RectangleSheet", "curve_names": references},
+        Client(),
+    )
+    assert json.loads(result[0].text)["status"] == "error"
+    assert attempted == []
+
+
 def test_polygon_extrude_base_plane_offset_and_holes():
     from cst_mcp.tools.geometry import _build_polygon_extrude
 
