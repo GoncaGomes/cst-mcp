@@ -69,7 +69,7 @@ Create, open, save projects and check CST connection.
 | `cst_create_loft` | Create a lofted solid between two or more 2D profiles in CST Studio. |
 | `cst_create_wire` | Create a bondwire / wire between two points in CST Studio. |
 | `cst_create_polygon3d` | Create a 3D polygon curve in CST Studio. |
-| `cst_create_analytical_curve` | Create a parametric analytical curve in CST Studio using expressions of parameter t. |
+| `cst_create_analytical_curve` | Create a parametric analytical curve in CST Studio using expressions of parameter t. t_min and t_max accept finite numbers or CST expressions preserved in model history. |
 | `cst_create_face_from_curves` | Create a planar face from one or more closed curves in CST Studio. |
 | `cst_create_ecylinder` | Create an elliptical cylinder in CST Studio. |
 | `cst_create_polygon_extrude` | Polygon extrusion with numeric/mixed CST expressions and independent profile/hole winding evaluation on every rebuild. |

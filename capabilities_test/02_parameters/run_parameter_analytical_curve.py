@@ -2,7 +2,7 @@
 # requires-python = ">=3.12,<3.13"
 # dependencies = ["mcp>=1.29,<3", "jsonschema>=4.20"]
 # ///
-"""Deterministic extrusion expression validation through a real MCP stdio session."""
+"""Deterministic analytical-curve bounds scenario through real MCP stdio."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import importlib.metadata
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -23,8 +24,8 @@ from jsonschema.validators import validator_for
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# Inspected imports: only definitions, constants and an import-search-path setup.
-# Import stateless helpers only. Never construct ParameterTest or use its WORK.
+# Inspected imports define constants/functions and install batch 01's search path.
+# Reuse only stateless helpers. Never instantiate earlier clients or alter their WORK.
 from run_parameter_brick import (
     DEFAULT_CST_PATH,
     EXPECTED_UNITS,
@@ -54,134 +55,53 @@ from run_parameter_brick import (
 )
 
 # isort: split
-# The preceding import installs batch 01's import-search path.
 from run_batch import UNITS_BLOCK
 from run_parameter_primitives import parse_records
 
+logger = logging.getLogger(__name__)
+
 ROOT = Path(__file__).resolve().parents[2]
-BATCH = Path(__file__).resolve().parent
-WORK = BATCH / "artifacts" / "03_extrusions"
-OWNER = "cst-mcp-parameter-extrusions-v1"
+WORK = Path(__file__).resolve().parent / "artifacts" / "04_analytical_curve"
+OWNER = "cst-mcp-parameter-analytical-curve-v1"
 TOOLSETS = "connection,project,geometry,parameters,diagnostics,vba"
-PARAMETERS = ("PEx_W", "PEx_H", "PEx_Offset", "PEx_Side")
-STATES = {"initial": (8, 3, 2, 1), "updated": (10, 4, 5, -1), "final": (6, 2, 1, 1)}
-COMPONENT = "ParameterExtrusions"
-COMMON = {"component": COMPONENT, "material": "PEC", "height": "PEx_H"}
-FIXTURES = (
-    (
-        "cst_create_extrude",
-        dict(
-            COMMON,
-            name="PointZUp",
-            axis="z",
-            z_offset="PEx_Offset",
-            extrude_direction="up",
-            points=[[0, 0], [0, 4], ["PEx_W", 4], ["PEx_W", 0]],
-            holes=[[["PEx_W/4", 1], ["3*PEx_W/4", 1], ["3*PEx_W/4", 3], ["PEx_W/4", 3]]],
-        ),
-    ),
-    (
-        "cst_create_extrude",
-        dict(
-            COMMON,
-            name="PointXDown",
-            axis="x",
-            x_offset="PEx_Offset",
-            extrude_direction="down",
-            points=[[30, 0], ["30+PEx_W", 0], ["30+PEx_W", 4], [30, 4]],
-        ),
-    ),
-    (
-        "cst_create_polygon_extrude",
-        dict(
-            COMMON,
-            name="PolygonYUp",
-            axis="y",
-            y_offset="PEx_Offset",
-            extrude_direction="up",
-            points=[[60, 0], [60, 4], ["60+PEx_Side*PEx_W", 4], ["60+PEx_Side*PEx_W", 0]],
-            holes=[
-                [
-                    ["60+PEx_Side*PEx_W/4", 1],
-                    ["60+3*PEx_Side*PEx_W/4", 1],
-                    ["60+3*PEx_Side*PEx_W/4", 3],
-                    ["60+PEx_Side*PEx_W/4", 3],
-                ]
-            ],
-        ),
-    ),
-    (
-        "cst_create_polygon_extrude",
-        dict(
-            COMMON,
-            name="PolygonZDown",
-            axis="z",
-            z_offset="PEx_Offset",
-            extrude_direction="down",
-            points=[[90, 0], ["90+PEx_W", 0], ["90+PEx_W", 4], [90, 4]],
-        ),
-    ),
-)
-SOLIDS = {f"{COMPONENT}:{args['name']}": "PEC" for _, args in FIXTURES}
-SETUP = f'Component.New "{COMPONENT}"'
-MEASURE_QUERY = (
-    "\n".join(
-        f'Debug.Print "{args["name"]}.{kind}" & vbTab & '
-        f'CStr(Solid.Get{method}("{COMPONENT}:{args["name"]}"))'
-        for _, args in FIXTURES
-        for kind, method in (("VOLUME", "Volume"), ("AREA", "Area"))
-    )
-    + '\nDebug.Print "DONE"'
-)
-FIXED_VBA = frozenset({UNITS_BLOCK, SETUP, UNITS_QUERY, SHAPES_QUERY, MEASURE_QUERY})
-HELP_ROOT = "Online Help/mergedProjects/VBA_3D"
-REFERENCES = {
-    "solid": f"{HELP_ROOT}/common_vbasolido/common_vbasolido_solid_object.htm",
-    "extrude": f"{HELP_ROOT}/common_vbaextrude/common_vbaextrudeextrude_object.htm",
-    "extrudecurve": f"{HELP_ROOT}/common_vbacurves/common_vbacurves_extrudecurve_object.htm",
-    "polygon3d": f"{HELP_ROOT}/common_vbacurves/common_vbacurves_polygon3d.htm",
-    "evaluate": f"{HELP_ROOT}/common_vbaapp/common_vbaappapplication_object.htm",
+PARAMETERS = ("PCurve_Start", "PCurve_Length")
+STATES = {"initial": (2, 5), "updated": (-1, 10), "final": (3, 4)}
+CURVE = "Curves:ParametricLine"
+CURVE_ARGS = {
+    "name": "ParametricLine",
+    "x_expr": "t",
+    "y_expr": "0",
+    "z_expr": "0",
+    "t_min": "PCurve_Start",
+    "t_max": "PCurve_Start+PCurve_Length",
 }
-LIMITATIONS = [
-    "Volume and surface area independently test only those aggregate quantities, including hole effects.",
-    "They do not prove offsets, direction, every coordinate, winding choice or history-expression association.",
-    "Input profile and axis ranges are predictions, not measured bounds. No loose bounding box is used as exact dimensions.",
-    "Native evaluation, reconstruction and persistence require live CST validation; native dialogs may expose evaluated values.",
-    "Inspect stored history expressions and profile/base-plane/direction in the saved project as described in README.md.",
-]
-
-
-def profile_contracts(values):
-    """Known fixture geometry only, never an arbitrary expression evaluator."""
-    width, height, offset, side = values
-    result = {}
-    for _, args in FIXTURES:
-        holed = bool(args.get("holes"))
-        result[args["name"]] = {
-            "profile_area": 3 * width if holed else 4 * width,
-            "profile_boundary_length": 3 * width + 12 if holed else 2 * width + 8,
-            "height": height,
-            "axis": args["axis"],
-            "direction": args["extrude_direction"],
-            "predicted_axis_range": [offset, offset + height]
-            if args["extrude_direction"] == "up"
-            else [offset - height, offset],
-            "prediction_source": "known fixture contract, not a native bounds measurement",
-            "signed_width": side * width if args["name"] == "PolygonYUp" else width,
-        }
-    return result
-
-
-def analytic_expected(values):
-    """Prism V=A*h and S=2*A+boundary_length*h, including internal walls."""
-    result = {}
-    for name, profile in profile_contracts(values).items():
-        area, boundary, height = (
-            profile[key] for key in ("profile_area", "profile_boundary_length", "height")
-        )
-        result[f"{name}.VOLUME"] = area * height
-        result[f"{name}.AREA"] = 2 * area + boundary * height
-    return result
+FIXTURES = (("cst_create_analytical_curve", CURVE_ARGS),)
+SETUP = 'Curve.NewCurve "Curves"'
+CURVE_QUERY = '''Debug.Print "CLOSED" & vbTab & CStr(Curve.IsClosed("Curves:ParametricLine"))
+Debug.Print "MAX_POINTS" & vbTab & CStr(Curve.GetNumberOfPoints("Curves:ParametricLine"))
+Debug.Print "DONE"'''
+FIXED_VBA = frozenset({UNITS_BLOCK, UNITS_QUERY, SHAPES_QUERY, SETUP, CURVE_QUERY})
+REFERENCES = {
+    "analytical_curve": "Online Help/mergedProjects/VBA_3D/common_vbacurves/common_vbacurves_analyticalcurve_object.htm",
+    "curve": "Online Help/mergedProjects/VBA_3D/common_vbacurves/common_vbacurves_curve_object.htm",
+}
+LIMITATIONS = (
+    "Live validation remains pending until the user executes and reviews the scenario.",
+    (
+        "Native queries establish only the named item's closure flag and reported maximum points. "
+        "GetNumberOfPoints is not an exact count; no point IDs are guessed or enumerated."
+    ),
+    (
+        "Length and endpoints are predictions, not measurements. Reliable automated queries "
+        "were not established from the inspected help; manual measurement remains pending."
+    ),
+    (
+        "Command acceptance, rebuild acknowledgement and save/reopen readbacks do not independently "
+        "prove endpoint movement, length, straightness or retained history-expression association."
+    ),
+    "Ordinary reuse follows checkpoint guards, but reuse without reset has not been validated.",
+    "CST messages may be inherited, repeated or truncated; they do not establish command causality.",
+)
 
 
 class WorkspaceLock:
@@ -206,7 +126,7 @@ class WorkspaceLock:
         except OSError as exc:
             self.stream.close()
             raise StopTest(
-                "Extrusion workspace is already in use; wait for that invocation"
+                "Analytical curve workspace is already in use; wait for that invocation"
             ) from exc
         return self
 
@@ -214,7 +134,7 @@ class WorkspaceLock:
         self.stream.close()
 
 
-class ExtrusionTest:
+class AnalyticalCurveTest:
     def __init__(self, options):
         self.options = options
         self.invocation = uuid.uuid4().hex
@@ -228,7 +148,7 @@ class ExtrusionTest:
         self.checks = []
         self.catalog = {}
         self.results = []
-        self.measurements = []
+        self.observations = []
         self.message_seen = set()
         self.message_baseline_taken = False
         self.manifest = None
@@ -309,9 +229,9 @@ class ExtrusionTest:
         """Accept only same-stem files and the companion, all within this scope."""
         names = self.manifest.get("generated_paths")
         if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-            raise StopTest("Invalid extrusion generated paths")
+            raise StopTest("Invalid analytical curve generated paths")
         if not {"project.cst", "project"} <= set(names) or len(names) != len(set(names)):
-            raise StopTest("Incomplete/duplicate extrusion generated paths")
+            raise StopTest("Incomplete/duplicate analytical curve generated paths")
         paths = []
         for name in names:
             if (
@@ -323,7 +243,7 @@ class ExtrusionTest:
             path = WORK / name
             reject_links(path)
             if path.resolve().parent != WORK.resolve():
-                raise StopTest(f"Generated path escapes extrusion workspace: {path}")
+                raise StopTest(f"Generated path escapes analytical curve workspace: {path}")
             if path.exists() and ((name == "project") != path.is_dir()):
                 raise StopTest(f"Unexpected generated path type: {path}")
             paths.append(path)
@@ -342,7 +262,7 @@ class ExtrusionTest:
             or not isinstance(self.manifest.get("creation_requested"), bool)
             or self.manifest.get("created_path", str(self.project)) != str(self.project)
         ):
-            raise StopTest("Extrusion ownership/state inconsistent; no automatic deletion")
+            raise StopTest("Analytical curve ownership/state inconsistent; no automatic deletion")
         self.generated_paths()
         owned = set(self.manifest["generated_paths"])
         unexpected = [p.name for p in WORK.glob("project*") if p.name not in owned]
@@ -355,7 +275,7 @@ class ExtrusionTest:
         if path.exists():
             self.manifest = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(self.manifest, dict):
-                raise StopTest("Invalid extrusion manifest")
+                raise StopTest("Invalid analytical curve manifest")
             self.verify_manifest()
             ensure_closed(self.project)
             if self.options.reset:
@@ -381,13 +301,15 @@ class ExtrusionTest:
                     or self.project_snapshot() != self.manifest.get("saved_files")
                 ):
                     raise StopTest(
-                        "Extrusion project changed or incomplete since checkpoint; inspect and "
+                        "Analytical curve project changed or incomplete since checkpoint; inspect and "
                         "restore it or explicitly --reset after saving/closing. No automatic adoption."
                     )
                 self.metadata_event("workspace_reused", checkpoint=self.manifest)
                 return
         elif any(WORK.glob("project*")):
-            raise StopTest("Project paths exist without extrusion ownership; refusing create/reset")
+            raise StopTest(
+                "Project paths exist without analytical curve ownership; refusing create/reset"
+            )
         self.manifest = {
             "owner": OWNER,
             "version": 1,
@@ -566,7 +488,7 @@ class ExtrusionTest:
     async def owned_info(self, session):
         info = await self.request(session, "cst_project_info")
         self.check(
-            "active project is owned extrusion project",
+            "active project is owned analytical curve project",
             info.get("mode") == "connected"
             and info.get("project_open") is True
             and Path(info.get("project_path") or "").resolve() == self.project.resolve(),
@@ -637,7 +559,8 @@ class ExtrusionTest:
         except (KeyboardInterrupt, asyncio.CancelledError):
             self.exit_code = 130
             self.reason = "Interrupted; no CST cleanup calls; project and logs preserved"
-        except BaseException as exc:  # noqa: BLE001 - final reports required after transport exception groups
+        except BaseException as exc:
+            logger.exception("Analytical-curve invocation failed")
             leaves = list(exception_leaves(exc))
             interrupted = any(
                 isinstance(item, (KeyboardInterrupt, asyncio.CancelledError)) for item in leaves
@@ -663,154 +586,6 @@ class ExtrusionTest:
             self.finalize()
         print(f"{self.reason}\nReports: {WORK}\nExit: {self.exit_code}", flush=True)
         return self.exit_code
-
-    async def catalog_and_preflight(self, session):
-        self.phase = "catalog"
-        await self.request(session, "initialize", protocol=True)
-        cursor = None
-        seen = set()
-        while True:
-            page = await self.request(
-                session, "list_tools", {"cursor": cursor} if cursor else {}, protocol=True
-            )
-            for tool in page["tools"]:
-                if tool["name"] in self.catalog:
-                    raise StopTest(f"Duplicate catalog tool: {tool['name']}")
-                self.catalog[tool["name"]] = tool
-            cursor = page.get("nextCursor")
-            if not cursor:
-                break
-            if cursor in seen:
-                raise StopTest("Repeated MCP catalog cursor")
-            seen.add(cursor)
-        write_json(WORK / "tool_catalog.json", list(self.catalog.values()))
-        for name, rel in REFERENCES.items():
-            path = Path(self.options.cst_path) / rel
-            if not path.is_file():
-                raise StopTest(f"Installed reference unavailable; inspect before live use: {path}")
-            self.metadata["references"][name] = {"path": str(path), "sha256": sha256(path)}
-        self.metadata_event("reference_provenance")
-        plan = list(FIXTURES) + [
-            ("cst_connect", {"mode": "new"}),
-            ("cst_create_project", {"path": str(self.project), "project_type": "MWS"}),
-            ("cst_open_project", {"path": str(self.project)}),
-        ]
-        plan += [
-            (name, {})
-            for name in (
-                "cst_project_info",
-                "cst_connection_status",
-                "cst_read_project_log",
-                "cst_list_parameters",
-                "cst_save_project",
-                "cst_close_project",
-                "cst_disconnect",
-            )
-        ]
-        plan += [("cst_execute_vba", {"code": code}) for code in sorted(FIXED_VBA)]
-        plan += [
-            ("cst_set_parameter", {"name": n, "value": v, "rebuild": False})
-            for values in STATES.values()
-            for n, v in zip(PARAMETERS, values)
-        ]
-        plan += [
-            ("cst_set_parameter", {"name": PARAMETERS[-1], "value": values[-1], "rebuild": True})
-            for values in STATES.values()
-        ]
-        plan += [("cst_get_parameter", {"name": n}) for n in PARAMETERS]
-        for name, args in plan:
-            self.validate(name, args)
-        for name, args in FIXTURES:
-            props = self.catalog[name]["inputSchema"]["properties"]
-            leaves = [
-                props["height"],
-                props["points"]["items"]["items"],
-                props["holes"]["items"]["items"]["items"],
-                *(props[f"{axis}_offset"] for axis in "xyz"),
-            ]
-            self.check(
-                f"effective expression schema {name}",
-                all(spec.get("type") == ["number", "string"] for spec in leaves),
-            )
-        for name, field in (("cst_create_wire", "radius"),):
-            self.check(
-                f"unchanged numeric schema {name}.{field}",
-                self.catalog[name]["inputSchema"]["properties"][field]["type"] == "number",
-            )
-        self.check(
-            "catalog presence and effective planned schemas",
-            True,
-            tools=sorted({name for name, _ in plan}),
-        )
-        state = await self.request(session, "cst_connection_status")
-        self.check(
-            "startup disconnected without project",
-            state.get("mode") == "offline" and state.get("project_open") is False,
-            payload=state,
-        )
-        if not self.options.preflight:
-            return
-        self.phase = "offline_preflight"
-        for name, args in FIXTURES:
-            numeric = dict(args, height=3, points=[[0, 0], [6, 0], [6, 4], [0, 4]])
-            numeric[f"{args['axis']}_offset"] = 2
-            if args.get("holes"):
-                numeric["holes"] = [[[1, 1], [1, 3], [3, 3], [3, 1]]]
-            for sample in (args, numeric):
-                payload = await self.accepted(session, name, sample, status="offline")
-                vba = payload.get("vba", "")
-                values = [
-                    sample["height"],
-                    sample[f"{sample['axis']}_offset"],
-                    *(x for pt in sample["points"] for x in pt),
-                    *(x for hole in sample.get("holes", []) for pt in hole for x in pt),
-                ]
-                literals = ['"' + x + '"' for x in values if isinstance(x, str)]
-                self.check(
-                    f"offline retained extrusion values {name}",
-                    bool(vba) and ".Create" in vba and all(literal in vba for literal in literals),
-                    vba=vba,
-                    executed_in_cst=False,
-                )
-                if sample is args:
-                    self.check(
-                        "native evaluation remains in history",
-                        'Evaluate("PEx_Offset")' in vba
-                        and payload["extrusion"]["numeric_range_evaluated"] is False,
-                        numeric_range_evaluated=payload["extrusion"]["numeric_range_evaluated"],
-                    )
-                    if name == "cst_create_polygon_extrude":
-                        comparison = "<" if args["extrude_direction"] == "up" else ">"
-                        self.check(
-                            "symbolic winding is selected during reconstruction",
-                            f"If cstProfile0Area {comparison} 0 Then" in vba
-                            and "Err.Raise 5" in vba,
-                            vba=vba,
-                        )
-                    elif args["extrude_direction"] == "down":
-                        self.check(
-                            "pointlist down reverses the plane normal and remaps v",
-                            '.Vvector "0", "0", "-1"' in vba
-                            and '.LineTo Evaluate("30+PEx_W"), "-4"' in vba,
-                            vba=vba,
-                        )
-                if args.get("holes"):
-                    self.check(
-                        "hole subtraction retained",
-                        f'Solid.Subtract "{COMPONENT}:{args["name"]}"' in vba,
-                    )
-            for changes in (
-                {"height": True},
-                {"points": [[None, 0], [1, 0], [1, 1]]},
-                {"holes": [[[0, 0], [1, "bad\nline"], [1, 1]]]},
-                {f"{args['axis']}_offset": ""},
-                {f"{'x' if args['axis'] != 'x' else 'z'}_offset": "PEx_Offset"},
-            ):
-                await self.request(session, name, {**args, **changes}, negative=True)
-        self.exit_code = 0
-        self.reason = (
-            "Real MCP catalog/schema and offline VBA checks passed; live CST validation pending"
-        )
 
     async def messages_at(self, session):
         payload = await self.request(session, "cst_read_project_log")
@@ -869,58 +644,11 @@ class ExtrusionTest:
             )
         await self.messages_at(session)
 
-    async def measure(self, session, values):
-        await self.owned_info(session)
-        await self.units(session)
-        state = dict(zip(PARAMETERS, values))
-        await self.parameters(session, state)
-        shapes = await self.shapes(session)
-        self.check("named solids and PEC materials readback", shapes == SOLIDS, actual=shapes)
-        payload = await self.accepted(
-            session, "cst_execute_vba", {"code": MEASURE_QUERY}, status="ok"
-        )
-        keys = {f"{args['name']}.{kind}" for _, args in FIXTURES for kind in ("VOLUME", "AREA")}
-        actual = {
-            key: number(value)
-            for key, value in parse_records(payload.get("output", ""), keys).items()
-        }
-        expected = analytic_expected(values)
-        measurement = self.tag(
-            {
-                "state": state,
-                "actual": actual,
-                "expected": expected,
-                "units": {key: "mm^3" if key.endswith("VOLUME") else "mm^2" for key in keys},
-                "relative_tolerance": 1e-6,
-                "absolute_tolerance": 1e-6,
-                "query": MEASURE_QUERY,
-                "query_source": self.metadata["references"]["solid"],
-                "profile_contracts": profile_contracts(values),
-                "limitations": LIMITATIONS,
-            }
-        )
-        self.measurements.append(measurement)
-        self.event(dict(event="measurement", **measurement))
-        for key, value in expected.items():
-            self.check(
-                f"native Solid.{key} analytic comparison",
-                close_number(actual[key], value),
-                measured=actual[key],
-                expected=value,
-                state=state,
-                units=measurement["units"][key],
-                relative_tolerance=1e-6,
-                absolute_tolerance=1e-6,
-                query=MEASURE_QUERY,
-                query_source=self.metadata["references"]["solid"],
-            )
-        await self.messages_at(session)
-
     async def checkpoint(self, session):
         await self.owned_info(session)
         payload = await self.accepted(session, "cst_save_project", status="saved")
         self.check(
-            "save returned owned extrusion path",
+            "save returned owned analytical curve path",
             Path(payload.get("path") or "").resolve() == self.project.resolve(),
             payload=payload,
         )
@@ -928,7 +656,9 @@ class ExtrusionTest:
         await self.accepted(session, "cst_close_project", status="closed")
         state = await self.request(session, "cst_connection_status")
         self.check(
-            "owned extrusion project closed", state.get("project_open") is False, payload=state
+            "owned analytical curve project closed",
+            state.get("project_open") is False,
+            payload=state,
         )
         ensure_closed(self.project)
         self.check(
@@ -949,6 +679,151 @@ class ExtrusionTest:
         self.store_manifest()
         self.metadata_event("saved_checkpoint", checkpoint=self.manifest)
 
+    async def catalog_and_preflight(self, session):
+        self.phase = "catalog"
+        await self.request(session, "initialize", protocol=True)
+        cursor, seen = None, set()
+        while True:
+            page = await self.request(
+                session, "list_tools", {"cursor": cursor} if cursor else {}, protocol=True
+            )
+            for tool in page["tools"]:
+                if tool["name"] in self.catalog:
+                    raise StopTest(f"Duplicate catalog tool: {tool['name']}")
+                self.catalog[tool["name"]] = tool
+            cursor = page.get("nextCursor")
+            if not cursor:
+                break
+            if cursor in seen:
+                raise StopTest("Repeated MCP catalog cursor")
+            seen.add(cursor)
+        write_json(WORK / "tool_catalog.json", list(self.catalog.values()))
+        for name, relative in REFERENCES.items():
+            path = Path(self.options.cst_path) / relative
+            if not path.is_file():
+                raise StopTest(f"Installed reference unavailable: {path}")
+            self.metadata["references"][name] = {"path": str(path), "sha256": sha256(path)}
+        self.metadata_event("reference_provenance")
+        samples = [
+            CURVE_ARGS,
+            dict(CURVE_ARGS, t_min=2, t_max=7),
+            dict(CURVE_ARGS, t_min=2),
+            dict(CURVE_ARGS, t_max=7),
+        ]
+        plan = [("cst_create_analytical_curve", args) for args in samples]
+        plan += [
+            ("cst_connect", {"mode": "new"}),
+            ("cst_create_project", {"path": str(self.project), "project_type": "MWS"}),
+            ("cst_open_project", {"path": str(self.project)}),
+        ]
+        plan += [
+            (name, {})
+            for name in (
+                "cst_project_info",
+                "cst_connection_status",
+                "cst_read_project_log",
+                "cst_list_parameters",
+                "cst_save_project",
+                "cst_close_project",
+                "cst_disconnect",
+            )
+        ]
+        plan += [("cst_execute_vba", {"code": code}) for code in sorted(FIXED_VBA)]
+        plan += [("cst_get_parameter", {"name": name}) for name in PARAMETERS]
+        plan += [
+            ("cst_set_parameter", {"name": name, "value": value, "rebuild": rebuild})
+            for values in STATES.values()
+            for name, value in zip(PARAMETERS, values)
+            for rebuild in (False, True)
+        ]
+        for name, arguments in plan:
+            self.validate(name, arguments)
+        props = self.catalog["cst_create_analytical_curve"]["inputSchema"]["properties"]
+        self.check(
+            "effective analytical bound schemas",
+            all(
+                props[field].get("type") == ["number", "string"]
+                and props[field].get("minLength") == 1
+                for field in ("t_min", "t_max")
+            ),
+            schema=self.catalog["cst_create_analytical_curve"]["inputSchema"],
+        )
+        self.check("effective planned schemas", True, tools=sorted({name for name, _ in plan}))
+        state = await self.request(session, "cst_connection_status")
+        self.check(
+            "startup disconnected without project",
+            state.get("mode") == "offline" and state.get("project_open") is False,
+            payload=state,
+        )
+        if not self.options.preflight:
+            return
+        self.phase = "offline_preflight"
+        for sample in samples:
+            payload = await self.accepted(
+                session, "cst_create_analytical_curve", sample, status="offline"
+            )
+            expected = f'.ParameterRange "{sample["t_min"]}", "{sample["t_max"]}"'
+            self.check(
+                "offline numeric/symbolic/mixed bounds retained",
+                expected in payload.get("vba", "") and '.Curve "Curves"' in payload.get("vba", ""),
+                vba=payload.get("vba"),
+                executed_in_cst=False,
+            )
+        for changes in ({"t_min": True}, {"t_max": None}, {"t_min": ""}, {"t_max": "x\n.Create"}):
+            await self.request(
+                session, "cst_create_analytical_curve", {**CURVE_ARGS, **changes}, negative=True
+            )
+        self.exit_code = 0
+        self.reason = (
+            "Real MCP catalog/schema and offline VBA checks passed; live validation pending"
+        )
+
+    async def observe(self, session, values):
+        await self.owned_info(session)
+        await self.units(session)
+        actual = await self.parameters(session, dict(zip(PARAMETERS, values)))
+        self.check(
+            "only scenario parameters present", set(actual) == set(PARAMETERS), actual=actual
+        )
+        self.check("no solids introduced", not await self.shapes(session))
+        payload = await self.accepted(
+            session, "cst_execute_vba", {"code": CURVE_QUERY}, status="ok"
+        )
+        records = parse_records(payload.get("output", ""), {"CLOSED", "MAX_POINTS"})
+        maximum = number(records["MAX_POINTS"])
+        self.check(
+            "native named curve closure flag",
+            records["CLOSED"].lower() in {"false", "0"},
+            actual=records["CLOSED"],
+            query=CURVE_QUERY,
+            query_source=self.metadata["references"]["curve"],
+        )
+        self.check(
+            "native reported maximum points",
+            maximum.is_integer() and maximum >= 0,
+            actual=maximum,
+            query=CURVE_QUERY,
+            coverage="Reported maximum only, without exact count or point-ID assumptions",
+        )
+        observation = self.tag(
+            {
+                "actual_parameters": actual,
+                "units": EXPECTED_UNITS,
+                "native_curve_records": records,
+                "query": CURVE_QUERY,
+                "query_source": self.metadata["references"]["curve"],
+                "predicted_endpoints_mm": [[values[0], 0, 0], [sum(values), 0, 0]],
+                "predicted_length_mm": values[1],
+                "endpoint_measurements": None,
+                "length_measurement": None,
+                "manual_inspection": "pending",
+                "limitations": LIMITATIONS,
+            }
+        )
+        self.observations.append(observation)
+        self.event(dict(event="curve_observation", **observation))
+        await self.messages_at(session)
+
     async def live(self, session):
         self.phase = "connect_isolated"
         self.live_attempted = True
@@ -964,13 +839,12 @@ class ExtrusionTest:
         )
         self.connected = True
         fresh = self.manifest["fixture"] == "absent"
-        # A partially completed invocation must never silently reuse/create fixtures.
         self.manifest["generation_state"] = "running"
         self.store_manifest()
         self.phase = "create_blank_project" if fresh else "open_owned_project"
         if fresh:
             if any(WORK.glob("project*")):
-                raise StopTest("Project path appeared after reservation; refusing creation")
+                raise StopTest("Project paths appeared after reservation; refusing creation")
             self.manifest["creation_requested"] = True
             self.store_manifest()
             created = await self.accepted(
@@ -992,40 +866,31 @@ class ExtrusionTest:
             )
         await self.owned_info(session)
         await self.messages_at(session)
-        shapes = await self.shapes(session)
-        params = await self.parameters(session)
-        if fresh:
-            self.check(
-                "new blank project before fixture setup",
-                not shapes and not params,
-                shapes=shapes,
-                parameters=params,
-            )
-        else:
-            self.check(
-                "verified fixture reuse without duplicate creation",
-                shapes == SOLIDS and set(params) == set(PARAMETERS),
-                shapes=shapes,
-                parameters=params,
-            )
+        shapes, params = await self.shapes(session), await self.parameters(session)
+        self.check(
+            "blank project or owned scenario parameter set",
+            not shapes and (not params if fresh else set(params) == set(PARAMETERS)),
+            shapes=shapes,
+            parameters=params,
+        )
         self.phase = "establish_units_and_parameters"
         await self.accepted(session, "cst_execute_vba", {"code": UNITS_BLOCK}, status="executed")
         await self.units(session)
         await self.set_state(session, STATES["initial"], rebuild=not fresh)
         if fresh:
-            self.phase = "create_fixtures"
+            self.phase = "create_curve_once"
             self.manifest["fixture"] = "creating"
             self.store_manifest()
             await self.accepted(session, "cst_execute_vba", {"code": SETUP}, status="executed")
-            for name, args in FIXTURES:
-                await self.accepted(session, name, args, status="executed")
+            await self.accepted(
+                session, "cst_create_analytical_curve", CURVE_ARGS, status="executed"
+            )
             await self.messages_at(session)
-        self.phase = "initial_geometry"
-        await self.measure(session, STATES["initial"])
+        self.phase = "initial_curve"
+        await self.observe(session, STATES["initial"])
         self.phase = "updated_rebuild"
         await self.set_state(session, STATES["updated"], rebuild=True)
-        self.phase = "updated_geometry"
-        await self.measure(session, STATES["updated"])
+        await self.observe(session, STATES["updated"])
         await self.checkpoint(session)
         self.phase = "reopened_persistence"
         self.check(
@@ -1038,17 +903,18 @@ class ExtrusionTest:
         await self.accepted(
             session, "cst_open_project", {"path": str(self.project)}, status="opened"
         )
-        await self.measure(session, STATES["updated"])
+        await self.observe(session, STATES["updated"])
         self.phase = "final_rebuild"
         await self.set_state(session, STATES["final"], rebuild=True)
-        self.phase = "final_geometry"
-        await self.measure(session, STATES["final"])
+        await self.observe(session, STATES["final"])
         await self.checkpoint(session)
         self.phase = "disconnect"
         await self.accepted(session, "cst_disconnect", status="disconnected")
         self.connected = False
         self.exit_code = 0
-        self.reason = "Live extrusion scenario completed within recorded verification coverage"
+        self.reason = (
+            "Live scenario completed within recorded coverage; manual measurements pending"
+        )
 
     def finalize(self):
         summary = {
@@ -1058,28 +924,27 @@ class ExtrusionTest:
             "reason": self.reason,
             "indeterminate": self.unknown,
             "project": str(self.project),
-            "catalog_presence": sorted(self.catalog),
             "preflight": self.options.preflight,
-            "implementation": "Expression-preserving history VBA with native double evaluation, independent polygon winding and pointlist plane-normal direction.",
+            "catalog_presence": sorted(self.catalog),
+            "implementation": "Shared expression serialization preserves both range expressions in history.",
             "offline_preflight_passed": self.exit_code == 0 if self.options.preflight else None,
             "real_cst_execution_attempted": self.live_attempted,
             "scenario_completed": not self.options.preflight and self.exit_code == 0,
+            "live_validation": "pending user review"
+            if not self.options.preflight and self.exit_code == 0
+            else "pending user execution and review",
+            "manual_endpoint_length_history_checks": "pending",
+            "reuse_without_reset": "deferred",
             "independently_verified_properties": [
                 c
                 for c in self.checks
                 if c["passed"]
                 and not self.options.preflight
                 and c["scope"].startswith(
-                    (
-                        "native ",
-                        "actual parameter ",
-                        "individual parameter ",
-                        "effective units ",
-                        "named solids ",
-                    )
+                    ("actual parameter ", "individual parameter ", "effective units ", "native ")
                 )
             ],
-            "measurements": self.measurements,
+            "observations": self.observations,
             "limitations": LIMITATIONS,
             "checks": self.checks,
             "responses": self.results,
@@ -1087,7 +952,7 @@ class ExtrusionTest:
         }
         write_json(WORK / "summary.json", summary)
         lines = [
-            "# Latest extrusion expression invocation",
+            "# Latest analytical-curve invocation",
             "",
             f"Invocation: `{self.invocation}`",
             f"Phase: `{self.phase}`; exit: {self.exit_code}",
@@ -1096,8 +961,9 @@ class ExtrusionTest:
             "",
             f"Project target: `{self.project}`",
             "",
-            "Offline checks are not live CST validation. Full measurements, parameter states,",
-            "expected values, units, tolerances and query provenance are in summary.json.",
+            "Offline generation is not native validation. Automated live evidence is limited to",
+            "command acceptance, actual parameters, units, named curve closure/maximum readbacks",
+            "and saved-file/reopen checks. Endpoint, length and history inspection remain pending.",
             "",
             "| Stage | Check | Passed |",
             "| --- | --- | --- |",
@@ -1107,7 +973,7 @@ class ExtrusionTest:
             "",
             *LIMITATIONS,
             "",
-            "After timeout/loss, inspect CST manually. No cleanup calls were attempted.",
+            "After unknown state, only local reports and server transport teardown proceed.",
             "",
         ]
         (WORK / "summary.md").write_text("\n".join(lines), encoding="utf-8")
@@ -1129,14 +995,10 @@ class ExtrusionTest:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--preflight",
-        action="store_true",
-        help="Real MCP schemas/offline generation; CST access disabled",
+        "--preflight", action="store_true", help="Real MCP offline checks; CST disabled"
     )
     parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Recreate verified owned extrusion project only; retain logs and notes",
+        "--reset", action="store_true", help="Reset verified owned project only; retain evidence"
     )
     parser.add_argument("--cst-path", default=DEFAULT_CST_PATH)
     parser.add_argument("--connection-timeout", type=positive_timeout, default=120)
@@ -1146,7 +1008,7 @@ def main():
         parser.error("--reset cannot be combined with --preflight")
     try:
         with WorkspaceLock():
-            return asyncio.run(ExtrusionTest(options).run())
+            return asyncio.run(AnalyticalCurveTest(options).run())
     except StopTest as exc:
         print(str(exc), file=sys.stderr)
         return 1

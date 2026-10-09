@@ -341,7 +341,10 @@ TOOLS: list[Tool] = [
     # 10. Analytical curve
     Tool(
         name="cst_create_analytical_curve",
-        description="Create a parametric analytical curve in CST Studio using expressions of parameter t.",
+        description=(
+            "Create a parametric analytical curve in CST Studio using expressions of parameter t. "
+            "t_min and t_max accept finite numbers or CST expressions preserved in model history."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -358,8 +361,8 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Z expression as function of t (e.g. 't')",
                 },
-                "t_min": {"type": "number", "description": "Parameter t minimum value"},
-                "t_max": {"type": "number", "description": "Parameter t maximum value"},
+                "t_min": _expression_field("Parameter t minimum value"),
+                "t_max": _expression_field("Parameter t maximum value"),
             },
             "required": ["name", "x_expr", "y_expr", "z_expr", "t_min", "t_max"],
         },
@@ -959,7 +962,7 @@ def _build_analytical_curve(args: dict) -> str:
         .set("LawX", args["x_expr"])
         .set("LawY", args["y_expr"])
         .set("LawZ", args["z_expr"])
-        .set_double("ParameterRange", args["t_min"], args["t_max"])
+        .set_expression_pair("ParameterRange", args["t_min"], args["t_max"])
         .call("Create")
     )
     return vba.build()

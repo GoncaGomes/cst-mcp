@@ -155,12 +155,50 @@ def test_only_selected_dimension_schema_leaves_expand():
             *(props[f"{axis}_offset"] for axis in "xyz"),
         ]
         assert all(s["type"] == ["number", "string"] and s["minLength"] == 1 for s in leaves)
-    for shape, field in (
-        ("wire", "radius"),
-        ("analytical_curve", "t_min"),
-        ("analytical_curve", "t_max"),
-    ):
-        assert tools[f"cst_create_{shape}"]["properties"][field]["type"] == "number"
+    props = tools["cst_create_analytical_curve"]["properties"]
+    for field in ("t_min", "t_max"):
+        assert props[field]["type"] == ["number", "string"] and props[field]["minLength"] == 1
+    assert all(props[field]["type"] == "string" for field in ("x_expr", "y_expr", "z_expr"))
+    assert tools["cst_create_wire"]["properties"]["radius"]["type"] == "number"
+
+
+CURVE_ARGS = {"name": "Line", "x_expr": "t", "y_expr": "0", "z_expr": "0"}
+
+
+@pytest.mark.parametrize(
+    "lower,upper,literals",
+    [
+        (-1.25, 1e-11, '"-1.25", "1e-11"'),
+        (
+            " PCurve_Start ",
+            "PCurve_Start+PCurve_Length",
+            '" PCurve_Start ", "PCurve_Start+PCurve_Length"',
+        ),
+        (2, "PCurve_Start+PCurve_Length", '"2", "PCurve_Start+PCurve_Length"'),
+        ("PCurve_Start", 7, '"PCurve_Start", "7"'),
+        (7, -2, '"7", "-2"'),  # Native range semantics, without new ordering rules.
+    ],
+)
+def test_analytical_curve_bound_serialization(lower, upper, literals):
+    client = RecordingClient()
+    args = dict(CURVE_ARGS, t_min=lower, t_max=upper)
+    assert call(args, client, "cst_create_analytical_curve")["status"] == "executed"
+    assert client.codes == [
+        (
+            'With AnalyticalCurve\n  .Reset\n  .Name "Line"\n  .Curve "Curves"\n'
+            '  .LawX "t"\n  .LawY "0"\n  .LawZ "0"\n'
+            f"  .ParameterRange {literals}\n  .Create\nEnd With"
+        )
+    ]
+
+
+@pytest.mark.parametrize("bound", ["t_min", "t_max"])
+@pytest.mark.parametrize("bad", [True, None, {}, float("inf"), " ", "x\n.Create", "x\x01y"])
+def test_invalid_analytical_bounds_rejected_before_execution(bound, bad):
+    client = RecordingClient()
+    args = {**CURVE_ARGS, "t_min": "PCurve_Start", "t_max": 7, bound: bad}
+    assert call(args, client, "cst_create_analytical_curve")["status"] == "error"
+    assert client.codes == []
 
 
 @pytest.mark.parametrize(

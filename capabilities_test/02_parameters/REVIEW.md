@@ -225,3 +225,59 @@ logs. Owned project and manifest hashes are unchanged; no reset was performed.
 The failed initialization remains incomplete. For another live run, save and
 close the owned project, then use the existing explicit `--reset` command.
 Native geometry, winding/reconstruction and persistence still require live checks.
+
+## 2026-10-09: analytical-curve parameter bounds
+
+`cst_create_analytical_curve.t_min` and `.t_max` now reuse the shared expression
+schema and pair serializer. Finite numbers, expressions and mixed bounds retain
+numeric formatting and caller expression text in history. No new sign/order
+rule, expression parser, dependency or public tool was added. The obsolete
+number-only schema assertions were replaced; the extrusion client retains its
+wire restriction and its scenario/lifecycle remain unchanged.
+
+Installed CST 2025 AnalyticalCurve and Curve references were inspected.
+`ParameterRange` lists doubles but demonstrates quoted `"-r*pi"`, `"r*pi"`.
+The new deterministic client owns only `artifacts/04_analytical_curve`, creates
+one blank MWS project on first live initialization and follows existing scoped
+ownership, lock, fingerprint, explicit-reset and server-only teardown guards.
+Stateless helpers are reused without instantiating earlier clients or changing
+their globals. All MCP calls stop after indeterminate execution.
+
+Offline validation commands and results:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests/test_primitive_expressions.py tests/test_brick_expressions.py tests/test_extrusion_expressions.py tests/test_parameter_primitives_client.py tests/test_parameter_brick_client.py tests/test_vba_and_patch.py tests/test_vba_injection.py tests/test_vba_security.py tests/test_tools_registry.py tests/test_docs_catalog.py -q
+uv run capabilities_test/02_parameters/run_parameter_analytical_curve.py --preflight
+uv run capabilities_test/02_parameters/run_parameter_extrusions.py --preflight
+uv run ruff format
+uv run ruff format --check
+uv run ruff check
+```
+
+- Focused tests: **496 passed**. Only a compact serialization/rejection group
+  was added to the existing primitive test file; attempted VBA calls are recorded
+  and asserted absent for rejected bounds. No new client substitute suite exists.
+- Analytical disabled-server preflight: **passed**, 15 checks and 11 responses.
+  It checked the effective catalog, planned schemas, numeric/symbolic/mixed
+  generated VBA and representative rejections. No project/manifest was created
+  and no connect or project lifecycle tool was called.
+- Extrusion disabled-server preflight ran once: **passed**, 54 checks and 31
+  responses, invocation `1229333169594ebf99e0f1516a68f61c`. Its earlier evidence
+  files were restored byte-for-byte with original modification times after this
+  offline check. The check result is retained in the new workspace.
+- Repository-wide Ruff format, format-check and lint: **passed**, 141 files.
+  No configuration was weakened and no diagnostic suppression was added.
+- All **353 earlier evidence files** retain their bytes, sizes and modification
+  times, with no new files in those scopes. Only the analytical-curve entries
+  changed in the four static/embedded catalogs; both JSON catalogs agree.
+
+Live analytical-curve validation remains pending user execution and review.
+The three states predict x=2..7, -1..9 and 3..7 mm, with lengths 5, 10 and 4 mm.
+Automated live coverage is command/rebuild acceptance, actual parameters,
+effective units, named-item closure/reported maximum-point readbacks and
+parameter/unit save-reopen checks. Maximum points is not an exact count.
+The inspected help establishes neither reliable length/endpoint queries nor
+complete point-ID enumeration. No measurements or IDs were invented; length,
+endpoints and stored history association remain pending manual inspection.
+Reuse without reset is deferred. No CST connection, launch, live validation,
+commit or push was performed during implementation.

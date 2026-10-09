@@ -1604,7 +1604,7 @@
         },
         {
           "name": "cst_create_analytical_curve",
-          "description": "Create a parametric analytical curve in CST Studio using expressions of parameter t.",
+          "description": "Create a parametric analytical curve in CST Studio using expressions of parameter t. t_min and t_max accept finite numbers or CST expressions preserved in model history.",
           "category_id": "geometry",
           "params": [
             {
@@ -1641,16 +1641,22 @@
             },
             {
               "name": "t_min",
-              "type": "number",
-              "description": "Parameter t minimum value",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Parameter t minimum value: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "t_max",
-              "type": "number",
-              "description": "Parameter t maximum value",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Parameter t maximum value: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true

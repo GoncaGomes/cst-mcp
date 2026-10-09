@@ -3,7 +3,7 @@
 This deterministic Python 3.12 client uses a real MCP stdio session with
 `sys.executable -m cst_mcp.server`. No LLM/SLM is involved. Creation and parameter
 changes use dedicated MCP tools; the client never imports server handlers or
-calls CST APIs directly. The brick, primitive and extrusion clients have separate fixed
+calls CST APIs directly. The brick, primitive, extrusion and analytical-curve clients have separate fixed
 workspaces. The recorded primitive live scenario completed within its stated
 coverage. Extrusion live validation of creation, parametric reconstruction, hole
 effects and persistence also completed within the recorded measurement coverage.
@@ -36,9 +36,9 @@ line-breaking characters, NUL, booleans, null, unsupported types and nonfinite
 numbers are rejected before execution. Existing builder injection checks remain.
 
 There is no retroactive geometry-edit tool. Existing number-only builder methods,
-wires, analytical curves, transformations, loft, faces, workflows,
+wires, transformations, loft, faces, workflows,
 sweeps, optimization and solvers are unchanged. The six additional primitive
-contracts and the extrusion extension are listed below.
+contracts, extrusion extension and analytical-curve bounds are listed below.
 `cst_set_parameter` is reused without modification: it stores values outside model
 history and performs a separate native rebuild. Its returned `value` is an input
 echo; the test separately reads actual values using the parameter query tools.
@@ -260,9 +260,8 @@ fixture collision, baseline failure, strict native-output parsing, complete logs
 timeout/interruption cessation and local report finalization. An analytic scenario
 substitute checks orchestration and duplicate prevention; it is not CST evidence.
 
-Full-file Ruff checking of `geometry.py` reports nine diagnostics also present
-at the inspected HEAD. They are unrelated to this change and remain untouched.
-The changed helpers and new files have no new lint diagnostics.
+Repository-wide formatting and lint checks for the analytical-curve extension
+are recorded in `REVIEW.md`.
 
 ## Additional primitive contracts
 
@@ -309,12 +308,13 @@ a fixed workspace:
 - `artifacts\01_brick`: `run_parameter_brick.py`, including its copied project.
 - `artifacts\02_primitives`: `run_parameter_primitives.py`, with a new blank MWS project.
 - `artifacts\03_extrusions`: `run_parameter_extrusions.py`, with its own new blank MWS project.
+- `artifacts\04_analytical_curve`: `run_parameter_analytical_curve.py`, with its own new blank MWS project.
 
 Each workspace owns its project and companion data, retained workspace lock,
 manifest, MCP/CST/stderr logs, invocation metadata, effective tool catalog and
 latest `summary.json` and `summary.md`. Logs append records with invocation IDs
 and UTC timestamps. Latest reports use fixed paths. There are no timestamped
-run directories. The `03_extrusions` scope does not change these paths.
+run directories. Each client preserves the other scopes.
 Artifacts and generated Python files remain ignored by Git.
 
 The existing root-level brick contents were relocated on 8 October 2026 after
@@ -651,3 +651,119 @@ Reuse without `--reset` is deferred and is not a completion requirement for this
 task. No reuse test was performed for this documentation update. Catalog presence,
 implementation, offline checks, real execution and independently confirmed
 effects remain separate evidence categories in the client reports.
+
+## Analytical-curve bounds, workspace and commands
+
+`cst_create_analytical_curve` now accepts finite JSON numbers or nonempty,
+single-line CST expressions in both `t_min` and `t_max`, including mixed bounds.
+The builder reuses `_expression_field` and `set_expression_pair`. Numeric
+formatting and native range semantics are preserved, with no new sign or ordering
+restriction. Python does not evaluate expressions. Shared validation and escaping
+reject invalid types, booleans, null, nonfinite numbers, empty expressions and
+forbidden control characters before execution. Coordinate laws, names and the
+existing `Curves` group contract are unchanged.
+
+The installed AnalyticalCurve help lists double arguments for `ParameterRange`
+but explicitly demonstrates `.ParameterRange "-r*pi", "r*pi"`. This extension
+uses that documented quoted-expression form without adding an expression parser.
+Both inspected references are relative to the selected CST 2025 installation:
+
+- `Online Help/mergedProjects/VBA_3D/common_vbacurves/common_vbacurves_analyticalcurve_object.htm`
+- `Online Help/mergedProjects/VBA_3D/common_vbacurves/common_vbacurves_curve_object.htm`
+
+The deterministic client uses only
+`C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\04_analytical_curve`.
+Its owned project is `project.cst` with companion `project\`. Python 3.12 and
+inline `mcp>=1.29,<3` / `jsonschema>=4.20` dependencies match Batch 02. It uses
+`sys.executable -m cst_mcp.server` over real MCP stdio, without an LLM/SLM,
+direct CST API calls or server-handler calls. It imports inspected stateless
+helpers without instantiating earlier clients or changing their globals.
+
+Run these PowerShell commands from `C:\dev\cst-studio-mcp`:
+
+```powershell
+# Offline catalog, planned schemas and generated VBA, with CST disabled
+uv run capabilities_test\02_parameters\run_parameter_analytical_curve.py --preflight
+
+# Live initialization and scenario, pending user execution and review
+uv run capabilities_test\02_parameters\run_parameter_analytical_curve.py
+
+# Explicit scoped reset and live scenario, after saving and closing the owned project
+uv run capabilities_test\02_parameters\run_parameter_analytical_curve.py --reset
+
+# Open only after successful completion, then close without saving inspection edits
+Invoke-Item "C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\04_analytical_curve\project.cst"
+```
+
+Options follow the existing clients: `--cst-path` defaults to
+`C:\Program Files (x86)\CST Studio Suite 2025`, `--connection-timeout` to 120
+seconds and `--call-timeout` to 60 seconds. Native server timeouts are independent.
+Preflight sets `CST_CONNECT_MODE=disabled` in the child environment, reads the
+effective MCP catalog, validates planned schemas and retrieves numeric, symbolic
+and mixed range VBA plus representative rejections. It never prepares, creates
+or resets a project, connects to CST or calls project lifecycle tools.
+`--preflight` and `--reset` cannot be combined.
+
+First live initialization creates a new blank MWS project. The client owns one
+fixed project, with a retained OS workspace lock, ownership/state manifest,
+project-lock checks and saved project/companion/sidecar fingerprints. Ordinary
+reuse requires a ready, unchanged checkpoint and skips duplicate curve creation.
+Testing reuse without reset is deferred. Explicit reset checks every target
+before deleting only manifest-owned project files inside `04_analytical_curve`.
+Logs, reports and sibling workspaces remain. Unknown files, incomplete state,
+links/junctions and locks stop reuse/reset; locks are never removed as stale.
+
+`mcp_calls.jsonl`, `cst_messages.jsonl`, `metadata.jsonl` and `server_stderr.log`
+append invocation-tagged evidence. `metadata.json`, `tool_catalog.json`,
+`summary.json` and `summary.md` are fixed latest paths; `workspace.json` stores
+ownership and saved fingerprints. No timestamped run folders are created.
+Generic VBA is enabled only in the child server environment and limited by the
+client to fixed setup and read-only query blocks. Queries use output capture
+outside model history. Existing server-only transport teardown preserves CST
+processes. Timeout, transport loss, interrupted in-flight requests or unknown
+execution state forbid every subsequent MCP call, including queries, save,
+close, reset and disconnect. Only local reports and Python transport teardown
+continue. Known failures may collect diagnostics while state is known.
+
+## Analytical-curve scenario and evidence limits
+
+One straight curve, `Curves:ParametricLine`, uses `x_expr="t"`, `y_expr="0"`,
+`z_expr="0"`, `t_min="PCurve_Start"` and
+`t_max="PCurve_Start+PCurve_Length"`. A fixed setup block initializes `Curves`
+only on first creation. Dedicated MCP parameter tools establish these states:
+
+| Stage | Start | Length | Predicted X endpoints (mm) | Predicted length (mm) |
+| --- | --- | --- | --- | --- |
+| Initial | 2 | 5 | 2..7 | 5 |
+| Updated and reopened | -1 | 10 | -1..9 | 10 |
+| Final | 3 | 4 | 3..7 | 4 |
+
+The client establishes mm/GHz/ns and reads them independently, creates the
+curve once, changes parameters and rebuilds, saves/closes/reopens, applies the
+final state and rebuilds again, then saves/closes and disconnects. Independent
+list and individual parameter readbacks check actual values at every stage.
+The saved owned project is retained for inspection.
+
+Automated live evidence establishes tool acceptance, rebuild acknowledgements,
+actual parameter values, effective units, successful named-item `Curve.IsClosed`
+and `Curve.GetNumberOfPoints` readbacks, parameter/unit persistence and repeated
+named-query readbacks across save/reopen. `IsClosed` must report false. `GetNumberOfPoints` is recorded as a
+nonnegative integer maximum, never an exact point count. The inspected help
+does not establish a direct length query or complete point-ID enumeration.
+No length method, point IDs or endpoint measurements are invented. Predictions
+are labeled separately, with endpoint/length measurements explicitly null.
+These checks do not independently prove endpoint motion, length, straightness
+or history-expression association. Analytical-curve live validation remains
+pending until the user executes the scenario and reviews its evidence.
+
+After a successful live run, select `Curves:ParametricLine` and use CST's native
+measurement controls to record final endpoints `(3,0,0)` and `(7,0,0)` mm and
+length 4 mm. Record the invocation ID, measurement method and actual values.
+Inspect the curve's stored history for `.LawX "t"`, `.LawY "0"`, `.LawZ "0"`
+and `.ParameterRange "PCurve_Start", "PCurve_Start+PCurve_Length"`. A dialog
+showing evaluated values alone does not establish retained symbolic history.
+Earlier endpoint/length checks also remain pending unless measured at those
+states. Avoid saving inspection edits because reuse checks the saved fingerprints.
+
+Focused offline tests and both disabled-server preflights are recorded in
+`REVIEW.md`. No analytical-curve live scenario was run during implementation.
