@@ -259,7 +259,12 @@ TOOLS: list[Tool] = [
     # 7. Loft
     Tool(
         name="cst_create_loft",
-        description="Create a lofted solid between two or more 2D profiles in CST Studio.",
+        description=(
+            "Create a capped solid with LoftCurves between two or more explicit 3D polygon "
+            "profiles. Coordinates accept finite JSON numbers or nonempty single-line CST "
+            "expressions, preserved for parameter rebuilds. Legacy [x, y] points are rejected; "
+            "supply [x, y, z] without inferred spacing. CST validates expressions and geometry."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -272,14 +277,21 @@ TOOLS: list[Tool] = [
                         "type": "array",
                         "items": {
                             "type": "array",
-                            "items": {"type": "number"},
-                            "minItems": 2,
-                            "maxItems": 2,
+                            "items": _expression_field("Profile coordinate"),
+                            "minItems": 3,
+                            "maxItems": 3,
                         },
                         "minItems": 3,
                     },
                     "minItems": 2,
-                    "description": "List of profiles, each a list of [x, y] coordinate pairs",
+                    "description": (
+                        "At least two profiles of explicit [x, y, z] vertices, each coordinate "
+                        "a finite JSON number or nonempty single-line CST expression. "
+                        "Vertex order is preserved; an optional repeated endpoint is removed "
+                        "before closing exactly once. At least three vertices must remain. "
+                        "Separate auxiliary curve groups are created; existing groups are "
+                        "not adopted or deleted. No path or inferred z coordinates."
+                    ),
                 },
             },
             "required": ["component", "name", "profiles"],
@@ -867,41 +879,73 @@ def _build_extrude(args: dict) -> str:
 
 
 def _build_loft(args: dict) -> str:
+    import hashlib
+
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
-    material = args.get("material", "PEC")
-    profiles: list[list[list[float]]] = args["profiles"]
+    material = validate_name(args.get("material", "PEC"), "material")
+    profiles = args["profiles"]
+    if not isinstance(profiles, list) or len(profiles) < 2:
+        raise ValueError("profiles must contain at least two explicit 3D profiles")
+
+    digest = hashlib.sha256(f"{component}:{name}".encode()).hexdigest()[:16]
+    prepared = []
+    for i, profile in enumerate(profiles):
+        if not isinstance(profile, list) or len(profile) < 3:
+            raise ValueError(f"profiles[{i}] must contain at least three [x, y, z] vertices")
+        for j, point in enumerate(profile):
+            if isinstance(point, list) and len(point) == 2:
+                raise ValueError(
+                    f"profiles[{i}][{j}]: legacy [x, y] points are unsupported; "
+                    "explicit 3D coordinates [x, y, z] are required"
+                )
+            if not isinstance(point, list) or len(point) != 3:
+                raise ValueError(f"profiles[{i}][{j}] must contain exactly three coordinates")
+            for coordinate in point:
+                _format_expression(coordinate)
+        points = list(profile)
+        while len(points) > 1 and points[-1] == points[0]:
+            points.pop()
+        if len(points) < 3:
+            raise ValueError(f"profiles[{i}] requires at least three vertices without the endpoint")
+        group = validate_name(f"{name[:40]}_loft_{digest}_p{i}", "loft curve group")
+        item = validate_name(f"{name[:40]}_profile{i}", "loft curve item")
+        prepared.append((group, item, points))
 
     script = VBAScript()
     script.add_comment(f"Loft: {component}:{name}")
-
-    # Create each profile as a named curve
-    for i, profile in enumerate(profiles):
-        curve_name = f"{name}_profile{i}"
-        curve_vba = (
-            VBABuilder("Polygon")
-            .call("Reset")
-            .set("Name", curve_name)
-            .set("Curve", f"{name}_curves")
+    # Reject collisions before creating any profile, including empty existing groups.
+    script.add_raw(
+        "Dim loftCurveCount As Long, loftCurveIndex As Long, loftCurveName As String\n"
+        'loftCurveCount = Curve.StartCurveNameIteration("all")\n'
+        "For loftCurveIndex = 1 To loftCurveCount\n"
+        "  loftCurveName = Curve.GetNextCurveName()\n"
+        + "\n".join(
+            f"  If StrComp(loftCurveName, {_vba_string_literal(group)}, vbTextCompare) = 0 Then "
+            'Err.Raise 513, "cst_create_loft", "Auxiliary loft curve group already exists"'
+            for group, _, _ in prepared
         )
-        for pt in profile:
-            curve_vba.set_double("Point", pt[0], pt[1])
-        # Close the polygon
-        curve_vba.set_double("Point", profile[0][0], profile[0][1])
+        + "\nNext loftCurveIndex"
+    )
+
+    for group, item, points in prepared:
+        script.add_block(VBABuilder("Curve").call_with_args("NewCurve", group))
+        curve_vba = VBABuilder("Polygon3D").call("Reset").set("Name", item).set("Curve", group)
+        for point in [*points, points[0]]:
+            curve_vba.set_expression_triple("Point", *point)
         curve_vba.call("Create")
         script.add_block(curve_vba)
 
-    # Create the loft
     loft_vba = (
-        VBABuilder("Loft")
+        VBABuilder("LoftCurves")
         .call("Reset")
         .set("Name", name)
         .set("Component", component)
         .set("Material", material)
+        .set_bool("Solid", True)
     )
-    for i in range(len(profiles)):
-        curve_name = f"{name}_profile{i}"
-        loft_vba.set("AddCurve", f"{name}_curves:{curve_name}")
+    for group, item, _ in prepared:
+        loft_vba.call_with_args("AddCurve", f"{group}:{item}")
     loft_vba.call("Create")
     script.add_block(loft_vba)
 

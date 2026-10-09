@@ -400,3 +400,96 @@ manifest were preserved. Latest reports reflect the offline preflight.
 No additional CST calls, project reset, live validation, commit or push were
 performed. Live save/reopen remains pending. One-sided face area, exact face
 count and CST's sheet-area counting convention require manual confirmation.
+
+
+## 2026-10-09: explicit 3D loft correction and scope 06 client
+
+Inspected the installed CST 2025 LoftCurves, Polygon3D, Curve, loft-dialog and
+Solid references. The old builder used 2D Polygon profiles and the picked-face
+`Loft` operation. Only the loft schema and builder changed on the server.
+`cst_create_loft` retains component/name/material/profiles and the PEC default;
+it now requires at least two profiles with explicit `[x, y, z]` coordinates and
+at least three vertices after removing closing endpoints. Finite JSON numbers
+and nonempty single-line CST expressions are safely serialized without a Python
+geometry/expression interpreter. Legacy 2D input gets an explicit 3D-coordinate
+message from the builder. MCP 2.x schema prevalidation may instead return its
+array-length error before reaching that builder; registry behavior is unchanged.
+
+Vertex order is retained and polygons are closed once. Each Polygon3D belongs
+to a distinct Curve.NewCurve group. Auxiliary names are deterministic, bounded
+and derived from the target component/name and profile index. A native group
+iteration guard rejects collisions before creating profiles, without adopting
+or deleting existing groups. LoftCurves receives Reset, Name, Component,
+Material, Solid True, qualified AddCurve references in input order and Create.
+Path and additional options are omitted; the validated polygon tool is unchanged.
+
+`run_parameter_loft.py` owns only `artifacts/06_loft`. It uses Python 3.12 inline
+dependencies, real MCP stdio, an OS lock, scoped ownership, explicit reset,
+project/companion/sidecar fingerprints, append-only invocation-tagged logs and
+fixed latest reports. No timestamped directories are used. Scope 06 retains
+`project.cst`, `project/`, recorded same-stem sidecars, `workspace.lock`,
+`workspace.json`, `mcp_calls.jsonl`, `cst_messages.jsonl`, `metadata.jsonl`,
+`server_stderr.log`, `metadata.json`, `tool_catalog.json`, `summary.json` and
+`summary.md` as appropriate to the invocation. Preflight creates only local
+evidence and a retained workspace lock. It performs no project preparation,
+reset, connection/status or lifecycle calls. Reuse without reset remains
+deferred. Earlier clients and scopes 01 through 05 were not run or modified.
+The existing face-validation documentation is preserved.
+
+The prepared fixture is LoftValidation:ParametricLoft, a PEC rectangular prism
+between matching expression-based rectangles at z=0 and z=PLoft_Length.
+Initial width/depth/length 4/2/5 predicts 40 mm³ and 76 mm²; grouped parameter
+rebuild to 6/3/4 predicts 72 mm³ and 108 mm². Save/close/reopen repeats all
+updated-state readbacks. Only length changes after reopening, to 7, predicting
+126 mm³ and 162 mm²; the final state is saved and closed for inspection.
+Dedicated loft/parameter tools create and rebuild. Fixed setup and native
+queries use output capture outside model history. Independent parameter list
+and individual readbacks, units, shape/material enumeration, existence, solid
+and hybrid type, volume and area are retained with expected/actual values,
+relative/absolute tolerances of 1e-6 and installed-reference paths/hashes.
+Parameter-setting echoes are not measurements. Profile curves may be consumed;
+no survival assertion is made. Volume and area do not independently verify every
+coordinate or orientation. Manual inspection remains separate.
+
+Unknown execution, timeout or transport loss forbids every later MCP call,
+including diagnostics and save/close/disconnect. The inspected existing transport
+mechanism preserves CST; only local reports and Python-server teardown continue.
+
+Actual offline validation from the repository root:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_tools_registry.py::test_list_tools_full_surface tests/test_docs_catalog.py -k 'loft or list_tools_full_surface or documented_tools_match_registered_tools' -q
+uv run capabilities_test\02_parameters\run_parameter_loft.py --preflight
+uv run ruff format
+uv run ruff format --check
+uv run ruff check
+```
+
+- Focused regressions plus existing catalog smoke checks: **18 passed**,
+  25 unrelated geometry tests deselected. One successful loft regression and
+  one compact parametrized rejection regression were added in the existing
+  test file. Invalid calls record execution attempts and assert none occurred.
+  No new client test suite or fake CST interpreter was added.
+- Final disabled-server preflight: **passed**, 25 checks and 15 responses,
+  invocation `11c00dde94bf4292b4cd6e41a1f2b805`. Python 3.12, MCP 2.3.0 and jsonschema
+  4.26.0 ran through real stdio. The final script hash matches the
+  metadata. No project, companion or ownership manifest was created; no
+  connection/status or project lifecycle call was made.
+- Required Ruff format, format-check and lint commands: **passed**, 143 files.
+  The final format pass changed one file and left 142 unchanged; the format
+  check confirmed all 143. Import ordering and an unnecessary encode argument
+  were corrected after the initial lint run. No lint rule was weakened.
+- Only the loft rows/objects changed in root README, docs/TOOLS.md,
+  docs/tools.json and the embedded HTML catalog. Structural comparisons confirm
+  all other catalog entries and surrounding HTML/text are unchanged, and the
+  static and embedded catalogs agree. The face-validation section is retained.
+
+Manual live command, pending native execution:
+
+```powershell
+uv run capabilities_test\02_parameters\run_parameter_loft.py --reset
+```
+
+Native creation, parameter reconstruction, persistence and manual inspection
+remain pending. No CST connection, launch, native execution, unrelated capability
+client, commit or push was performed during this task.

@@ -3,7 +3,7 @@
 This deterministic Python 3.12 client uses a real MCP stdio session with
 `sys.executable -m cst_mcp.server`. No LLM/SLM is involved. Creation and parameter
 changes use dedicated MCP tools; the client never imports server handlers or
-calls CST APIs directly. The brick, primitive, extrusion, analytical-curve and face-from-curves clients have separate fixed
+calls CST APIs directly. The brick, primitive, extrusion, analytical-curve, face-from-curves and loft clients have separate fixed
 workspaces. The recorded primitive live scenario completed within its stated
 coverage. Extrusion live validation of creation, parametric reconstruction, hole
 effects and persistence also completed within the recorded measurement coverage.
@@ -36,9 +36,9 @@ line-breaking characters, NUL, booleans, null, unsupported types and nonfinite
 numbers are rejected before execution. Existing builder injection checks remain.
 
 There is no retroactive geometry-edit tool. Existing number-only builder methods,
-wires, transformations, loft, workflows,
+wires, transformations, workflows,
 sweeps, optimization and solvers are unchanged. The six additional primitive
-contracts, extrusion extension and analytical-curve bounds are listed below.
+contracts, extrusion extension, analytical-curve bounds and loft correction are listed below.
 `cst_set_parameter` is reused without modification: it stores values outside model
 history and performs a separate native rebuild. Its returned `value` is an input
 echo; the test separately reads actual values using the parameter query tools.
@@ -889,3 +889,111 @@ and measured values before any area normalization is adopted. Close without
 saving inspection edits to preserve
 the checkpoint fingerprints. Live validation remains pending user execution
 and review. Offline results are recorded in `REVIEW.md`.
+
+
+## Parameter loft: corrected contract and scope 06
+
+`cst_create_loft` now uses `LoftCurves` with `.Solid "True"` to create capped
+solids. It retains `component`, `name`, `material` (default PEC) and `profiles`.
+At least two profiles are required. Each profile contains at least three vertices
+with exactly three explicit coordinates `[x, y, z]`. Coordinates accept finite
+JSON numbers or nonempty single-line CST expressions, including mixed numeric
+and symbolic coordinates. Legacy `[x, y]` points are rejected; the builder reports
+that explicit 3D coordinates are required. MCP 2.x can reject them earlier with
+its schema array-length error. No profile spacing or z coordinate is inferred.
+
+Every profile, coordinate and generated identifier is validated before execution.
+Vertex order is preserved, repeated closing endpoints are removed, and the first
+vertex is appended once. At least three vertices must remain after removing the
+endpoint. CST evaluates expression semantics and geometric validity. No Python
+geometry or expression interpreter is included.
+
+The builder creates a distinct `Curve.NewCurve` group for each `Polygon3D` profile
+and adds qualified `group:item` references to `LoftCurves` in input order. Bounded,
+deterministic auxiliary names combine the target name, a digest of component/name,
+and the profile index. A native curve-group collision guard runs before profile
+creation; existing groups are neither adopted nor deleted. `Path` and additional
+loft options are omitted. The existing `cst_create_polygon3d` tool is unchanged.
+Installed CST 2025 references distinguish `LoftCurves` from the picked-face `Loft`
+operation and require profile items to belong to separate curve groups.
+
+`run_parameter_loft.py` is a deterministic Python 3.12 client using inline
+dependencies and real MCP stdio through `sys.executable -m cst_mcp.server`. It owns
+only `capabilities_test/02_parameters/artifacts/06_loft`:
+
+| Path | Purpose |
+| --- | --- |
+| `project.cst`, `project/` and recorded `project.*` sidecars | One fixed owned native project and companion |
+| `workspace.lock`, `workspace.json` | Retained OS lock, ownership/state and saved SHA-256/file fingerprints |
+| `mcp_calls.jsonl`, `cst_messages.jsonl`, `metadata.jsonl`, `server_stderr.log` | Append-only invocation-tagged evidence |
+| `metadata.json`, `tool_catalog.json`, `summary.json`, `summary.md` | Fixed latest metadata, effective catalog and results |
+
+No timestamped directories are created. Explicit reset checks ownership, all
+resolved targets, links/junctions and project locks before removing only the owned
+project paths in scope 06. Logs and handwritten notes remain. Scopes 01 through
+05 are preserved. First initialization creates a blank MWS project; reuse without
+reset remains deferred and is refused before connecting to CST.
+
+Run from `C:\dev\cst-studio-mcp`:
+
+```powershell
+# Offline schemas and generated VBA; the child server disables CST
+uv run capabilities_test\02_parameters\run_parameter_loft.py --preflight
+
+# Manual live execution with explicit scope 06 reset
+uv run capabilities_test\02_parameters\run_parameter_loft.py --reset
+
+# After successful live completion, inspect the retained native project
+Invoke-Item "C:\dev\cst-studio-mcp\capabilities_test\02_parameters\artifacts\06_loft\project.cst"
+```
+
+`--preflight` makes no project preparation, reset, connection/status or lifecycle
+calls. It retrieves the effective catalog, validates every planned schema, checks
+mixed 3D expression VBA and representative rejections, and retrieves fixed setup
+and native query blocks through the disabled child server. It cannot be combined
+with `--reset`. `--cst-path` overrides the default CST 2025 installation;
+`--connection-timeout` and `--call-timeout` default to 120 and 60 seconds.
+
+The single fixture is `LoftValidation:ParametricLoft`, with PEC material. Its two
+identical rectangular profiles have vertices `(0,0,z)`, `(PLoft_Width,0,z)`,
+`(PLoft_Width,PLoft_Depth,z)` and `(0,PLoft_Depth,z)`, with z=0 and
+z=`PLoft_Length`. Dedicated `cst_create_loft` records the symbolic profile
+coordinates in model history. Dedicated `cst_set_parameter` stores values
+outside history and requests a separate rebuild on the last grouped update.
+Fixed raw VBA is restricted to setup and native readbacks through output capture
+outside model history. Parameter-setting echoes establish command acceptance
+only and are not measurements.
+
+| Stage | Width/depth/length (mm) | Expected volume (mm³) | Expected surface area (mm²) |
+| --- | --- | --- | --- |
+| Initial | 4 / 2 / 5 | 40 | 76 |
+| Parameter rebuild | 6 / 3 / 4 | 72 | 108 |
+| Save, close and reopen readback | 6 / 3 / 4 | 72 | 108 |
+| Post-reopen length change and rebuild | 6 / 3 / 7 | 126 | 162 |
+
+Every stage independently reads native parameters with `cst_list_parameters` and
+`cst_get_parameter`, actual units (mm/GHz/ns), named shape/material enumeration,
+`Solid.DoesExist`, `IsSolidShape`, `IsHybridShape`, `GetVolume` and `GetArea`.
+The expected type is an existing solid with no hybrid sheet parts. Numeric
+comparisons use relative and absolute tolerances of `1e-6`. Save/close checkpoints
+retain project, companion and same-stem sidecar fingerprints. Updated-state
+readbacks repeat after reopening; only length changes afterward. The final
+project is saved and closed for manual inspection.
+
+Reports retain full responses, raw native values, expected/actual comparisons,
+units, tolerances and paths/SHA-256 hashes for the installed LoftCurves,
+Polygon3D, Curve, loft-dialog and Solid references. Profile curves may be consumed
+by loft creation; no continued curve presence is assumed or queried.
+
+Timeout, transport loss, interrupted in-flight requests or unknown execution stop
+all subsequent MCP calls, including diagnostics, save, close and disconnect.
+Only local reports and Python-server transport teardown continue through the
+existing CST-preservation mechanism. Known failures may collect diagnostic
+messages while execution state remains known.
+
+Volume and area do not independently verify every coordinate or orientation.
+Manual inspection remains separate: inspect dimensions, profile order, position,
+capped ends and retained symbolic history expressions. Record the invocation,
+method, units and observations in your own notes, then close without saving
+inspection edits to preserve fingerprints. Native CST execution and manual
+inspection were completed and verified the functionallity of the server; actual offline results are recorded in `REVIEW.md`.

@@ -225,6 +225,91 @@ def test_face_from_curves_qualified_reference():
 
 
 @pytest.mark.asyncio
+async def test_loft_3d_expressions_closed_profiles_and_separate_groups():
+    from cst_mcp.tools import geometry
+
+    attempted = []
+
+    class Client:
+        def execute_vba(self, code):
+            attempted.append(code)
+            return {"status": "executed"}
+
+    profiles = [
+        [[0, 0, 0], ["Width", 0, 0], ["Width", "Depth", 0], [0, "Depth", 0]],
+        [[0, 0, "Length"], ["Width", 0, "Length"], [0, "Depth", "Length"], [0, 0, "Length"]],
+    ]
+    result = await geometry.handle(
+        "cst_create_loft", {"component": "Lofts", "name": "L" * 100, "profiles": profiles}, Client()
+    )
+    assert json.loads(result[0].text)["status"] == "executed" and len(attempted) == 1
+    code = attempted[0]
+    groups = [line.split('"')[1] for line in code.splitlines() if '.NewCurve "' in line]
+    assert len(groups) == len(set(groups)) == 2 and all(len(g) <= 100 for g in groups)
+    blocks = code.split("With Polygon3D\n")[1:]
+    for i, block in enumerate(blocks):
+        points = [
+            line.strip() for line in block.split("End With", 1)[0].splitlines() if ".Point" in line
+        ]
+        source = profiles[i] if i == 0 else profiles[i][:-1]
+        expected = ['.Point "' + '", "'.join(map(str, p)) + '"' for p in [*source, source[0]]]
+        assert points == expected and f'.Curve "{groups[i]}"' in block
+    refs = [line.strip() for line in code.splitlines() if ".AddCurve" in line]
+    assert refs == [f'.AddCurve "{g}:{"L" * 40}_profile{i}"' for i, g in enumerate(groups)]
+    assert "With LoftCurves\n  .Reset" in code and '.Solid "True"' in code
+    assert '.Material "PEC"' in code and ".Path" not in code and "DeleteCurve" not in code
+    assert code.index("already exists") < code.index("With Curve")
+    tool = next(t for t in geometry.TOOLS if t.name == "cst_create_loft")
+    schema = tool.model_dump(by_alias=True)["inputSchema"]
+    vertices = schema["properties"]["profiles"]
+    assert vertices["minItems"] == 2 and vertices["items"]["minItems"] == 3
+    point = vertices["items"]["items"]
+    assert point["minItems"] == point["maxItems"] == 3
+    assert point["items"]["type"] == ["number", "string"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "profiles",
+    [
+        None,
+        [],
+        [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]],
+        ["bad", "bad"],
+        [[[0, 0, 0], [1, 0, 0], [0, 0, 0]]] * 2,
+        [[[0, 0], [1, 0], [0, 1]]] * 2,
+        [[[0, 0, 0, 0], [1, 0, 0], [0, 1, 0]]] * 2,
+        *[
+            [[[0, 0, 0], [1, 0, 0], [0, 1, bad]]] * 2
+            for bad in (True, None, float("inf"), float("nan"), " ", "x\nCreate", "x\x00", {})
+        ],
+    ],
+)
+async def test_loft_rejected_before_execution(profiles):
+    from cst_mcp.tools import geometry
+
+    attempted = []
+
+    class Client:
+        def execute_vba(self, code):
+            attempted.append(code)
+            return {"status": "executed"}
+
+    result = json.loads(
+        (
+            await geometry.handle(
+                "cst_create_loft",
+                {"component": "Lofts", "name": "Prism", "profiles": profiles},
+                Client(),
+            )
+        )[0].text
+    )
+    assert result["status"] == "error" and attempted == []
+    if profiles and isinstance(profiles[0], list) and len(profiles[0][0]) == 2:
+        assert "explicit 3D coordinates" in result["message"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "references",
     [

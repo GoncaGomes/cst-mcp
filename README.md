@@ -632,7 +632,7 @@ Create, open, save projects and check CST connection.
 | `cst_create_sphere` | Create a sphere in CST Studio. |
 | `cst_create_torus` | Create a torus in CST Studio. |
 | `cst_create_extrude` | Pointlist extrusion with numeric/mixed CST expressions in height, profiles/holes and active offset; down reverses the plane normal. |
-| `cst_create_loft` | Create a lofted solid between two or more 2D profiles in CST Studio. |
+| `cst_create_loft` | Create a capped LoftCurves solid from at least two explicit [x, y, z] profiles; finite numbers or CST expressions. Legacy 2D rejected. |
 | `cst_create_wire` | Create a bondwire / wire between two points in CST Studio. |
 | `cst_create_polygon3d` | Create a 3D polygon curve in CST Studio. |
 | `cst_create_analytical_curve` | Create a parametric analytical curve in CST Studio using expressions of parameter t. t_min and t_max accept finite numbers or CST expressions preserved in model history. |

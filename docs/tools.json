@@ -1443,7 +1443,7 @@
         },
         {
           "name": "cst_create_loft",
-          "description": "Create a lofted solid between two or more 2D profiles in CST Studio.",
+          "description": "Create a capped solid with LoftCurves between two or more explicit 3D polygon profiles. Coordinates accept finite JSON numbers or nonempty single-line CST expressions, preserved for parameter rebuilds. Legacy [x, y] points are rejected; supply [x, y, z] without inferred spacing. CST validates expressions and geometry.",
           "category_id": "geometry",
           "params": [
             {
@@ -1473,7 +1473,7 @@
             {
               "name": "profiles",
               "type": "array",
-              "description": "List of profiles, each a list of [x, y] coordinate pairs",
+              "description": "At least two profiles of explicit [x, y, z] vertices, each coordinate a finite JSON number or nonempty single-line CST expression. Vertex order is preserved; an optional repeated endpoint is removed before closing exactly once. At least three vertices must remain. Separate auxiliary curve groups are created; existing groups are not adopted or deleted. No path or inferred z coordinates.",
               "default": null,
               "enum": null,
               "required": true
