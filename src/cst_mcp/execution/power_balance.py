@@ -67,7 +67,9 @@ def power_tree_path(excitation: str, item: str) -> str:
     return f"1D Results\\Power\\{excitation}\\{item}"
 
 
-def value_at(x: list[float], y: list[float], f: float, *, tol: float = 1e-3) -> tuple[float | None, str]:
+def value_at(
+    x: list[float], y: list[float], f: float, *, tol: float = 1e-3
+) -> tuple[float | None, str]:
     """Value of curve (x, y) at ``f``.
 
     Dense curves (> 10 samples) are linearly interpolated inside their range;
@@ -187,9 +189,11 @@ def compute_balance(
         reasons = []
         if un is not None and abs(un) > threshold:
             reasons.append(f"|unaccounted| {abs(un):.1%} > {threshold:.0%}")
-        if "eta_pattern" in estimates and "eta_farfield" in estimates and abs(
-            estimates["eta_pattern"] - estimates["eta_farfield"]
-        ) > threshold:
+        if (
+            "eta_pattern" in estimates
+            and "eta_farfield" in estimates
+            and abs(estimates["eta_pattern"] - estimates["eta_farfield"]) > threshold
+        ):
             reasons.append("pattern integral disagrees with P_rad/P_acc")
         row["flag"] = bool(reasons)
         row["flag_reasons"] = reasons
@@ -199,15 +203,18 @@ def compute_balance(
             row["closes"] = not reasons
         if reasons:
             flagged.append(f)
-        per_freq[f"{f:g}"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in row.items()}
+        per_freq[f"{f:g}"] = {
+            k: (round(v, 6) if isinstance(v, float) else v) for k, v in row.items()
+        }
 
     out: dict[str, Any] = {
         "status": "ok",
         "threshold": threshold,
         "frequencies": per_freq,
         "flagged_frequencies_ghz": flagged,
-        "balance_closes": (not flagged) if any(
-            r.get("closes") is not None for r in per_freq.values()) else None,
+        "balance_closes": (not flagged)
+        if any(r.get("closes") is not None for r in per_freq.values())
+        else None,
         "definitions": {
             "eta_farfield": "P_rad / P_acc",
             "eta_loss": "1 - (Loss in Dielectrics + Loss in Metals) / P_acc",
@@ -239,7 +246,9 @@ CurveReader = Callable[..., dict[str, Any]]
 
 
 def read_power_curves(
-    project_path: str, excitation: str = "Excitation [1]", run_id: int = 0,
+    project_path: str,
+    excitation: str = "Excitation [1]",
+    run_id: int = 0,
     reader: CurveReader | None = None,
 ) -> tuple[dict[str, dict[str, list[float]]], dict[str, Any]]:
     """Read the power curves of one excitation from a saved project (cst.results)."""
@@ -255,14 +264,20 @@ def read_power_curves(
             curves[key] = {"x": [float(v) for v in data["x"]], "y": [float(v) for v in y]}
             sources[key] = {"tree_path": path, "n": len(data["x"])}
         else:
-            sources[key] = {"tree_path": path, "status": data.get("status"),
-                            "message": str(data.get("message", ""))[:200]}
+            sources[key] = {
+                "tree_path": path,
+                "status": data.get("status"),
+                "message": str(data.get("message", ""))[:200],
+            }
     return curves, sources
 
 
 def farfield_warning(
-    project_path: str | None, frequency_ghz: float | None, *,
-    excitation: str = "Excitation [1]", threshold: float = DEFAULT_THRESHOLD,
+    project_path: str | None,
+    frequency_ghz: float | None,
+    *,
+    excitation: str = "Excitation [1]",
+    threshold: float = DEFAULT_THRESHOLD,
     reader: CurveReader | None = None,
 ) -> dict[str, Any] | None:
     """Compact power-balance warning for farfield/efficiency tools.

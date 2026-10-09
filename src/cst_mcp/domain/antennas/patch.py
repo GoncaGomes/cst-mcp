@@ -76,9 +76,9 @@ def edge_resistance(width_m: float, length_m: float, lambda0_m: float) -> float:
         return ratio * ratio * math.sin(t) ** 3
 
     g1 = _simpson(slot, 0.0, math.pi) / (120 * math.pi**2)
-    g12 = _simpson(
-        lambda t: slot(t) * _bessel_j0(k0 * length_m * math.sin(t)), 0.0, math.pi
-    ) / (120 * math.pi**2)
+    g12 = _simpson(lambda t: slot(t) * _bessel_j0(k0 * length_m * math.sin(t)), 0.0, math.pi) / (
+        120 * math.pi**2
+    )
     return 1.0 / (2.0 * (g1 + g12))
 
 
@@ -148,9 +148,7 @@ def design_patch(
     # Width (Balanis)
     width_m = C0 / (2 * f_hz) * math.sqrt(2 / (epsilon_r + 1))
     # Effective permittivity
-    eps_eff = (epsilon_r + 1) / 2 + (epsilon_r - 1) / 2 * (
-        1 + 12 * h_m / width_m
-    ) ** -0.5
+    eps_eff = (epsilon_r + 1) / 2 + (epsilon_r - 1) / 2 * (1 + 12 * h_m / width_m) ** -0.5
     # Extension
     delta_l = (
         0.412

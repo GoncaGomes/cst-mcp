@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.validators import validate_name, validate_port_number, validate_positive, validate_range
+from cst_mcp.validators import (
+    validate_name,
+    validate_port_number,
+    validate_positive,
+    validate_range,
+)
 from cst_mcp.vba_builder import VBABuilder
 
 _ORIENTATION_ENUM = ["xmin", "xmax", "ymin", "ymax", "zmin", "zmax"]
@@ -358,9 +364,8 @@ TOOLS: list[Tool] = [
     ),
 ]
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a port/excitation tool call."""
     try:
         if name == "cst_add_waveguide_port":
@@ -380,20 +385,26 @@ async def handle(
         if name == "cst_add_multipin_port":
             return await _handle_multipin_port(arguments, client)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": f"Unknown port tool: {name}"}, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"tool": name, "status": "error", "message": f"Unknown port tool: {name}"},
+                    indent=2,
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in ports.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
-async def _handle_waveguide_port(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_waveguide_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
     orientation = arguments["orientation"]
     if orientation not in _ORIENTATION_ENUM:
@@ -412,9 +423,7 @@ async def _handle_waveguide_port(
 
     coordinates = arguments.get("coordinates", "Free")
     if coordinates not in ("Free", "Full", "Picks"):
-        raise ValueError(
-            f"Invalid coordinates '{coordinates}'. Must be Free, Full, or Picks."
-        )
+        raise ValueError(f"Invalid coordinates '{coordinates}'. Must be Free, Full, or Picks.")
 
     vba = (
         VBABuilder("Port")
@@ -439,9 +448,7 @@ async def _handle_waveguide_port(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_discrete_port(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_discrete_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
     impedance = float(arguments.get("impedance", 50.0))
     validate_positive(impedance, "impedance")
@@ -498,9 +505,7 @@ async def _handle_discrete_port(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_lumped_element(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_lumped_element(arguments: dict, client: CSTClient) -> list[TextContent]:
     elem_name = validate_name(arguments["name"], "element name")
     element_type = arguments["element_type"]
     if element_type not in _ELEMENT_TYPE_ENUM:
@@ -526,10 +531,7 @@ async def _handle_lumped_element(
     cst_type = cst_type_map[element_type]
 
     vba = (
-        VBABuilder("LumpedElement")
-        .call("Reset")
-        .set("SetName", elem_name)
-        .set("SetType", cst_type)
+        VBABuilder("LumpedElement").call("Reset").set("SetName", elem_name).set("SetType", cst_type)
     )
 
     # Set R, L, C values depending on element_type
@@ -552,12 +554,7 @@ async def _handle_lumped_element(
         vba.set_number("SetL", 0)
         vba.set_number("SetC", 0)
 
-    vba = (
-        vba
-        .set_point("SetP1", x1, y1, z1)
-        .set_point("SetP2", x2, y2, z2)
-        .call("Create")
-    )
+    vba = vba.set_point("SetP1", x1, y1, z1).set_point("SetP2", x2, y2, z2).call("Create")
     script = vba.build()
     result = client.execute_vba(script)
     result["element_name"] = elem_name
@@ -567,9 +564,7 @@ async def _handle_lumped_element(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_plane_wave(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_plane_wave(arguments: dict, client: CSTClient) -> list[TextContent]:
     polarization = arguments["polarization"]
     if polarization not in _POLARIZATION_ENUM:
         raise ValueError(
@@ -608,9 +603,7 @@ async def _handle_plane_wave(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_floquet_port(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_floquet_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
     orientation = arguments["orientation"]
     if orientation not in _FLOQUET_ORIENTATION_ENUM:
@@ -630,29 +623,29 @@ async def _handle_floquet_port(
     script = vba.build()
     result = client.execute_vba(script)
     result["port_type"] = "floquet"
-    result["note"] = "Floquet ports are selected by zmin/zmax, not a freely assigned port number; unit-cell/open boundaries must already be configured."
+    result["note"] = (
+        "Floquet ports are selected by zmin/zmax, not a freely assigned port number; unit-cell/open boundaries must already be configured."
+    )
     result["port_number"] = port_number
     result["modes"] = modes
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_list_ports(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_list_ports(arguments: dict, client: CSTClient) -> list[TextContent]:
     # Build VBA that queries port count — CST returns results via execute_vba
     vba_code = (
-        'Dim n As Long\n'
-        'n = Port.StartPortNumberIteration()\n'
-        'Dim msg As String\n'
+        "Dim n As Long\n"
+        "n = Port.StartPortNumberIteration()\n"
+        "Dim msg As String\n"
         'msg = "Total ports: " & n & vbCrLf\n'
-        'Dim i As Long\n'
-        'For i = 1 To n\n'
-        '  Dim pn As Long\n'
-        '  pn = Port.GetNextPortNumber()\n'
+        "Dim i As Long\n"
+        "For i = 1 To n\n"
+        "  Dim pn As Long\n"
+        "  pn = Port.GetNextPortNumber()\n"
         '  msg = msg & "Port " & pn & vbCrLf\n'
-        'Next i\n'
-        'MsgBox msg'
+        "Next i\n"
+        "MsgBox msg"
     )
 
     result = client.execute_vba(vba_code)
@@ -661,17 +654,10 @@ async def _handle_list_ports(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_delete_port(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_delete_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
 
-    vba = (
-        VBABuilder("Port")
-        .call("Reset")
-        .set_number("PortNumber", port_number)
-        .call("Delete")
-    )
+    vba = VBABuilder("Port").call("Reset").set_number("PortNumber", port_number).call("Delete")
     script = vba.build()
     result = client.execute_vba(script)
     result["action"] = "deleted"
@@ -680,9 +666,7 @@ async def _handle_delete_port(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_multipin_port(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_multipin_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
     orientation = arguments["orientation"]
     if orientation not in _ORIENTATION_ENUM:
@@ -722,6 +706,6 @@ async def _handle_multipin_port(
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

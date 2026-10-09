@@ -6,6 +6,7 @@ a tiny interface so the tool logic can be tested with a fake reader.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from typing import Any
@@ -38,6 +39,9 @@ class SavedResults:
         try:
             return dict(self._module.get_parameter_combination(run_id) or {})
         except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in figures_1d_source.parameter_combination", exc_info=True
+            )
             return {}
 
     def read(self, tree_path: str, run_id: int) -> dict[str, Any]:
@@ -50,9 +54,18 @@ class SavedResults:
             if ref is not None and len(ref) == len(y):
                 z0 = [complex(v) for v in ref]
         except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in figures_1d_source.read", exc_info=True
+            )
             z0 = None
-        return {"x": x, "values": y, "xlabel": str(item.xlabel), "ylabel": str(item.ylabel),
-                "title": str(item.title), "z0": z0}
+        return {
+            "x": x,
+            "values": y,
+            "xlabel": str(item.xlabel),
+            "ylabel": str(item.ylabel),
+            "title": str(item.title),
+            "z0": z0,
+        }
 
 
 def open_reader(project_path: str, allow_interactive: bool = False):
@@ -103,7 +116,7 @@ def reflection_path(items: list[str]) -> str | None:
         if m and m.group(1) == m.group(3) and (m.group(2) or "") == (m.group(4) or ""):
             refl.append(p)
     for p in refl:
-        if p.endswith("\\S1,1") or p.endswith("\\S1(1),1(1)"):
+        if p.endswith(("\\S1,1", "\\S1(1),1(1)")):
             return p
     return refl[0] if refl else None
 

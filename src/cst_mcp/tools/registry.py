@@ -108,7 +108,7 @@ def _module_category(handler: Handler) -> str | None:
     module = getattr(handler, "__module__", "") or ""
     if not module.startswith(_TOOLS_PACKAGE):
         return None
-    short = module[len(_TOOLS_PACKAGE):].split(".", 1)[0]
+    short = module[len(_TOOLS_PACKAGE) :].split(".", 1)[0]
     return _MODULE_CATEGORIES.get(short, short)
 
 
@@ -161,9 +161,7 @@ def _validate_tool(tool: Tool) -> None:
         try:
             Draft202012Validator.check_schema(output_schema)
         except SchemaError as exc:
-            raise ValueError(
-                f"Tool {tool.name!r} outputSchema is invalid: {exc.message}"
-            ) from exc
+            raise ValueError(f"Tool {tool.name!r} outputSchema is invalid: {exc.message}") from exc
 
 
 def _content_is_error(content: list[TextContent]) -> bool:

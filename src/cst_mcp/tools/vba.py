@@ -8,6 +8,7 @@ reference documentation, and listing available CST VBA objects.
 from __future__ import annotations
 
 import json
+import logging
 from importlib import resources
 from pathlib import Path
 
@@ -20,7 +21,6 @@ from cst_mcp.validators import (
     raw_vba_enabled,
     validate_vba_input,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -57,7 +57,6 @@ TOOLS: list[Tool] = [
             "required": ["code"],
         },
     ),
-
     # 2. VBA help / reference
     Tool(
         name="cst_vba_help",
@@ -79,7 +78,6 @@ TOOLS: list[Tool] = [
             "required": ["object_name"],
         },
     ),
-
     # 3. List VBA objects
     Tool(
         name="cst_list_vba_objects",
@@ -145,6 +143,9 @@ def _load_vba_reference() -> dict:
             ref = resources.files("cst_mcp") / "data" / "vba_reference.json"
             raw = json.loads(ref.read_text(encoding="utf-8"))
         except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in vba._load_vba_reference", exc_info=True
+            )
             raw = {}
 
     # Restructure from flat {"objects": {name: {category, ...}}} to {category: {name: {...}}}
@@ -266,26 +267,32 @@ def _handle_list_vba_objects(args: dict) -> dict:
         return {
             "status": "ok",
             "category": category,
-            "objects": {
-                name: data.get("description", "")
-                for name, data in objects.items()
-            },
+            "objects": {name: data.get("description", "") for name, data in objects.items()},
         }
 
     # Return all categories with their objects
     result = {"status": "ok", "categories": {}}
     for cat, objects in ref.items():
         result["categories"][cat] = {  # type: ignore[index]
-            name: data.get("description", "")
-            for name, data in objects.items()
+            name: data.get("description", "") for name, data in objects.items()
         }
     return result
 
 
-_NO_ARG_METHODS = frozenset({
-    "Reset", "Create", "Delete", "Start", "Execute", "Apply",
-    "Update", "Write", "Read", "Export",
-})
+_NO_ARG_METHODS = frozenset(
+    {
+        "Reset",
+        "Create",
+        "Delete",
+        "Start",
+        "Execute",
+        "Apply",
+        "Update",
+        "Write",
+        "Read",
+        "Export",
+    }
+)
 
 
 def _build_usage_example(object_name: str, methods: list) -> str:
@@ -341,16 +348,26 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
         elif name == "cst_vba_help":
             import re
+
             from cst_mcp.tools.official import handle as official_help
+
             if client.config.cst_path:
-                search = await official_help("cst_search_help", {"query": arguments["object_name"], "limit": 50}, client)
+                search = await official_help(
+                    "cst_search_help", {"query": arguments["object_name"], "limit": 50}, client
+                )
                 candidates = json.loads(search[0].text).get("topics", [])
                 for topic in candidates:
-                    if re.search(re.escape(arguments["object_name"]) + r"(?:_object)?\.html?$", topic, re.I):
+                    if re.search(
+                        re.escape(arguments["object_name"]) + r"(?:_object)?\.html?$",
+                        topic,
+                        re.IGNORECASE,
+                    ):
                         return await official_help("cst_read_help", {"topic": topic}, client)
             result = _handle_vba_help(arguments)
             result["source"] = "bundled legacy reference; not verified against installed CST"
-            result["hint"] = "Prefer cst_search_help / cst_read_help. Example generation is illustrative, not an executable API signature check."
+            result["hint"] = (
+                "Prefer cst_search_help / cst_read_help. Example generation is illustrative, not an executable API signature check."
+            )
             return _text(result)
 
         elif name == "cst_list_vba_objects":
@@ -360,6 +377,7 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         return _text({"status": "error", "message": f"Unknown VBA tool: {name}"})
 
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in vba.handle", exc_info=True)
         return _text({"status": "error", "message": str(e)})
 
 
@@ -368,6 +386,6 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 # ---------------------------------------------------------------------------
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle, allow_multiline=frozenset({"code"}))

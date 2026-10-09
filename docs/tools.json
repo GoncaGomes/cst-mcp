@@ -1323,7 +1323,7 @@
         },
         {
           "name": "cst_create_extrude",
-          "description": "Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode 'pointlist'). The profile lies in the plane normal to 'axis' (default z) at the given x/y/z_offset; optional 'holes' are extruded the same way and subtracted (Solid.Subtract).",
+          "description": "Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode 'pointlist'). The profile lies in the plane normal to 'axis' (default z) at the given x/y/z_offset. Height, profile coordinates and the active offset accept numbers or single-line CST expressions preserved in history. Double arguments use native Evaluate. Only the selected-axis offset applies. Optional 'holes' are extruded the same way and subtracted (Solid.Subtract). Live CST validation is pending.",
           "category_id": "geometry",
           "params": [
             {
@@ -1360,8 +1360,11 @@
             },
             {
               "name": "height",
-              "type": "number",
-              "description": "Extrusion height",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Extrusion height: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1380,24 +1383,33 @@
             },
             {
               "name": "x_offset",
-              "type": "number",
-              "description": "Base-plane position on the x axis (only valid with axis='x').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on x; expressions allowed only with axis='x': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "y_offset",
-              "type": "number",
-              "description": "Base-plane position on the y axis (only valid with axis='y').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on y; expressions allowed only with axis='y': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "z_offset",
-              "type": "number",
-              "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on z; expressions allowed only with axis='z': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
@@ -1413,7 +1425,7 @@
             {
               "name": "extrude_direction",
               "type": "string",
-              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset (e.g. copper under a board). Implemented by the profile winding, which sets the ExtrudeCurve direction in CST 2026.",
+              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset. Pointlist down reverses the plane normal and remaps local coordinates, correcting the previously ignored option.",
               "default": "up",
               "enum": [
                 "up",
@@ -1820,7 +1832,7 @@
         },
         {
           "name": "cst_create_polygon_extrude",
-          "description": "Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and extrusion (ExtrudeCurve). The profile lies at the base plane given by x/y/z_offset for the chosen axis; optional 'holes' (lists of [x, y]) are extruded the same way and removed with Solid.Subtract, e.g. for slotted/fractal patches. Z placement: CST's ExtrudeCurve extrudes along the closed curve's normal, which follows the point winding (a clockwise profile at z=0 with positive thickness lands at z=-t..0, e.g. copper embedded in the substrate). This tool normalises the winding, so extrude_direction='up' (default) gives offset..offset+height along +axis and 'down' gives offset-height..offset; the response reports the expected range.",
+          "description": "Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and extrusion (ExtrudeCurve). The profile lies at the base plane given by x/y/z_offset for the chosen axis; optional 'holes' (lists of [x, y]) are extruded the same way and removed with Solid.Subtract, e.g. for slotted/fractal patches. Z placement: CST's ExtrudeCurve extrudes along the closed curve's normal, which follows the point winding (a clockwise profile at z=0 with positive thickness lands at z=-t..0, e.g. copper embedded in the substrate). This tool normalises the winding, so extrude_direction='up' (default) gives offset..offset+height along +axis and 'down' gives offset-height..offset; the response reports input-contract endpoints, not measured bounds. Height, all profile coordinates and the active offset accept numbers or single-line CST expressions. Native Evaluate and winding selection remain in history for reconstruction. Live CST validation is pending; native dialogs may show evaluated values.",
           "category_id": "geometry",
           "params": [
             {
@@ -1857,8 +1869,11 @@
             },
             {
               "name": "height",
-              "type": "number",
-              "description": "Extrusion height",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Extrusion height: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1877,24 +1892,33 @@
             },
             {
               "name": "x_offset",
-              "type": "number",
-              "description": "Base-plane position on the x axis (only valid with axis='x').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on x; expressions allowed only with axis='x': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "y_offset",
-              "type": "number",
-              "description": "Base-plane position on the y axis (only valid with axis='y').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on y; expressions allowed only with axis='y': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "z_offset",
-              "type": "number",
-              "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on z; expressions allowed only with axis='z': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
@@ -1910,7 +1934,7 @@
             {
               "name": "extrude_direction",
               "type": "string",
-              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset (e.g. copper under a board). Implemented by the profile winding, which sets the ExtrudeCurve direction in CST 2026.",
+              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset. Numeric winding is normalized before generation; symbolic winding is evaluated independently for each profile on every rebuild.",
               "default": "up",
               "enum": [
                 "up",

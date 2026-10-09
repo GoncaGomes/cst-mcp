@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import cmath
 import json
+import logging
 import math
 
 from mcp.types import TextContent, Tool
@@ -18,7 +19,6 @@ from mcp.types import TextContent, Tool
 from cst_mcp.cst_client import CSTClient
 from cst_mcp.validators import validate_frequency, validate_positive, validate_range
 from cst_mcp.vba_builder import VBABuilder, VBAScript
-
 
 # ---------------------------------------------------------------------------
 # Physical constants
@@ -75,7 +75,6 @@ TOOLS: list[Tool] = [
             "required": ["z_source_real", "z_load_real", "frequency_ghz"],
         },
     ),
-
     # 2 ── Pi-section matching network
     Tool(
         name="cst_matching_pi_network",
@@ -120,7 +119,6 @@ TOOLS: list[Tool] = [
             "required": ["z_source_real", "z_load_real", "frequency_ghz"],
         },
     ),
-
     # 3 ── T-section matching network
     Tool(
         name="cst_matching_t_network",
@@ -165,7 +163,6 @@ TOOLS: list[Tool] = [
             "required": ["z_source_real", "z_load_real", "frequency_ghz"],
         },
     ),
-
     # 4 ── Stub matching
     Tool(
         name="cst_matching_stub",
@@ -205,7 +202,6 @@ TOOLS: list[Tool] = [
             "required": ["z_load_real", "frequency_ghz"],
         },
     ),
-
     # 5 ── Quarter-wave transformer
     Tool(
         name="cst_matching_quarter_wave",
@@ -246,7 +242,6 @@ TOOLS: list[Tool] = [
             "required": ["z_source", "z_load", "frequency_ghz"],
         },
     ),
-
     # 6 ── Create lumped-element network in CST (VBA)
     Tool(
         name="cst_matching_create_lumped",
@@ -301,7 +296,6 @@ TOOLS: list[Tool] = [
             "required": ["components", "frequency_ghz"],
         },
     ),
-
     # 7 ── Smith chart impedance transformation
     Tool(
         name="cst_impedance_smith_transform",
@@ -330,7 +324,10 @@ TOOLS: list[Tool] = [
                 "operation": {
                     "type": "string",
                     "enum": [
-                        "series_L", "series_C", "shunt_L", "shunt_C",
+                        "series_L",
+                        "series_C",
+                        "shunt_L",
+                        "shunt_C",
                         "transmission_line",
                     ],
                     "description": "Type of transformation to apply",
@@ -348,11 +345,14 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "z_in_real", "z_in_imag", "operation", "value", "frequency_ghz",
+                "z_in_real",
+                "z_in_imag",
+                "operation",
+                "value",
+                "frequency_ghz",
             ],
         },
     ),
-
     # 8 ── Microstrip impedance calculator
     Tool(
         name="cst_matching_microstrip_impedance",
@@ -459,7 +459,10 @@ def _vswr_from_gamma(gamma_mag: float) -> float:
 
 
 def _microstrip_static(
-    w: float, h: float, er: float, t: float = 0.035,
+    w: float,
+    h: float,
+    er: float,
+    t: float = 0.035,
 ) -> tuple[float, float]:
     """Compute static microstrip Z0 and epsilon_eff (Hammerstad-Jensen).
 
@@ -487,17 +490,19 @@ def _microstrip_static(
     eps_eff = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * (1.0 + 10.0 / u) ** (-0.5)
 
     # Hammerstad-Jensen impedance
-    f_u = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-(30.666 / u) ** 0.7528)
-    z0 = (60.0 / math.sqrt(eps_eff)) * math.log(
-        f_u / u + math.sqrt(1.0 + (2.0 / u) ** 2)
-    )
+    f_u = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
+    z0 = (60.0 / math.sqrt(eps_eff)) * math.log(f_u / u + math.sqrt(1.0 + (2.0 / u) ** 2))
 
     return z0, eps_eff
 
 
 def _kirschning_jansen_dispersion(
-    z0_static: float, eps_eff_static: float,
-    w: float, h: float, er: float, freq_ghz: float,
+    z0_static: float,
+    eps_eff_static: float,
+    w: float,
+    h: float,
+    er: float,
+    freq_ghz: float,
 ) -> tuple[float, float]:
     """Apply Kirschning-Jansen frequency dispersion correction.
 
@@ -517,19 +522,28 @@ def _kirschning_jansen_dispersion(
     fn = freq_ghz * h  # frequency-thickness product (GHz*mm)
 
     # Kirschning-Jansen effective permittivity dispersion
-    p1 = 0.27488 + (0.6315 + 0.525 / (1.0 + 0.0157 * fn) ** 20) * u - 0.065683 * math.exp(-8.7513 * u)
+    p1 = (
+        0.27488
+        + (0.6315 + 0.525 / (1.0 + 0.0157 * fn) ** 20) * u
+        - 0.065683 * math.exp(-8.7513 * u)
+    )
     p2 = 0.33622 * (1.0 - math.exp(-0.03442 * er))
-    p3 = 0.0363 * math.exp(-4.6 * u) * (1.0 - math.exp(-(fn / 38.7) ** 4.97))
-    p4 = 1.0 + 2.751 * (1.0 - math.exp(-(er / 15.916) ** 8))
+    p3 = 0.0363 * math.exp(-4.6 * u) * (1.0 - math.exp(-((fn / 38.7) ** 4.97)))
+    p4 = 1.0 + 2.751 * (1.0 - math.exp(-((er / 15.916) ** 8)))
 
     p_f = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
 
     eps_eff_f = er - (er - eps_eff_static) / (1.0 + p_f)
 
     # Frequency-dependent impedance (from effective permittivity ratio)
-    z0_f = z0_static * math.sqrt(eps_eff_static / eps_eff_f) * (
-        eps_eff_f - 1.0
-    ) / (eps_eff_static - 1.0) if abs(eps_eff_static - 1.0) > 1e-12 else z0_static
+    z0_f = (
+        z0_static
+        * math.sqrt(eps_eff_static / eps_eff_f)
+        * (eps_eff_f - 1.0)
+        / (eps_eff_static - 1.0)
+        if abs(eps_eff_static - 1.0) > 1e-12
+        else z0_static
+    )
 
     return z0_f, eps_eff_f
 
@@ -540,7 +554,8 @@ def _kirschning_jansen_dispersion(
 
 
 async def _handle_l_network(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Design an L-section matching network."""
     r_s = validate_positive(float(arguments["z_source_real"]), "z_source_real")
@@ -551,10 +566,17 @@ async def _handle_l_network(
     topology = arguments.get("topology", "lowpass")
 
     if topology not in ("lowpass", "highpass"):
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid topology '{topology}'. Use 'lowpass' or 'highpass'.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid topology '{topology}'. Use 'lowpass' or 'highpass'.",
+                    }
+                ),
+            )
+        ]
 
     omega = 2.0 * math.pi * freq * 1e9  # rad/s
 
@@ -576,13 +598,20 @@ async def _handle_l_network(
 
     # Check if impedances are already matched
     if abs(r_s - r_l) < 1e-6 and abs(x_s) < 1e-12 and abs(x_l) < 1e-12:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "ok",
-            "message": "Impedances are already matched — no network needed.",
-            "q_factor": 0,
-            "topology": topology,
-            "component_values": {},
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "ok",
+                        "message": "Impedances are already matched — no network needed.",
+                        "q_factor": 0,
+                        "topology": topology,
+                        "component_values": {},
+                    }
+                ),
+            )
+        ]
 
     # Determine which is larger for L-network design
     if r_s > r_l:
@@ -597,12 +626,12 @@ async def _handle_l_network(
 
     # Compute reactances
     x_series = q * r_small  # series element reactance
-    x_shunt = r_large / q   # shunt element reactance (magnitude)
+    x_shunt = r_large / q  # shunt element reactance (magnitude)
 
     if topology == "lowpass":
         # Lowpass: series L, shunt C
         # Series element is inductive (+j), shunt element is capacitive (-jB)
-        series_x = x_series   # positive = inductor
+        series_x = x_series  # positive = inductor
         shunt_b = 1.0 / x_shunt  # positive susceptance = capacitor
     else:
         # Highpass: series C, shunt L
@@ -657,7 +686,8 @@ async def _handle_l_network(
 
 
 async def _handle_pi_network(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Design a Pi-section matching network (two back-to-back L-sections)."""
     r_s = validate_positive(float(arguments["z_source_real"]), "z_source_real")
@@ -677,13 +707,20 @@ async def _handle_pi_network(
     if q is not None:
         q = float(q)
         if q < q_min:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": (
-                    f"Q factor {q} is too low. Minimum Q for Pi network with "
-                    f"R_source={r_s} and R_load={r_l} is {round(q_min, 4)}."
-                ),
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": (
+                                f"Q factor {q} is too low. Minimum Q for Pi network with "
+                                f"R_source={r_s} and R_load={r_l} is {round(q_min, 4)}."
+                            ),
+                        }
+                    ),
+                )
+            ]
     else:
         # Default: use q_min + 1 for some design margin, minimum of 2
         q = max(q_min + 1.0, 2.0)
@@ -758,7 +795,8 @@ async def _handle_pi_network(
 
 
 async def _handle_t_network(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Design a T-section matching network (dual of Pi)."""
     r_s = validate_positive(float(arguments["z_source_real"]), "z_source_real")
@@ -778,13 +816,20 @@ async def _handle_t_network(
     if q is not None:
         q = float(q)
         if q < q_min:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": (
-                    f"Q factor {q} is too low. Minimum Q for T network with "
-                    f"R_source={r_s} and R_load={r_l} is {round(q_min, 4)}."
-                ),
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": (
+                                f"Q factor {q} is too low. Minimum Q for T network with "
+                                f"R_source={r_s} and R_load={r_l} is {round(q_min, 4)}."
+                            ),
+                        }
+                    ),
+                )
+            ]
     else:
         q = max(q_min + 1.0, 2.0)
 
@@ -794,12 +839,12 @@ async def _handle_t_network(
     # Source-side L-section: R_s to R_v (series element on source side)
     q_s = math.sqrt(r_v / r_s - 1.0)
     x_series_s = q_s * r_s  # series reactance on source side
-    x_shunt_s = r_v / q_s   # shunt reactance
+    x_shunt_s = r_v / q_s  # shunt reactance
 
     # Load-side L-section: R_l to R_v (series element on load side)
     q_l = math.sqrt(r_v / r_l - 1.0)
     x_series_l = q_l * r_l  # series reactance on load side
-    x_shunt_l = r_v / q_l   # shunt reactance
+    x_shunt_l = r_v / q_l  # shunt reactance
 
     # T topology: series L1 - shunt C - series L2 (lowpass form)
     # The two shunt capacitors combine into one
@@ -855,7 +900,8 @@ async def _handle_t_network(
 
 
 async def _handle_stub_matching(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Design a single-stub matching network."""
     r_l = float(arguments["z_load_real"])
@@ -865,16 +911,30 @@ async def _handle_stub_matching(
     stub_type = arguments.get("stub_type", "open")
 
     if stub_type not in ("open", "short"):
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid stub_type '{stub_type}'. Use 'open' or 'short'.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid stub_type '{stub_type}'. Use 'open' or 'short'.",
+                    }
+                ),
+            )
+        ]
 
     if r_l <= 0:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"z_load_real must be positive, got {r_l}.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"z_load_real must be positive, got {r_l}.",
+                    }
+                ),
+            )
+        ]
 
     # Wavelength
     wavelength_mm = (C0 / (freq * 1e9)) * 1e3  # mm
@@ -888,14 +948,21 @@ async def _handle_stub_matching(
 
     # Check for already-matched load
     if abs(g_l - 1.0) < 1e-6 and abs(b_l) < 1e-6:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "ok",
-            "message": "Load is already matched to Z0 — no stub needed.",
-            "stub_length_mm": 0,
-            "stub_length_wavelengths": 0,
-            "distance_from_load_mm": 0,
-            "distance_wavelengths": 0,
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "ok",
+                        "message": "Load is already matched to Z0 — no stub needed.",
+                        "stub_length_mm": 0,
+                        "stub_length_wavelengths": 0,
+                        "distance_from_load_mm": 0,
+                        "distance_wavelengths": 0,
+                    }
+                ),
+            )
+        ]
 
     # Single stub matching: find distance d from load where
     # the real part of Y_in = 1/Z0 (normalized G = 1)
@@ -935,10 +1002,17 @@ async def _handle_stub_matching(
     else:
         discriminant = b_coeff * b_coeff - 4.0 * a_coeff * c_coeff
         if discriminant < 0:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": "No real solution for stub matching distance. Load may not be matchable with a single stub.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": "No real solution for stub matching distance. Load may not be matchable with a single stub.",
+                        }
+                    ),
+                )
+            ]
         sqrt_disc = math.sqrt(discriminant)
         t1 = (-b_coeff + sqrt_disc) / (2.0 * a_coeff)
         t2 = (-b_coeff - sqrt_disc) / (2.0 * a_coeff)
@@ -985,10 +1059,17 @@ async def _handle_stub_matching(
             found = True
 
     if not found:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": "Could not find valid stub matching solution.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": "Could not find valid stub matching solution.",
+                    }
+                ),
+            )
+        ]
 
     d_mm = best_d_wl * wavelength_mm
     stub_mm = best_stub_wl * wavelength_mm
@@ -1022,7 +1103,8 @@ def _binomial_coefficient(n: int, k: int) -> int:
 
 
 async def _handle_quarter_wave(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Design a quarter-wave transformer matching network."""
     z_s = validate_positive(float(arguments["z_source"]), "z_source")
@@ -1034,10 +1116,17 @@ async def _handle_quarter_wave(
     n = int(validate_range(float(n), 1, 4, "num_sections"))
 
     if design not in ("maximally_flat", "chebyshev"):
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid design '{design}'. Use 'maximally_flat' or 'chebyshev'.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid design '{design}'. Use 'maximally_flat' or 'chebyshev'.",
+                    }
+                ),
+            )
+        ]
 
     # Wavelength and section length
     wavelength_mm = (C0 / (freq * 1e9)) * 1e3
@@ -1103,20 +1192,29 @@ async def _handle_quarter_wave(
 
 
 async def _handle_create_lumped(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Generate CST VBA for lumped-element matching network."""
     components: list[dict] = arguments["components"]
     freq = validate_frequency(float(arguments["frequency_ghz"]))
     port_z = validate_positive(
-        float(arguments.get("port_impedance", 50)), "port_impedance",
+        float(arguments.get("port_impedance", 50)),
+        "port_impedance",
     )
 
     if not components:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": "At least one component is required.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": "At least one component is required.",
+                    }
+                ),
+            )
+        ]
 
     script = VBAScript()
     script.add_comment("Lumped-Element Matching Network")
@@ -1131,15 +1229,29 @@ async def _handle_create_lumped(
         connection = comp["connection"]
 
         if comp_type not in ("L", "C", "R"):
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": f"Invalid component type '{comp_type}' at index {i}. Use 'L', 'C', or 'R'.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": f"Invalid component type '{comp_type}' at index {i}. Use 'L', 'C', or 'R'.",
+                        }
+                    ),
+                )
+            ]
         if connection not in ("series", "shunt"):
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": f"Invalid connection '{connection}' at index {i}. Use 'series' or 'shunt'.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": f"Invalid connection '{connection}' at index {i}. Use 'series' or 'shunt'.",
+                        }
+                    ),
+                )
+            ]
 
         validate_positive(value, f"component[{i}].value")
 
@@ -1147,17 +1259,14 @@ async def _handle_create_lumped(
 
         # Determine CST LumpedElement type string
         if comp_type == "L":
-            cst_type = "RLC Serial"
             r_val = 0.0
             l_val = value  # nH
             c_val = 0.0
         elif comp_type == "C":
-            cst_type = "RLC Serial"
             r_val = 0.0
             l_val = 0.0
             c_val = value  # pF
         else:  # R
-            cst_type = "RLC Serial"
             r_val = value
             l_val = 0.0
             c_val = 0.0
@@ -1176,20 +1285,27 @@ async def _handle_create_lumped(
             .set_number("SetL", l_val * 1e-9)
             .set_number("SetC", c_val * 1e-12)
             .set_point("SetP1", x_pos, 0, 0)
-            .set_point("SetP2", x_pos + (1 if orientation == "x" else 0), (1 if orientation == "y" else 0), 0)
+            .set_point(
+                "SetP2",
+                x_pos + (1 if orientation == "x" else 0),
+                (1 if orientation == "y" else 0),
+                0,
+            )
             .call("Create")
         )
         script.add_block(vba)
 
-        component_summary.append({
-            "index": i,
-            "name": elem_name,
-            "type": comp_type,
-            "value": value,
-            "unit": unit,
-            "connection": connection,
-            "position_mm": {"x": x_pos, "y": 0, "z": 0},
-        })
+        component_summary.append(
+            {
+                "index": i,
+                "name": elem_name,
+                "type": comp_type,
+                "value": value,
+                "unit": unit,
+                "connection": connection,
+                "position_mm": {"x": x_pos, "y": 0, "z": 0},
+            }
+        )
 
     vba_code = script.build()
     result = client.execute_vba(vba_code)
@@ -1202,7 +1318,8 @@ async def _handle_create_lumped(
 
 
 async def _handle_smith_transform(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Apply impedance transformation on the Smith chart."""
     z_in = complex(float(arguments["z_in_real"]), float(arguments["z_in_imag"]))
@@ -1213,10 +1330,17 @@ async def _handle_smith_transform(
 
     valid_ops = ("series_L", "series_C", "shunt_L", "shunt_C", "transmission_line")
     if operation not in valid_ops:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid operation '{operation}'. Valid: {list(valid_ops)}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid operation '{operation}'. Valid: {list(valid_ops)}",
+                    }
+                ),
+            )
+        ]
 
     omega = 2.0 * math.pi * freq * 1e9
 
@@ -1230,10 +1354,17 @@ async def _handle_smith_transform(
         # Series capacitor: Z_out = Z_in - j/(omega*C)
         c_f = value * 1e-12  # pF to F
         if c_f <= 0:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": "Capacitance must be positive.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": "Capacitance must be positive.",
+                        }
+                    ),
+                )
+            ]
         x_c = -1.0 / (omega * c_f)
         z_out = z_in + complex(0, x_c)
 
@@ -1241,10 +1372,17 @@ async def _handle_smith_transform(
         # Shunt inductor: Y_out = Y_in + 1/(j*omega*L) = Y_in - j/(omega*L)
         l_h = value * 1e-9
         if l_h <= 0:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": "Inductance must be positive.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": "Inductance must be positive.",
+                        }
+                    ),
+                )
+            ]
         b_l = -1.0 / (omega * l_h)
         y_in = 1.0 / z_in
         y_out = y_in + complex(0, b_l)
@@ -1263,9 +1401,7 @@ async def _handle_smith_transform(
         theta_rad = math.radians(value)
         # Z_out = Z0 * (Z_in + j*Z0*tan(theta)) / (Z0 + j*Z_in*tan(theta))
         tan_theta = math.tan(theta_rad)
-        z_out = z0 * (z_in + complex(0, z0 * tan_theta)) / (
-            z0 + complex(0, z_in * tan_theta)
-        )
+        z_out = z0 * (z_in + complex(0, z0 * tan_theta)) / (z0 + complex(0, z_in * tan_theta))
 
     gamma_mag, gamma_phase = _reflection_coefficient(z_out, z0)
     vswr = _vswr_from_gamma(gamma_mag)
@@ -1289,7 +1425,8 @@ async def _handle_smith_transform(
 
 
 async def _handle_microstrip_impedance(
-    arguments: dict, client: CSTClient,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Calculate microstrip impedance from physical dimensions."""
     w = validate_positive(float(arguments["width_mm"]), "width_mm")
@@ -1303,7 +1440,12 @@ async def _handle_microstrip_impedance(
     if freq_ghz is not None:
         freq_ghz = validate_frequency(float(freq_ghz))
         z0_freq, eps_eff_freq = _kirschning_jansen_dispersion(
-            z0_static, eps_eff_static, w, h, er, freq_ghz,
+            z0_static,
+            eps_eff_static,
+            w,
+            h,
+            er,
+            freq_ghz,
         )
         wavelength_mm = (C0 / (freq_ghz * 1e9)) * 1e3 / math.sqrt(eps_eff_freq)
         # Propagation delay: t_pd = sqrt(eps_eff) / c  (per mm)
@@ -1343,7 +1485,9 @@ async def _handle_microstrip_impedance(
 
 
 async def handle(
-    name: str, arguments: dict, client: CSTClient,
+    name: str,
+    arguments: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     """Handle a matching network tool call."""
     try:
@@ -1364,17 +1508,34 @@ async def handle(
         if name == "cst_matching_microstrip_impedance":
             return await _handle_microstrip_impedance(arguments, client)
 
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error", "message": f"Unknown matching tool: {name}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unknown matching tool: {name}",
+                    }
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error", "message": str(e),
-        }))]
+        logging.getLogger(__name__).debug("Handled error in matching.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                    }
+                ),
+            )
+        ]
 
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

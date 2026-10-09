@@ -7,16 +7,17 @@ sweeps, and configuring optimizations in CST Studio.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.vba_builder import VBAScript, _escape_vba_string
 from cst_mcp.validators import validate_name, validate_positive
-
+from cst_mcp.vba_builder import VBAScript, _escape_vba_string
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -69,7 +70,6 @@ TOOLS: list[Tool] = [
             "required": ["name", "value"],
         },
     ),
-
     # 2. Get parameter
     Tool(
         name="cst_get_parameter",
@@ -88,7 +88,6 @@ TOOLS: list[Tool] = [
             "required": ["name"],
         },
     ),
-
     # 3. List parameters
     Tool(
         name="cst_list_parameters",
@@ -102,7 +101,6 @@ TOOLS: list[Tool] = [
             "required": [],
         },
     ),
-
     # 4. Delete parameter
     Tool(
         name="cst_delete_parameter",
@@ -132,7 +130,6 @@ TOOLS: list[Tool] = [
             "required": ["name"],
         },
     ),
-
     # 5. Parameter sweep
     Tool(
         name="cst_parameter_sweep",
@@ -203,7 +200,6 @@ TOOLS: list[Tool] = [
             "required": ["parameter", "start", "stop", "steps"],
         },
     ),
-
     # 6. Optimizer
     Tool(
         name="cst_optimizer",
@@ -301,7 +297,6 @@ TOOLS: list[Tool] = [
             "required": ["goal_type", "result_path", "parameters"],
         },
     ),
-
     # 7. Multi-objective optimizer
     Tool(
         name="cst_multi_objective_optimizer",
@@ -408,7 +403,6 @@ TOOLS: list[Tool] = [
             "required": ["goals", "parameters"],
         },
     ),
-
     # 8. Sensitivity analysis
     Tool(
         name="cst_sensitivity_analysis",
@@ -445,7 +439,6 @@ TOOLS: list[Tool] = [
             "required": ["parameters", "result_path"],
         },
     ),
-
     # 9. Yield analysis (Monte Carlo)
     Tool(
         name="cst_yield_analysis",
@@ -503,7 +496,6 @@ TOOLS: list[Tool] = [
             "required": ["parameters", "pass_criteria"],
         },
     ),
-
     # 10. Constrained optimizer
     Tool(
         name="cst_constrained_optimizer",
@@ -592,7 +584,6 @@ TOOLS: list[Tool] = [
             "required": ["objective", "constraints", "parameters"],
         },
     ),
-
     # 11. Parameter interpolation
     Tool(
         name="cst_parameter_interpolation",
@@ -661,8 +652,11 @@ def _build_set_parameter(args: dict) -> str:
     """
     name = _param_name(args["name"])
     value = args["value"]
-    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-        raise ValueError("value must be a number or a string expression")
+    match value:
+        case int() | float() | str() if not isinstance(value, bool):
+            pass
+        case _:
+            raise ValueError("value must be a number or a string expression")
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("value must be finite")
     safe_value = _escape_vba_string(str(value))
@@ -735,8 +729,10 @@ def _build_parameter_sweep(args: dict) -> str:
     # ("Simulation type is undefined"), so one is always set.
     sim_type = args.get("simulation_type") or "Transient"
     if sim_type not in _SWEEP_SIMULATION_TYPES:
-        raise ValueError(f"Unsupported simulation_type {sim_type!r}; "
-                         f"use one of {sorted(_SWEEP_SIMULATION_TYPES)}")
+        raise ValueError(
+            f"Unsupported simulation_type {sim_type!r}; "
+            f"use one of {sorted(_SWEEP_SIMULATION_TYPES)}"
+        )
     sequence = f"mcp_{parameter}"
     lines = ["With ParameterSweep", f'  .SetSimulationType "{_SWEEP_SIMULATION_TYPES[sim_type]}"']
     if args.get("clear_existing", True):
@@ -754,11 +750,13 @@ def _build_parameter_sweep(args: dict) -> str:
 
 def _build_optimizer(args: dict) -> str:
     from cst_mcp.execution.native_optimizer import build_optimizer
+
     return build_optimizer(args, "single")
 
 
 def _build_multi_objective_optimizer(args: dict) -> str:
     from cst_mcp.execution.native_optimizer import build_optimizer
+
     return build_optimizer(args, "multi")
 
 
@@ -769,8 +767,10 @@ def _build_sensitivity_analysis(args: dict) -> str:
     if not parameters:
         raise ValueError("At least one parameter must be specified")
 
-    lines = [f"' Sensitivity analysis: monitor {_escape_vba_string(args['result_path'])}",
-             "With ParameterSweep"]
+    lines = [
+        f"' Sensitivity analysis: monitor {_escape_vba_string(args['result_path'])}",
+        "With ParameterSweep",
+    ]
     for param in parameters:
         param_name = _param_name(param["name"])
         nominal = float(param["nominal"])
@@ -778,10 +778,14 @@ def _build_sensitivity_analysis(args: dict) -> str:
         delta = abs(nominal * perturbation / 100.0)
         sequence = f"mcp_sensitivity_{param_name}"
         lines += [
-            "  On Error Resume Next", f'  .DeleteSequence "{sequence}"', "  On Error GoTo 0",
+            "  On Error Resume Next",
+            f'  .DeleteSequence "{sequence}"',
+            "  On Error GoTo 0",
             f'  .AddSequence "{sequence}"',
-            f'  .AddParameter_Samples "{sequence}", "{param_name}", '
-            f'{_vba_number(nominal - delta, "low")}, {_vba_number(nominal + delta, "high")}, 3, False',
+            (
+                f'  .AddParameter_Samples "{sequence}", "{param_name}", '
+                f"{_vba_number(nominal - delta, 'low')}, {_vba_number(nominal + delta, 'high')}, 3, False"
+            ),
         ]
     lines.append("End With")
     return "\n".join(lines)
@@ -801,34 +805,48 @@ def _build_yield_analysis(args: dict) -> str:
 
     # One sample per sequence avoids a Cartesian product masquerading as Monte Carlo.
     import random
+
     rng = random.Random(0)
     lines = [
         f"' Monte Carlo yield analysis - {num_samples} samples",
-        "' Uniform independent tolerances; reproducible Python seed=0. Configure only, "
-        "no solver start. Pass criteria require separate analysis.",
+        (
+            "' Uniform independent tolerances; reproducible Python seed=0. Configure only, "
+            "no solver start. Pass criteria require separate analysis."
+        ),
         "With ParameterSweep",
     ]
     for sample in range(num_samples):
         sequence = f"mcp_mc_{sample + 1}"
-        lines += ["  On Error Resume Next", f'  .DeleteSequence "{sequence}"', "  On Error GoTo 0",
-                  f'  .AddSequence "{sequence}"']
+        lines += [
+            "  On Error Resume Next",
+            f'  .DeleteSequence "{sequence}"',
+            "  On Error GoTo 0",
+            f'  .AddSequence "{sequence}"',
+        ]
         for param in parameters:
             param_name = _param_name(param["name"])
             nominal, tolerance = float(param["nominal"]), float(param["tolerance"])
             if tolerance < 0:
                 raise ValueError("tolerance must be non-negative")
             value = nominal + rng.uniform(-tolerance, tolerance)
-            lines.append(f'  .AddParameter_ArbitraryPoints "{sequence}", "{param_name}", '
-                         f'"{_vba_number(value, "sample")}"')
+            lines.append(
+                f'  .AddParameter_ArbitraryPoints "{sequence}", "{param_name}", '
+                f'"{_vba_number(value, "sample")}"'
+            )
     lines.append("End With")
     for criterion in pass_criteria:
-        lines.append("' Pass criterion: " + _escape_vba_string(
-            f"{criterion['result_path']} {criterion['operator']} {criterion['threshold']}"))
+        lines.append(
+            "' Pass criterion: "
+            + _escape_vba_string(
+                f"{criterion['result_path']} {criterion['operator']} {criterion['threshold']}"
+            )
+        )
     return "\n".join(lines)
 
 
 def _build_constrained_optimizer(args: dict) -> str:
     from cst_mcp.execution.native_optimizer import build_optimizer
+
     return build_optimizer(args, "constrained")
 
 
@@ -863,14 +881,22 @@ def _ensure_no_results(client: CSTClient, delete_results: bool) -> dict | None:
     if present is False:
         return None
     if present is None:
-        return {"status": "error", "code": "results_state_unknown",
-                "message": "Could not determine whether the project has results; nothing was changed."}
+        return {
+            "status": "error",
+            "code": "results_state_unknown",
+            "message": "Could not determine whether the project has results; nothing was changed.",
+        }
     if not delete_results:
-        return {"status": "error", "code": "results_exist",
-                "message": ("The project has simulation results. Changing parameters or starting "
-                            "a sweep/optimizer invalidates them and CST would block on a modal "
-                            "dialog. Export what you need, then retry with delete_results=true "
-                            "(or call cst_delete_results first).")}
+        return {
+            "status": "error",
+            "code": "results_exist",
+            "message": (
+                "The project has simulation results. Changing parameters or starting "
+                "a sweep/optimizer invalidates them and CST would block on a modal "
+                "dialog. Export what you need, then retry with delete_results=true "
+                "(or call cst_delete_results first)."
+            ),
+        }
     deleted = client.delete_results()
     if deleted.get("status") != "ok":
         return {**deleted, "stage": "delete_results"}
@@ -879,10 +905,15 @@ def _ensure_no_results(client: CSTClient, delete_results: bool) -> dict | None:
 
 def _handle_parameter_change(name: str, args: dict, client: CSTClient) -> dict:
     """cst_set_parameter / cst_delete_parameter: parameter list + rebuild, no history."""
-    vba = _build_set_parameter(args) if name == "cst_set_parameter" else _build_delete_parameter(args)
+    vba = (
+        _build_set_parameter(args) if name == "cst_set_parameter" else _build_delete_parameter(args)
+    )
     if not client.connected or not client.has_project:
-        return {"status": "offline", "vba": vba,
-                "message": "Run as a macro (not a history step), then rebuild the model."}
+        return {
+            "status": "offline",
+            "vba": vba,
+            "message": "Run as a macro (not a history step), then rebuild the model.",
+        }
     state = client.solver_status()
     if state.get("status") != "ok":
         return state
@@ -922,8 +953,12 @@ def _default_sweep_type(client: CSTClient) -> str | None:
 
 
 def _handle_configuration(name: str, args: dict, client: CSTClient) -> dict:
-    if (name == "cst_parameter_sweep" and not args.get("simulation_type")
-            and client.connected and client.has_project):
+    if (
+        name == "cst_parameter_sweep"
+        and not args.get("simulation_type")
+        and client.connected
+        and client.has_project
+    ):
         detected = _default_sweep_type(client)
         if detected:
             args = {**args, "simulation_type": detected}
@@ -931,9 +966,13 @@ def _handle_configuration(name: str, args: dict, client: CSTClient) -> dict:
     run = bool(args.get("run", False)) and name in _STARTABLE
     if not client.connected or not client.has_project:
         start = _STARTABLE.get(name)
-        return {"status": "offline", "vba": vba,
-                "next_steps": f"Run as a macro (not a history step), then {start[0]}." if start
-                else "Run as a macro (not a history step)."}
+        return {
+            "status": "offline",
+            "vba": vba,
+            "next_steps": f"Run as a macro (not a history step), then {start[0]}."
+            if start
+            else "Run as a macro (not a history step).",
+        }
     blocked = client._idle_error()
     if blocked:
         return blocked
@@ -941,14 +980,19 @@ def _handle_configuration(name: str, args: dict, client: CSTClient) -> dict:
     configured = client._run_model3d_vba(vba)
     if configured.get("status") != "executed":
         return {**configured, "stage": "configure", "vba": vba}
-    out: dict[str, Any] = {"status": "configured", "history_written": False,
-                           "entrypoint": configured.get("entrypoint")}
+    out: dict[str, Any] = {
+        "status": "configured",
+        "history_written": False,
+        "entrypoint": configured.get("entrypoint"),
+    }
     start = _STARTABLE.get(name)
     if not run:
         if start:
-            out["next_steps"] = (f"Call again with run=true to start ({start[0]}), or start it from the "
-                                 "CST GUI. It then solves once per evaluation; poll "
-                                 "cst_wait_for_simulation.")
+            out["next_steps"] = (
+                f"Call again with run=true to start ({start[0]}), or start it from the "
+                "CST GUI. It then solves once per evaluation; poll "
+                "cst_wait_for_simulation."
+            )
         return out
     blocked = _ensure_no_results(client, bool(args.get("delete_results", False)))
     if blocked:
@@ -971,11 +1015,15 @@ def _handle_interpolation(args: dict, client: CSTClient) -> dict:
         return {"status": "error", "message": "Open a saved project with sweep results first"}
     running = client.is_solver_running(timeout_s=5)
     if running is not False:
-        return {"status": "busy", "running": running,
-                "message": "Results are not read while the solver is active or its state is unknown"}
+        return {
+            "status": "busy",
+            "running": running,
+            "message": "Results are not read while the solver is active or its state is unknown",
+        }
     reader = open_reader(client.project_path, allow_interactive=True)
-    return interpolate_runs(reader, tree_path, parameter, target,
-                            max_points=int(args.get("max_points", 200)))
+    return interpolate_runs(
+        reader, tree_path, parameter, target, max_points=int(args.get("max_points", 200))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1005,25 +1053,44 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         elif name in _CONFIG_BUILDERS:
             result = _handle_configuration(name, arguments, client)
             if name == "cst_parameter_sweep":
-                result.update(parameter=arguments["parameter"], start=arguments["start"],
-                              stop=arguments["stop"], steps=arguments["steps"])
-            elif name in ("cst_optimizer", "cst_multi_objective_optimizer", "cst_constrained_optimizer"):
+                result.update(
+                    parameter=arguments["parameter"],
+                    start=arguments["start"],
+                    stop=arguments["stop"],
+                    steps=arguments["steps"],
+                )
+            elif name in (
+                "cst_optimizer",
+                "cst_multi_objective_optimizer",
+                "cst_constrained_optimizer",
+            ):
                 result["parameters"] = [p["name"] for p in arguments["parameters"]]
                 if name == "cst_optimizer":
-                    result.update(goal_type=arguments["goal_type"], result_path=arguments["result_path"],
-                                  method=arguments.get("method", "Trust Region"),
-                                  max_evaluations=arguments.get("max_evaluations", 100))
+                    result.update(
+                        goal_type=arguments["goal_type"],
+                        result_path=arguments["result_path"],
+                        method=arguments.get("method", "Trust Region"),
+                        max_evaluations=arguments.get("max_evaluations", 100),
+                    )
                 elif name == "cst_multi_objective_optimizer":
-                    result.update(num_goals=len(arguments["goals"]), method=arguments.get("method", "CMAES"))
+                    result.update(
+                        num_goals=len(arguments["goals"]), method=arguments.get("method", "CMAES")
+                    )
                 else:
-                    result.update(objective=arguments["objective"],
-                                  num_constraints=len(arguments["constraints"]))
+                    result.update(
+                        objective=arguments["objective"],
+                        num_constraints=len(arguments["constraints"]),
+                    )
             elif name == "cst_sensitivity_analysis":
-                result.update(result_path=arguments["result_path"],
-                              parameters=[p["name"] for p in arguments["parameters"]])
+                result.update(
+                    result_path=arguments["result_path"],
+                    parameters=[p["name"] for p in arguments["parameters"]],
+                )
             else:
-                result.update(num_samples=arguments.get("num_samples", 50),
-                              parameters=[p["name"] for p in arguments["parameters"]])
+                result.update(
+                    num_samples=arguments.get("num_samples", 50),
+                    parameters=[p["name"] for p in arguments["parameters"]],
+                )
         elif name == "cst_parameter_interpolation":
             result = _handle_interpolation(arguments, client)
             result.update(parameter=arguments["parameter"], target_value=arguments["target_value"])
@@ -1036,8 +1103,8 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
             return _text({"status": "error", "message": f"Unknown parameter tool: {name}"})
         return _text(result)
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in parameters.handle", exc_info=True)
         return _text({"status": "error", "message": str(e)})
-
 
 
 # ---------------------------------------------------------------------------
@@ -1047,6 +1114,6 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

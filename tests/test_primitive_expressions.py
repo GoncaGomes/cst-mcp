@@ -10,20 +10,42 @@ from cst_mcp.vba_builder import VBABuilder
 
 COMMON = {"component": "c", "name": "s", "axis": "z", "range_min": 0, "range_max": 6}
 CASES = {
-    "cylinder": ({**COMMON, "outer_radius": 2},
-                 ("outer_radius", "inner_radius", "center_x", "center_y", "center_z",
-                  "range_min", "range_max")),
-    "cone": ({**COMMON, "bottom_radius": 2, "top_radius": 1},
-             ("bottom_radius", "top_radius", "center_x", "center_y", "center_z",
-              "range_min", "range_max")),
-    "sphere": ({"component": "c", "name": "s", "radius": 2},
-               ("radius", "center_x", "center_y", "center_z")),
-    "ecylinder": ({**COMMON, "x_radius": 2, "y_radius": 1},
-                  ("x_radius", "y_radius", "center_x", "center_y", "center_z",
-                   "range_min", "range_max")),
-    "torus": ({"component": "c", "name": "s", "axis": "z", "outer_radius": 6,
-               "inner_radius": 4},
-              ("outer_radius", "inner_radius", "center_x", "center_y", "center_z")),
+    "cylinder": (
+        {**COMMON, "outer_radius": 2},
+        (
+            "outer_radius",
+            "inner_radius",
+            "center_x",
+            "center_y",
+            "center_z",
+            "range_min",
+            "range_max",
+        ),
+    ),
+    "cone": (
+        {**COMMON, "bottom_radius": 2, "top_radius": 1},
+        (
+            "bottom_radius",
+            "top_radius",
+            "center_x",
+            "center_y",
+            "center_z",
+            "range_min",
+            "range_max",
+        ),
+    ),
+    "sphere": (
+        {"component": "c", "name": "s", "radius": 2},
+        ("radius", "center_x", "center_y", "center_z"),
+    ),
+    "ecylinder": (
+        {**COMMON, "x_radius": 2, "y_radius": 1},
+        ("x_radius", "y_radius", "center_x", "center_y", "center_z", "range_min", "range_max"),
+    ),
+    "torus": (
+        {"component": "c", "name": "s", "axis": "z", "outer_radius": 6, "inner_radius": 4},
+        ("outer_radius", "inner_radius", "center_x", "center_y", "center_z"),
+    ),
     "polygon3d": ({"name": "p", "points": [[0, 0, 0], [2, 3, 0], [0, 0, 0]]}, ()),
 }
 
@@ -37,16 +59,21 @@ def replace_coordinate(shape, field, value):
     return args
 
 
-FIELDS = [(shape, field) for shape, (_, fields) in CASES.items()
-          for field in (fields if fields else range(3))]
+FIELDS = [
+    (shape, field)
+    for shape, (_, fields) in CASES.items()
+    for field in (fields if fields else range(3))
+]
 
 
 @pytest.mark.parametrize("shape,field", FIELDS)
 def test_each_expression_coordinate_preserved_in_mixed_public_call(shape, field):
     client = RecordingClient()
     expression = " (PGeom_R + 2)/3 "
-    assert call(replace_coordinate(shape, field, expression), client,
-                f"cst_create_{shape}")["status"] == "executed"
+    assert (
+        call(replace_coordinate(shape, field, expression), client, f"cst_create_{shape}")["status"]
+        == "executed"
+    )
     assert f'"{expression}"' in client.codes[0]
     assert '"0"' in client.codes[0]  # Numeric values/defaults coexist with expressions.
 
@@ -69,27 +96,42 @@ def test_numeric_calls_keep_defaults_and_formatting(shape):
 
 
 @pytest.mark.parametrize("shape", CASES)
-@pytest.mark.parametrize("bad", [True, None, [], {}, float("inf"), float("nan"),
-                                 "", " \t ", "x\u2028y", "x\x01y", "x\x7fy"])
+@pytest.mark.parametrize(
+    "bad",
+    [True, None, [], {}, float("inf"), float("nan"), "", " \t ", "x\u2028y", "x\x01y", "x\x7fy"],
+)
 def test_representative_invalid_coordinates_stop_before_execution(shape, bad):
     field = CASES[shape][1][0] if CASES[shape][1] else 0
     client = RecordingClient()
-    assert call(replace_coordinate(shape, field, bad), client,
-                f"cst_create_{shape}")["status"] == "error"
+    assert (
+        call(replace_coordinate(shape, field, bad), client, f"cst_create_{shape}")["status"]
+        == "error"
+    )
     assert client.codes == []
 
 
-@pytest.mark.parametrize("shape,field,zero_ok", [
-    ("cylinder", "outer_radius", False), ("cylinder", "inner_radius", True),
-    ("cone", "bottom_radius", True), ("cone", "top_radius", True),
-    ("sphere", "radius", False), ("ecylinder", "x_radius", False),
-    ("ecylinder", "y_radius", False), ("torus", "outer_radius", False),
-    ("torus", "inner_radius", False),
-])
+@pytest.mark.parametrize(
+    "shape,field,zero_ok",
+    [
+        ("cylinder", "outer_radius", False),
+        ("cylinder", "inner_radius", True),
+        ("cone", "bottom_radius", True),
+        ("cone", "top_radius", True),
+        ("sphere", "radius", False),
+        ("ecylinder", "x_radius", False),
+        ("ecylinder", "y_radius", False),
+        ("torus", "outer_radius", False),
+        ("torus", "inner_radius", False),
+    ],
+)
 def test_original_numeric_radius_sign_contracts(shape, field, zero_ok):
     for value, status in ((-1, "error"), (0, "executed" if zero_ok else "error")):
-        assert call(replace_coordinate(shape, field, value), RecordingClient(),
-                    f"cst_create_{shape}")["status"] == status
+        assert (
+            call(replace_coordinate(shape, field, value), RecordingClient(), f"cst_create_{shape}")[
+                "status"
+            ]
+            == status
+        )
 
 
 def test_only_selected_dimension_schema_leaves_expand():
@@ -104,29 +146,49 @@ def test_only_selected_dimension_schema_leaves_expand():
         if "material" in props:
             assert props["material"]["type"] == "string" and props["material"]["default"] == "PEC"
     assert tools["cst_create_sphere"]["properties"]["segments"]["type"] == "integer"
-    for shape, field in (("extrude", "height"), ("wire", "radius"),
-                         ("analytical_curve", "t_min"), ("polygon_extrude", "height")):
+    for shape in ("extrude", "polygon_extrude"):
+        props = tools[f"cst_create_{shape}"]["properties"]
+        leaves = [
+            props["height"],
+            props["points"]["items"]["items"],
+            props["holes"]["items"]["items"]["items"],
+            *(props[f"{axis}_offset"] for axis in "xyz"),
+        ]
+        assert all(s["type"] == ["number", "string"] and s["minLength"] == 1 for s in leaves)
+    for shape, field in (
+        ("wire", "radius"),
+        ("analytical_curve", "t_min"),
+        ("analytical_curve", "t_max"),
+    ):
         assert tools[f"cst_create_{shape}"]["properties"][field]["type"] == "number"
 
 
-@pytest.mark.parametrize("shape,field,bad", [
-    ("sphere", "segments", "PGeom_R"), ("sphere", "segments", True),
-    ("cylinder", "axis", "PGeom_R"), ("cone", "name", "bad:name"),
-    ("torus", "material", "PEC\n.Create"),
-])
+@pytest.mark.parametrize(
+    "shape,field,bad",
+    [
+        ("sphere", "segments", "PGeom_R"),
+        ("sphere", "segments", True),
+        ("cylinder", "axis", "PGeom_R"),
+        ("cone", "name", "bad:name"),
+        ("torus", "material", "PEC\n.Create"),
+    ],
+)
 def test_unchanged_field_restrictions(shape, field, bad):
     client = RecordingClient()
-    assert call({**CASES[shape][0], field: bad}, client,
-                f"cst_create_{shape}")["status"] == "error"
+    assert call({**CASES[shape][0], field: bad}, client, f"cst_create_{shape}")["status"] == "error"
     assert not client.codes
 
 
 @pytest.mark.parametrize("value", [0, -2, 1.234567890123, 1e-11, 1e20])
 def test_new_expression_helpers_match_numeric_helpers(value):
-    assert (VBABuilder("X").set_expression("P", value).build()
-            == VBABuilder("X").set_number("P", value).build())
-    assert (VBABuilder("X").set_expression_triple("P", value, 0, value).build()
-            == VBABuilder("X").set_triple("P", value, 0, value).build())
+    assert (
+        VBABuilder("X").set_expression("P", value).build()
+        == VBABuilder("X").set_number("P", value).build()
+    )
+    assert (
+        VBABuilder("X").set_expression_triple("P", value, 0, value).build()
+        == VBABuilder("X").set_triple("P", value, 0, value).build()
+    )
 
 
 def test_new_expression_helpers_quote_and_reject_invalid_values():

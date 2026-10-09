@@ -3,9 +3,11 @@ Compact CP UHF RFID reader antenna @ 867 MHz — CST automation.
 Rogers RO4003C, rounded-octagon patch, diagonal dumbbell + unequal arc slots,
 offset discrete (coax-like) feed. Limited parameter sweep + report.
 """
+
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sys
 import time
@@ -62,7 +64,7 @@ def cylinder_z(comp, name, mat, r_outer, r_inner, z0, z1, xc=0.0, yc=0.0):
             f'  .Zrange "{fmt_num(z0)}", "{fmt_num(z1)}"',
             f'  .Xcenter "{fmt_num(xc)}"',
             f'  .Ycenter "{fmt_num(yc)}"',
-            "  .Segments \"0\"",
+            '  .Segments "0"',
             "  .Create",
             "End With",
         ]
@@ -143,7 +145,9 @@ def rotate_shape(solid, angle_deg, axis="z"):
             f'  .Name "{solid}"',
             '  .Origin "Free"',
             '  .Center "0", "0", "0"',
-            f'  .Angle "0", "0", "{fmt_num(angle_deg)}"' if axis == "z" else f'  .Angle "{fmt_num(angle_deg)}", "0", "0"',
+            f'  .Angle "0", "0", "{fmt_num(angle_deg)}"'
+            if axis == "z"
+            else f'  .Angle "{fmt_num(angle_deg)}", "0", "0"',
             '  .MultipleObjects "False"',
             '  .GroupObjects "False"',
             '  .Repetitions "1"',
@@ -292,7 +296,9 @@ def build_model(c: CSTClient, p: dict) -> list[dict]:
 
     # --- Unequal curved (arc) slots near opposite edges ---
     # Arc = annular sector via full ring then subtract wedges (bricks)
-    def arc_slot(name: str, r_mid: float, width: float, span_deg: float, rot_deg: float, y_sign: float):
+    def arc_slot(
+        name: str, r_mid: float, width: float, span_deg: float, rot_deg: float, y_sign: float
+    ):
         r_out = r_mid + width / 2
         r_in = max(r_mid - width / 2, 0.2)
         # Place arc centered at angle rot_deg, span span_deg
@@ -309,7 +315,7 @@ def build_model(c: CSTClient, p: dict) -> list[dict]:
         # Use a large brick covering half-plane opposite to desired sector
         # Sector from -span/2 to +span/2 around +Y after rotation
         # Subtract two bricks rotated to form a V keep region
-        cut1, cut2 = f"{name}Cut1", f"{name}Cut2"
+        _cut1, _cut2 = f"{name}Cut1", f"{name}Cut2"
         # Simple approach: rectangular chord slot at r_mid with length = r_mid*span_rad
         # More reliable for meshing than thin annular sector
         span_rad = math.radians(span_deg)
@@ -376,9 +382,7 @@ def build_model(c: CSTClient, p: dict) -> list[dict]:
     steps.append(
         (
             "hole_gnd",
-            cylinder_z(
-                "Antenna", "GndHole", "Vacuum", hole_r, 0, -mt - 0.02, 0.02, feed_x, feed_y
-            ),
+            cylinder_z("Antenna", "GndHole", "Vacuum", hole_r, 0, -mt - 0.02, 0.02, feed_x, feed_y),
         )
     )
     steps.append(("sub_gnd_hole", solid_sub("Antenna:Ground", "Antenna:GndHole")))
@@ -455,7 +459,6 @@ def s11_at(project: str, f_ghz: float) -> dict:
     }
 
 
-
 def axial_ratio_boresight(c: CSTClient, f_ghz: float) -> dict:
     """FarfieldPlot axial-ratio mode: GetMin~best purity on sphere, GetMax~worst."""
     out = Path(r"E:/cstprojects/exports/rfid_ar.txt")
@@ -495,6 +498,9 @@ def axial_ratio_boresight(c: CSTClient, f_ghz: float) -> dict:
     try:
         res = c.execute_vba_silent(vba)
     except Exception as e:
+        logging.getLogger(__name__).debug(
+            "Handled error in rfid_cp_867_octagon.axial_ratio_boresight", exc_info=True
+        )
         res = {"status": "error", "message": str(e)[:300]}
     text = out.read_text(encoding="utf-8", errors="replace") if out.exists() else ""
     parsed: dict[str, str] = {}
@@ -548,7 +554,7 @@ def evaluate(c: CSTClient, p: dict) -> dict:
         "ff_status": ff.get("status"),
         "goals": {
             "s11_ok": (s11.get("s11_at_f_db") is not None and s11["s11_at_f_db"] <= -15),
-            "ar_ok": (ar_min == ar_min and ar_min < 3.0),  # not NaN and <3
+            "ar_ok": (not math.isnan(ar_min) and ar_min < 3.0),  # not NaN and <3
             "gain_ok": (gain is not None and gain >= 4.5),
             "eff_ok": (tot is not None and tot >= 0.70),
         },

@@ -4,9 +4,11 @@
 2) Sweep frac_S via StoreParameter → DeleteResults → Rebuild → Solve
 3) Pick best S11; refine; report
 """
+
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -19,7 +21,7 @@ from cst_mcp.config import CSTConfig
 from cst_mcp.cst_client import CSTClient
 from cst_mcp.execution.farfield import farfield_monitor_vba
 from cst_mcp.execution.port_helpers import microstrip_waveguide_port_vba
-from cst_mcp.execution.vba_builder import fmt_num, vba_str
+from cst_mcp.execution.vba_builder import fmt_num
 from cst_mcp.vba_builder import VBABuilder
 
 PROJ = Path(r"E:\cstprojects\fractal_867_opt.cst")
@@ -93,8 +95,15 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
         (
             "gnd",
             brick_expr(
-                "Antenna", "Ground", "PEC",
-                f"{-gx/2}", f"{gx/2}", f"{-gy/2}", f"{gy/2}", "-metal_t", "0",
+                "Antenna",
+                "Ground",
+                "PEC",
+                f"{-gx / 2}",
+                f"{gx / 2}",
+                f"{-gy / 2}",
+                f"{gy / 2}",
+                "-metal_t",
+                "0",
             ),
         )
     )
@@ -102,8 +111,15 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
         (
             "sub",
             brick_expr(
-                "Antenna", "Substrate", "Substrate",
-                f"{-gx/2}", f"{gx/2}", f"{-gy/2}", f"{gy/2}", "0", "sub_h",
+                "Antenna",
+                "Substrate",
+                "Substrate",
+                f"{-gx / 2}",
+                f"{gx / 2}",
+                f"{-gy / 2}",
+                f"{gy / 2}",
+                "0",
+                "sub_h",
             ),
         )
     )
@@ -114,8 +130,15 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
         (
             "core",
             brick_expr(
-                "Antenna", "FracCore", "PEC",
-                "-frac_S/2", "frac_S/2", "-frac_S/2", "frac_S/2", z0, z1,
+                "Antenna",
+                "FracCore",
+                "PEC",
+                "-frac_S/2",
+                "frac_S/2",
+                "-frac_S/2",
+                "frac_S/2",
+                z0,
+                z1,
             ),
         )
     )
@@ -130,14 +153,62 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
         steps.append((f"add_{name}", solid_add("Antenna:FracCore", f"Antenna:{name}")))
 
     nubs = [
-        ("NubN1", "-frac_S/6-frac_S/12", "-frac_S/6", "frac_S/2+frac_depth", "frac_S/2+frac_depth+0.4*frac_depth"),
-        ("NubN2", "frac_S/6", "frac_S/6+frac_S/12", "frac_S/2+frac_depth", "frac_S/2+frac_depth+0.4*frac_depth"),
-        ("NubS1", "-frac_S/6-frac_S/12", "-frac_S/6", "-frac_S/2-frac_depth-0.4*frac_depth", "-frac_S/2-frac_depth"),
-        ("NubS2", "frac_S/6", "frac_S/6+frac_S/12", "-frac_S/2-frac_depth-0.4*frac_depth", "-frac_S/2-frac_depth"),
-        ("NubE1", "frac_S/2+frac_depth", "frac_S/2+frac_depth+0.4*frac_depth", "-frac_S/6-frac_S/12", "-frac_S/6"),
-        ("NubE2", "frac_S/2+frac_depth", "frac_S/2+frac_depth+0.4*frac_depth", "frac_S/6", "frac_S/6+frac_S/12"),
-        ("NubW1", "-frac_S/2-frac_depth-0.4*frac_depth", "-frac_S/2-frac_depth", "-frac_S/6-frac_S/12", "-frac_S/6"),
-        ("NubW2", "-frac_S/2-frac_depth-0.4*frac_depth", "-frac_S/2-frac_depth", "frac_S/6", "frac_S/6+frac_S/12"),
+        (
+            "NubN1",
+            "-frac_S/6-frac_S/12",
+            "-frac_S/6",
+            "frac_S/2+frac_depth",
+            "frac_S/2+frac_depth+0.4*frac_depth",
+        ),
+        (
+            "NubN2",
+            "frac_S/6",
+            "frac_S/6+frac_S/12",
+            "frac_S/2+frac_depth",
+            "frac_S/2+frac_depth+0.4*frac_depth",
+        ),
+        (
+            "NubS1",
+            "-frac_S/6-frac_S/12",
+            "-frac_S/6",
+            "-frac_S/2-frac_depth-0.4*frac_depth",
+            "-frac_S/2-frac_depth",
+        ),
+        (
+            "NubS2",
+            "frac_S/6",
+            "frac_S/6+frac_S/12",
+            "-frac_S/2-frac_depth-0.4*frac_depth",
+            "-frac_S/2-frac_depth",
+        ),
+        (
+            "NubE1",
+            "frac_S/2+frac_depth",
+            "frac_S/2+frac_depth+0.4*frac_depth",
+            "-frac_S/6-frac_S/12",
+            "-frac_S/6",
+        ),
+        (
+            "NubE2",
+            "frac_S/2+frac_depth",
+            "frac_S/2+frac_depth+0.4*frac_depth",
+            "frac_S/6",
+            "frac_S/6+frac_S/12",
+        ),
+        (
+            "NubW1",
+            "-frac_S/2-frac_depth-0.4*frac_depth",
+            "-frac_S/2-frac_depth",
+            "-frac_S/6-frac_S/12",
+            "-frac_S/6",
+        ),
+        (
+            "NubW2",
+            "-frac_S/2-frac_depth-0.4*frac_depth",
+            "-frac_S/2-frac_depth",
+            "frac_S/6",
+            "frac_S/6+frac_S/12",
+        ),
     ]
     for name, x0, x1, y0, y1 in nubs:
         steps.append((name, brick_expr("Antenna", name, "PEC", x0, x1, y0, y1, z0, z1)))
@@ -149,10 +220,15 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
         (
             "feed",
             brick_expr(
-                "Antenna", "Feed", "PEC",
-                "-feed_w/2", "feed_w/2",
-                f"{y_port}", "-frac_S/2-frac_depth+1",
-                z0, z1,
+                "Antenna",
+                "Feed",
+                "PEC",
+                "-feed_w/2",
+                "feed_w/2",
+                f"{y_port}",
+                "-frac_S/2-frac_depth+1",
+                z0,
+                z1,
             ),
         )
     )
@@ -166,16 +242,7 @@ def build_parametric(c: CSTClient, p0: dict[str, float]) -> list[dict]:
     steps.append(
         (
             "bc",
-            "\n".join(
-                [
-                    'Boundary.Xmin "expanded open"',
-                    'Boundary.Xmax "expanded open"',
-                    'Boundary.Ymin "expanded open"',
-                    'Boundary.Ymax "expanded open"',
-                    'Boundary.Zmin "expanded open"',
-                    'Boundary.Zmax "expanded open"',
-                ]
-            ),
+            'Boundary.Xmin "expanded open"\nBoundary.Xmax "expanded open"\nBoundary.Ymin "expanded open"\nBoundary.Ymax "expanded open"\nBoundary.Zmin "expanded open"\nBoundary.Zmax "expanded open"',
         )
     )
     steps.append(
@@ -231,7 +298,9 @@ def eval_params(c: CSTClient, params: dict[str, float], timeout_s: float = 600) 
             out["s11_at_867_db"] = float(ys[i])
             out["s11_at_867_freq"] = float(xs[i])
     except Exception:
-        pass
+        logging.getLogger(__name__).debug(
+            "Handled error in fractal_867_optimize.eval_params", exc_info=True
+        )
     print(
         f"  S={p.get('frac_S'):.2f} d={p.get('frac_depth'):.2f} fw={p.get('feed_w', 3.2):.2f} "
         f"→ minS11={out.get('s11_min_db')} @{out.get('s11_freq_ghz')} GHz "
@@ -346,14 +415,20 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print("==== RESULT ====")
-    print(json.dumps({
-        "success": report["success"],
-        "final": final,
-        "ff_available": ff.get("available"),
-        "ff_gain": (ff.get("metrics") or {}).get("max_realized_gain_dbi"),
-        "n_trials": len(trials),
-        "project": str(PROJ),
-    }, indent=2, default=str))
+    print(
+        json.dumps(
+            {
+                "success": report["success"],
+                "final": final,
+                "ff_available": ff.get("available"),
+                "ff_gain": (ff.get("metrics") or {}).get("max_realized_gain_dbi"),
+                "n_trials": len(trials),
+                "project": str(PROJ),
+            },
+            indent=2,
+            default=str,
+        )
+    )
     print("wrote", OUT)
     return 0
 

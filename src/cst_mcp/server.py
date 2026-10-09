@@ -55,7 +55,10 @@ def protocol_output():
     stdout_fd = sys.stdout.fileno()
     protocol_stdout = io.TextIOWrapper(
         os.fdopen(os.dup(stdout_fd), "wb"),
-        encoding="utf-8", errors="replace", newline="\n", write_through=True,
+        encoding="utf-8",
+        errors="replace",
+        newline="\n",
+        write_through=True,
     )
     sys.stdout.flush()
     try:

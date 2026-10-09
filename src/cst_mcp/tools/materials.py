@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from mcp.types import TextContent, Tool
@@ -16,7 +17,6 @@ from cst_mcp.validators import (
     validate_range,
 )
 from cst_mcp.vba_builder import VBABuilder, VBAScript
-
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "materials"
 
@@ -150,8 +150,12 @@ TOOLS: list[Tool] = [
             },
             "required": [
                 "name",
-                "epsilon_x", "epsilon_y", "epsilon_z",
-                "mu_x", "mu_y", "mu_z",
+                "epsilon_x",
+                "epsilon_y",
+                "epsilon_z",
+                "mu_x",
+                "mu_y",
+                "mu_z",
             ],
         },
     ),
@@ -322,8 +326,11 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "epsilon_inf", "delta_epsilon",
-                "resonant_freq_ghz", "damping_freq_ghz",
+                "name",
+                "epsilon_inf",
+                "delta_epsilon",
+                "resonant_freq_ghz",
+                "damping_freq_ghz",
             ],
         },
     ),
@@ -394,8 +401,10 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "epsilon_r",
-                "saturation_magnetization_ka_m", "linewidth_oe",
+                "name",
+                "epsilon_r",
+                "saturation_magnetization_ka_m",
+                "linewidth_oe",
             ],
         },
     ),
@@ -473,8 +482,11 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "epsilon_inf", "delta_epsilon",
-                "relaxation_time_ps", "alpha",
+                "name",
+                "epsilon_inf",
+                "delta_epsilon",
+                "relaxation_time_ps",
+                "alpha",
             ],
         },
     ),
@@ -502,7 +514,7 @@ _material_db_cache: dict[str, list[dict]] | None = None
 
 def _load_material_db() -> dict[str, list[dict]]:
     """Load and cache the bundled JSON material databases."""
-    global _material_db_cache  # noqa: PLW0603
+    global _material_db_cache
     if _material_db_cache is not None:
         return _material_db_cache
 
@@ -544,6 +556,7 @@ def _find_material(name: str) -> dict | None:
 # ---------------------------------------------------------------------------
 # Tool handler
 # ---------------------------------------------------------------------------
+
 
 async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Dispatch a material tool call and return results."""
@@ -595,15 +608,19 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
         raise ValueError(f"Unknown material tool: {name}")
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in materials.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
 # Individual handlers
 # ---------------------------------------------------------------------------
+
 
 def _handle_create_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
@@ -643,22 +660,27 @@ def _handle_create_material(args: dict, client: CSTClient) -> list[TextContent]:
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_material",
-            "material": mat_name,
-            "properties": {
-                "epsilon_r": epsilon,
-                "mu_r": mu,
-                "tan_d_e": tan_d_e,
-                "tan_d_m": tan_d_m,
-                "conductivity_S_m": conductivity,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_material",
+                    "material": mat_name,
+                    "properties": {
+                        "epsilon_r": epsilon,
+                        "mu_r": mu,
+                        "tan_d_e": tan_d_e,
+                        "tan_d_m": tan_d_m,
+                        "conductivity_S_m": conductivity,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_lossy_metal(args: dict, client: CSTClient) -> list[TextContent]:
@@ -679,20 +701,25 @@ def _handle_create_lossy_metal(args: dict, client: CSTClient) -> list[TextConten
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_lossy_metal",
-            "material": mat_name,
-            "properties": {
-                "type": "Lossy metal",
-                "conductivity_S_m": conductivity,
-                "mu_r": mu,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_lossy_metal",
+                    "material": mat_name,
+                    "properties": {
+                        "type": "Lossy metal",
+                        "conductivity_S_m": conductivity,
+                        "mu_r": mu,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_anisotropic_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -733,44 +760,50 @@ def _handle_create_anisotropic_material(args: dict, client: CSTClient) -> list[T
     code = script.build()
 
     result = client.execute_vba(code)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_anisotropic_material",
-            "material": mat_name,
-            "properties": {
-                "type": "Anisotropic",
-                "epsilon": {"x": eps_x, "y": eps_y, "z": eps_z},
-                "mu": {"x": mu_x, "y": mu_y, "z": mu_z},
-                "tan_d": {"x": td_x, "y": td_y, "z": td_z},
-            },
-            "vba": code,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_anisotropic_material",
+                    "material": mat_name,
+                    "properties": {
+                        "type": "Anisotropic",
+                        "epsilon": {"x": eps_x, "y": eps_y, "z": eps_z},
+                        "mu": {"x": mu_x, "y": mu_y, "z": mu_z},
+                        "tan_d": {"x": td_x, "y": td_y, "z": td_z},
+                    },
+                    "vba": code,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
     library_name = args["library_name"]
 
-    vba = (
-        VBABuilder("Material")
-        .call_with_args("LoadMaterial", library_name, mat_name)
-        .build()
-    )
+    vba = VBABuilder("Material").call_with_args("LoadMaterial", library_name, mat_name).build()
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_load_material",
-            "material": mat_name,
-            "library_name": library_name,
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_load_material",
+                    "material": mat_name,
+                    "library_name": library_name,
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_list_materials(args: dict) -> list[TextContent]:
@@ -786,15 +819,20 @@ def _handle_list_materials(args: dict) -> list[TextContent]:
             for mat in cat_list:
                 materials.append({**mat, "category": cat_name})
 
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_list_materials",
-            "category": category or "all",
-            "count": len(materials),
-            "materials": materials,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_list_materials",
+                    "category": category or "all",
+                    "count": len(materials),
+                    "materials": materials,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_assign_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -817,16 +855,21 @@ def _handle_assign_material(args: dict, client: CSTClient) -> list[TextContent]:
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_assign_material",
-            "solid": f"{component}:{solid_name}",
-            "material": material,
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_assign_material",
+                    "solid": f"{component}:{solid_name}",
+                    "material": material,
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_get_material_info(args: dict) -> list[TextContent]:
@@ -839,49 +882,61 @@ def _handle_get_material_info(args: dict) -> list[TextContent]:
         available: list[str] = []
         for cat_list in db.values():
             available.extend(m["name"] for m in cat_list)
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "tool": "cst_get_material_info",
-                "status": "error",
-                "message": f"Material '{name}' not found in bundled database",
-                "available_materials": sorted(available),
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "tool": "cst_get_material_info",
+                        "status": "error",
+                        "message": f"Material '{name}' not found in bundled database",
+                        "available_materials": sorted(available),
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_get_material_info",
-            "material": mat,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_get_material_info",
+                    "material": mat,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_delete_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
 
-    vba = (
-        VBABuilder("Material")
-        .call_with_args("Delete", mat_name)
-        .build()
-    )
+    vba = VBABuilder("Material").call_with_args("Delete", mat_name).build()
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_delete_material",
-            "material": mat_name,
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_delete_material",
+                    "material": mat_name,
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Advanced / dispersive material handlers
 # ---------------------------------------------------------------------------
+
 
 def _handle_create_debye_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
@@ -917,23 +972,28 @@ def _handle_create_debye_material(args: dict, client: CSTClient) -> list[TextCon
     vba = builder.build()
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_debye_material",
-            "material": mat_name,
-            "properties": {
-                "model": model_name,
-                "epsilon_inf": epsilon_inf,
-                "delta_epsilon": delta_epsilon,
-                "relaxation_time_ps": relaxation_time_ps,
-                "order": order,
-                **({"tan_d": tan_d} if tan_d is not None else {}),
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_debye_material",
+                    "material": mat_name,
+                    "properties": {
+                        "model": model_name,
+                        "epsilon_inf": epsilon_inf,
+                        "delta_epsilon": delta_epsilon,
+                        "relaxation_time_ps": relaxation_time_ps,
+                        "order": order,
+                        **({"tan_d": tan_d} if tan_d is not None else {}),
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_lorentz_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -963,22 +1023,27 @@ def _handle_create_lorentz_material(args: dict, client: CSTClient) -> list[TextC
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_lorentz_material",
-            "material": mat_name,
-            "properties": {
-                "model": "Lorentz",
-                "epsilon_inf": epsilon_inf,
-                "delta_epsilon": delta_epsilon,
-                "resonant_freq_ghz": resonant_freq_ghz,
-                "damping_freq_ghz": damping_freq_ghz,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_lorentz_material",
+                    "material": mat_name,
+                    "properties": {
+                        "model": "Lorentz",
+                        "epsilon_inf": epsilon_inf,
+                        "delta_epsilon": delta_epsilon,
+                        "resonant_freq_ghz": resonant_freq_ghz,
+                        "damping_freq_ghz": damping_freq_ghz,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_drude_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -1002,20 +1067,25 @@ def _handle_create_drude_material(args: dict, client: CSTClient) -> list[TextCon
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_drude_material",
-            "material": mat_name,
-            "properties": {
-                "model": "Drude",
-                "plasma_freq_ghz": plasma_freq_ghz,
-                "collision_freq_ghz": collision_freq_ghz,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_drude_material",
+                    "material": mat_name,
+                    "properties": {
+                        "model": "Drude",
+                        "plasma_freq_ghz": plasma_freq_ghz,
+                        "collision_freq_ghz": collision_freq_ghz,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_ferrite_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -1053,27 +1123,33 @@ def _handle_create_ferrite_material(args: dict, client: CSTClient) -> list[TextC
     vba = script.build()
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_ferrite_material",
-            "material": mat_name,
-            "properties": {
-                "model": "Ferrite (Polder tensor)",
-                "epsilon_r": epsilon_r,
-                "saturation_magnetization_ka_m": sat_mag,
-                "linewidth_oe": linewidth,
-                "applied_field_ka_m": applied_field,
-                "field_direction": field_direction,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_ferrite_material",
+                    "material": mat_name,
+                    "properties": {
+                        "model": "Ferrite (Polder tensor)",
+                        "epsilon_r": epsilon_r,
+                        "saturation_magnetization_ka_m": sat_mag,
+                        "linewidth_oe": linewidth,
+                        "applied_field_ka_m": applied_field,
+                        "field_direction": field_direction,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_temperature_dependent_material(
-    args: dict, client: CSTClient,
+    args: dict,
+    client: CSTClient,
 ) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
     epsilon_r = float(args["epsilon_r"])
@@ -1088,8 +1164,7 @@ def _handle_create_temperature_dependent_material(
     script = VBAScript()
     script.add_comment(f"Create temperature-dependent material: {mat_name}")
     script.add_comment(
-        f"Temp coefficients: eps {tc_epsilon} ppm/K, "
-        f"sigma {tc_cond} /K, ref {ref_temp} C"
+        f"Temp coefficients: eps {tc_epsilon} ppm/K, sigma {tc_cond} /K, ref {ref_temp} C"
     )
 
     builder = (
@@ -1108,22 +1183,27 @@ def _handle_create_temperature_dependent_material(
     vba = script.build()
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_temperature_dependent_material",
-            "material": mat_name,
-            "properties": {
-                "epsilon_r": epsilon_r,
-                "conductivity_S_m": conductivity,
-                "temp_coeff_epsilon_ppm_k": tc_epsilon,
-                "temp_coeff_conductivity": tc_cond,
-                "reference_temp_c": ref_temp,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_temperature_dependent_material",
+                    "material": mat_name,
+                    "properties": {
+                        "epsilon_r": epsilon_r,
+                        "conductivity_S_m": conductivity,
+                        "temp_coeff_epsilon_ppm_k": tc_epsilon,
+                        "temp_coeff_conductivity": tc_cond,
+                        "reference_temp_c": ref_temp,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_create_cole_cole_material(args: dict, client: CSTClient) -> list[TextContent]:
@@ -1153,48 +1233,63 @@ def _handle_create_cole_cole_material(args: dict, client: CSTClient) -> list[Tex
     )
 
     result = client.execute_vba(vba)
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_create_cole_cole_material",
-            "material": mat_name,
-            "properties": {
-                "model": "Cole-Cole 1st Order",
-                "epsilon_inf": epsilon_inf,
-                "delta_epsilon": delta_epsilon,
-                "relaxation_time_ps": relaxation_time_ps,
-                "alpha": alpha,
-            },
-            "vba": vba,
-            **result,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_create_cole_cole_material",
+                    "material": mat_name,
+                    "properties": {
+                        "model": "Cole-Cole 1st Order",
+                        "epsilon_inf": epsilon_inf,
+                        "delta_epsilon": delta_epsilon,
+                        "relaxation_time_ps": relaxation_time_ps,
+                        "alpha": alpha,
+                    },
+                    "vba": vba,
+                    **result,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _handle_list_ferrite_materials(args: dict) -> list[TextContent]:
     ferrites_path = DATA_DIR / "ferrites.json"
     if not ferrites_path.exists():
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "tool": "cst_list_ferrite_materials",
-                "status": "error",
-                "message": "Ferrite database not found",
-            }, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "tool": "cst_list_ferrite_materials",
+                        "status": "error",
+                        "message": "Ferrite database not found",
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     with ferrites_path.open() as f:
         data = json.load(f)
     ferrites = data.get("ferrites", [])
 
-    return [TextContent(
-        type="text",
-        text=json.dumps({
-            "tool": "cst_list_ferrite_materials",
-            "count": len(ferrites),
-            "ferrites": ferrites,
-        }, indent=2),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "tool": "cst_list_ferrite_materials",
+                    "count": len(ferrites),
+                    "ferrites": ferrites,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1203,6 +1298,6 @@ def _handle_list_ferrite_materials(args: dict) -> list[TextContent]:
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

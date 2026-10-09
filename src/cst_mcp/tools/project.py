@@ -7,16 +7,16 @@ navigating, exporting, and checking connection status of CST projects.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
 from cst_mcp.types import ExportFormat, ProjectType
-from cst_mcp.validators import validate_file_path, ValidationError
-from cst_mcp.vba_safety import validate_file_path as vba_path
+from cst_mcp.validators import ValidationError, validate_file_path
 from cst_mcp.vba_builder import VBABuilder, VBAScript, _escape_vba_string
-
+from cst_mcp.vba_safety import validate_file_path as vba_path
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -36,8 +36,7 @@ TOOLS: list[Tool] = [
                 "path": {
                     "type": "string",
                     "description": (
-                        "Full file path for the new project, "
-                        "e.g. 'C:/cst_projects/MyAntenna.cst'."
+                        "Full file path for the new project, e.g. 'C:/cst_projects/MyAntenna.cst'."
                     ),
                 },
                 "project_type": {
@@ -76,8 +75,7 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_save_project",
         description=(
-            "Save the currently open CST project. "
-            "Optionally provide a new path to 'Save As'."
+            "Save the currently open CST project. Optionally provide a new path to 'Save As'."
         ),
         inputSchema={
             "type": "object",
@@ -95,9 +93,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="cst_close_project",
-        description=(
-            "Close the currently open CST project and release its resources."
-        ),
+        description=("Close the currently open CST project and release its resources."),
         inputSchema={
             "type": "object",
             "properties": {},
@@ -160,9 +156,7 @@ TOOLS: list[Tool] = [
                 },
                 "format": {
                     "type": "string",
-                    "description": (
-                        "Export format. One of: stl, sat, stp, igs, obj, nas."
-                    ),
+                    "description": ("Export format. One of: stl, sat, stp, igs, obj, nas."),
                     "enum": [e.value for e in ExportFormat],
                 },
             },
@@ -187,6 +181,7 @@ TOOLS: list[Tool] = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _text(data: dict) -> list[TextContent]:
     """Wrap a dict as a single JSON TextContent response."""
@@ -214,7 +209,7 @@ def _build_create_vba(path: str, project_type: str) -> str:
 
     lines = [
         "Sub Main()",
-        '  Dim sPath As String',
+        "  Dim sPath As String",
         f'  sPath = "{vba_path(path, "path")}"',
         "",
         "  ' Open a new project from the appropriate template",
@@ -222,7 +217,7 @@ def _build_create_vba(path: str, project_type: str) -> str:
         "  OpenNewProject",
         "",
         "  ' Save the project to the specified path",
-        '  SaveAs sPath, False',
+        "  SaveAs sPath, False",
         "End Sub",
     ]
     script.add_raw("\n".join(lines))
@@ -339,7 +334,7 @@ def _build_tree_vba(tree_path: str | None, max_depth: int = 3, max_items: int = 
         '      present = (child <> "") Or Resulttree.DoesTreeItemExist(cur)',
         "    End If",
         "    If present Then",
-        '      Debug.Print CStr(d) & vbTab & cur',
+        "      Debug.Print CStr(d) & vbTab & cur",
         "      printed = printed + 1",
         "    End If",
         "    If present And d < maxDepth Then",
@@ -403,11 +398,7 @@ def _build_export_vba(path: str, fmt: str) -> str:
     }
     cst_format = format_commands.get(fmt, fmt.upper())
 
-    builder = (
-        VBABuilder(f"{cst_format}")
-        .set("FileName", path)
-        .call("Write")
-    )
+    builder = VBABuilder(f"{cst_format}").set("FileName", path).call("Write")
     script.add_block(builder)
     return script.build()
 
@@ -467,10 +458,13 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
     try:
         return _handle_impl(name, arguments, client)
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in project.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
@@ -485,10 +479,12 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         # Validate project_type against the enum
         valid_types = [e.value for e in ProjectType]
         if project_type not in valid_types:
-            return _text({
-                "status": "error",
-                "message": f"Invalid project_type '{project_type}'. Must be one of: {valid_types}",
-            })
+            return _text(
+                {
+                    "status": "error",
+                    "message": f"Invalid project_type '{project_type}'. Must be one of: {valid_types}",
+                }
+            )
 
         result = client.new_project(path, project_type)
 
@@ -584,30 +580,34 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
             if result.get("status") != "ok":
                 return _text({**result, "tree_path": tree_path or "(root)"})
             parsed = _parse_tree_output(result.get("output", ""), tree_path)
-            return _text({
-                "status": "ok",
-                "tree_path": tree_path or "(root)",
-                "max_depth": max_depth,
-                **parsed,
-                "source": "ResultTree.GetFirstChildName/GetNextItemName",
-            })
+            return _text(
+                {
+                    "status": "ok",
+                    "tree_path": tree_path or "(root)",
+                    "max_depth": max_depth,
+                    **parsed,
+                    "source": "ResultTree.GetFirstChildName/GetNextItemName",
+                }
+            )
 
         # Offline mode: return known default tree items and a VBA script
         items = _DEFAULT_TREE_ITEMS.get(tree_path, [])
-        return _text({
-            "status": "offline",
-            "tree_path": tree_path or "(root)",
-            "items": items,
-            "note": (
-                "These are default tree items for a new project. "
-                "The actual tree depends on your project content."
-            ),
-            "vba_script": vba,
-            "instructions": (
-                "Run the VBA script in CST Studio Suite to get the actual "
-                "project tree contents."
-            ),
-        })
+        return _text(
+            {
+                "status": "offline",
+                "tree_path": tree_path or "(root)",
+                "items": items,
+                "note": (
+                    "These are default tree items for a new project. "
+                    "The actual tree depends on your project content."
+                ),
+                "vba_script": vba,
+                "instructions": (
+                    "Run the VBA script in CST Studio Suite to get the actual "
+                    "project tree contents."
+                ),
+            }
+        )
 
     # ------------------------------------------------------------------
     # cst_export_project
@@ -619,10 +619,12 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         validate_file_path(path)
         valid_formats = [e.value for e in ExportFormat]
         if fmt not in valid_formats:
-            return _text({
-                "status": "error",
-                "message": f"Invalid format '{fmt}'. Must be one of: {valid_formats}",
-            })
+            return _text(
+                {
+                    "status": "error",
+                    "message": f"Invalid format '{fmt}'. Must be one of: {valid_formats}",
+                }
+            )
 
         vba = _build_export_vba(path, fmt)
 
@@ -633,16 +635,18 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
                 result["format"] = fmt
             return _text(result)
 
-        return _text({
-            "status": "offline",
-            "path": path,
-            "format": fmt,
-            "vba_script": vba,
-            "instructions": (
-                "Export requires a connected CST instance with an open project. "
-                "Run the VBA script in CST Studio Suite to export the geometry."
-            ),
-        })
+        return _text(
+            {
+                "status": "offline",
+                "path": path,
+                "format": fmt,
+                "vba_script": vba,
+                "instructions": (
+                    "Export requires a connected CST instance with an open project. "
+                    "Run the VBA script in CST Studio Suite to export the geometry."
+                ),
+            }
+        )
 
     # ------------------------------------------------------------------
     # cst_connection_status
@@ -653,10 +657,12 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
     # ------------------------------------------------------------------
     # Unknown tool
     # ------------------------------------------------------------------
-    return _text({
-        "status": "error",
-        "message": f"Unknown project tool: {name}",
-    })
+    return _text(
+        {
+            "status": "error",
+            "message": f"Unknown project tool: {name}",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +670,6 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 # ---------------------------------------------------------------------------
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

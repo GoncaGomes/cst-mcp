@@ -7,14 +7,14 @@ in CST Studio by generating VBA scripts via VBABuilder.
 from __future__ import annotations
 
 import json
-from typing import Callable
+import logging
+from collections.abc import Callable
 
 from mcp.types import TextContent, Tool
 
-
 from cst_mcp.cst_client import CSTClient
+from cst_mcp.validators import validate_name, validate_non_negative, validate_positive
 from cst_mcp.vba_builder import VBABuilder, VBAScript, _format_expression
-from cst_mcp.validators import validate_name, validate_positive, validate_non_negative
 from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.vba_safety import vba_number as _vba_number
 from cst_mcp.vba_safety import vba_string_literal as _vba_string_literal
@@ -65,16 +65,18 @@ TOOLS: list[Tool] = [
                         ),
                     }
                     for bound, end in (
-                        ("x_min", "minimum"), ("x_max", "maximum"),
-                        ("y_min", "minimum"), ("y_max", "maximum"),
-                        ("z_min", "minimum"), ("z_max", "maximum"),
+                        ("x_min", "minimum"),
+                        ("x_max", "maximum"),
+                        ("y_min", "minimum"),
+                        ("y_max", "maximum"),
+                        ("z_min", "minimum"),
+                        ("z_max", "maximum"),
                     )
                 },
             },
             "required": ["component", "name", "x_min", "x_max", "y_min", "y_max", "z_min", "z_max"],
         },
     ),
-
     # 2. Cylinder
     Tool(
         name="cst_create_cylinder",
@@ -97,7 +99,6 @@ TOOLS: list[Tool] = [
             "required": ["component", "name", "axis", "outer_radius", "range_min", "range_max"],
         },
     ),
-
     # 3. Cone
     Tool(
         name="cst_create_cone",
@@ -117,10 +118,17 @@ TOOLS: list[Tool] = [
                 "range_min": _expression_field("Axis range minimum"),
                 "range_max": _expression_field("Axis range maximum"),
             },
-            "required": ["component", "name", "axis", "bottom_radius", "top_radius", "range_min", "range_max"],
+            "required": [
+                "component",
+                "name",
+                "axis",
+                "bottom_radius",
+                "top_radius",
+                "range_min",
+                "range_max",
+            ],
         },
     ),
-
     # 4. Sphere
     Tool(
         name="cst_create_sphere",
@@ -135,12 +143,15 @@ TOOLS: list[Tool] = [
                 "center_y": _expression_field("Center Y coordinate", default=0),
                 "center_z": _expression_field("Center Z coordinate", default=0),
                 "radius": _expression_field("Sphere radius"),
-                "segments": {"type": "integer", "description": "Number of segments (0=auto)", "default": 0},
+                "segments": {
+                    "type": "integer",
+                    "description": "Number of segments (0=auto)",
+                    "default": 0,
+                },
             },
             "required": ["component", "name", "radius"],
         },
     ),
-
     # 5. Torus
     Tool(
         name="cst_create_torus",
@@ -155,20 +166,26 @@ TOOLS: list[Tool] = [
                 "center_x": _expression_field("Center X coordinate", default=0),
                 "center_y": _expression_field("Center Y coordinate", default=0),
                 "center_z": _expression_field("Center Z coordinate", default=0),
-                "outer_radius": _expression_field("CST outer (large) radius, from axis to outer surface"),
-                "inner_radius": _expression_field("CST inner (small) radius, from axis to inner surface"),
+                "outer_radius": _expression_field(
+                    "CST outer (large) radius, from axis to outer surface"
+                ),
+                "inner_radius": _expression_field(
+                    "CST inner (small) radius, from axis to inner surface"
+                ),
             },
             "required": ["component", "name", "axis", "outer_radius", "inner_radius"],
         },
     ),
-
     # 6. Extrude
     Tool(
         name="cst_create_extrude",
         description=(
             "Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode "
             "'pointlist'). The profile lies in the plane normal to 'axis' (default z) at the given "
-            "x/y/z_offset; optional 'holes' are extruded the same way and subtracted (Solid.Subtract)."
+            "x/y/z_offset. Height, profile coordinates and the active offset accept numbers or "
+            "single-line CST expressions preserved in history. Double arguments use native Evaluate. "
+            "Only the selected-axis offset applies. Optional 'holes' are extruded the same way "
+            "and subtracted (Solid.Subtract). Live CST validation is pending."
         ),
         inputSchema={
             "type": "object",
@@ -180,42 +197,39 @@ TOOLS: list[Tool] = [
                     "type": "array",
                     "items": {
                         "type": "array",
-                        "items": {"type": "number"},
+                        "items": _expression_field("Profile coordinate"),
                         "minItems": 2,
                         "maxItems": 2,
                     },
                     "minItems": 3,
                     "description": "List of [x, y] coordinate pairs forming the profile polygon",
                 },
-                "height": {"type": "number", "description": "Extrusion height"},
+                "height": _expression_field("Extrusion height"),
                 "axis": {
                     "type": "string",
                     "enum": ["x", "y", "z"],
                     "default": "z",
                     "description": "Extrusion axis (profile plane normal). z: (u,v)=(x,y); x: (u,v)=(y,z); y: (u,v)=(x,-z).",
                 },
-                "x_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the x axis (only valid with axis='x').",
-                },
-                "y_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the y axis (only valid with axis='y').",
-                },
-                "z_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
-                },
+                "x_offset": _expression_field(
+                    "Base-plane position on x; expressions allowed only with axis='x'",
+                    default=0,
+                ),
+                "y_offset": _expression_field(
+                    "Base-plane position on y; expressions allowed only with axis='y'",
+                    default=0,
+                ),
+                "z_offset": _expression_field(
+                    "Base-plane position on z; expressions allowed only with axis='z'",
+                    default=0,
+                ),
                 "holes": {
                     "type": "array",
                     "items": {
                         "type": "array",
                         "items": {
                             "type": "array",
-                            "items": {"type": "number"},
+                            "items": _expression_field("Profile coordinate"),
                             "minItems": 2,
                             "maxItems": 2,
                         },
@@ -234,15 +248,14 @@ TOOLS: list[Tool] = [
                     "description": (
                         "'up' (default, unchanged behaviour): solid spans offset..offset+height along "
                         "+axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': "
-                        "offset-height..offset (e.g. copper under a board). Implemented by the profile "
-                        "winding, which sets the ExtrudeCurve direction in CST 2026."
+                        "offset-height..offset. Pointlist down reverses the plane normal and remaps "
+                        "local coordinates, correcting the previously ignored option."
                     ),
                 },
             },
             "required": ["component", "name", "points", "height"],
         },
     ),
-
     # 7. Loft
     Tool(
         name="cst_create_loft",
@@ -272,7 +285,6 @@ TOOLS: list[Tool] = [
             "required": ["component", "name", "profiles"],
         },
     ),
-
     # 8. Wire
     Tool(
         name="cst_create_wire",
@@ -290,11 +302,19 @@ TOOLS: list[Tool] = [
                 "end_z": {"type": "number", "description": "End point Z"},
                 "radius": {"type": "number", "description": "Wire radius"},
             },
-            "required": ["component", "name", "start_x", "start_y", "start_z",
-                          "end_x", "end_y", "end_z", "radius"],
+            "required": [
+                "component",
+                "name",
+                "start_x",
+                "start_y",
+                "start_z",
+                "end_x",
+                "end_y",
+                "end_z",
+                "radius",
+            ],
         },
     ),
-
     # 9. Polygon3D
     Tool(
         name="cst_create_polygon3d",
@@ -318,7 +338,6 @@ TOOLS: list[Tool] = [
             "required": ["name", "points"],
         },
     ),
-
     # 10. Analytical curve
     Tool(
         name="cst_create_analytical_curve",
@@ -327,16 +346,24 @@ TOOLS: list[Tool] = [
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Curve name"},
-                "x_expr": {"type": "string", "description": "X expression as function of t (e.g. 'cos(t)')"},
-                "y_expr": {"type": "string", "description": "Y expression as function of t (e.g. 'sin(t)')"},
-                "z_expr": {"type": "string", "description": "Z expression as function of t (e.g. 't')"},
+                "x_expr": {
+                    "type": "string",
+                    "description": "X expression as function of t (e.g. 'cos(t)')",
+                },
+                "y_expr": {
+                    "type": "string",
+                    "description": "Y expression as function of t (e.g. 'sin(t)')",
+                },
+                "z_expr": {
+                    "type": "string",
+                    "description": "Z expression as function of t (e.g. 't')",
+                },
                 "t_min": {"type": "number", "description": "Parameter t minimum value"},
                 "t_max": {"type": "number", "description": "Parameter t maximum value"},
             },
             "required": ["name", "x_expr", "y_expr", "z_expr", "t_min", "t_max"],
         },
     ),
-
     # 11. Face from curves
     Tool(
         name="cst_create_face_from_curves",
@@ -356,7 +383,6 @@ TOOLS: list[Tool] = [
             "required": ["component", "name", "curve_names"],
         },
     ),
-
     # 12. Elliptical cylinder
     Tool(
         name="cst_create_ecylinder",
@@ -376,10 +402,17 @@ TOOLS: list[Tool] = [
                 "range_min": _expression_field("Axis range minimum"),
                 "range_max": _expression_field("Axis range maximum"),
             },
-            "required": ["component", "name", "axis", "x_radius", "y_radius", "range_min", "range_max"],
+            "required": [
+                "component",
+                "name",
+                "axis",
+                "x_radius",
+                "y_radius",
+                "range_min",
+                "range_max",
+            ],
         },
     ),
-
     # 13. Polygon extrude (convenience)
     Tool(
         name="cst_create_polygon_extrude",
@@ -393,7 +426,10 @@ TOOLS: list[Tool] = [
             "profile at z=0 with positive thickness lands at z=-t..0, e.g. copper embedded in the "
             "substrate). This tool normalises the winding, so extrude_direction='up' (default) gives "
             "offset..offset+height along +axis and 'down' gives offset-height..offset; the response "
-            "reports the expected range."
+            "reports input-contract endpoints, not measured bounds. Height, all profile coordinates "
+            "and the active offset accept numbers or single-line CST expressions. Native Evaluate "
+            "and winding selection remain in history for reconstruction. Live CST validation is pending; "
+            "native dialogs may show evaluated values."
         ),
         inputSchema={
             "type": "object",
@@ -405,37 +441,39 @@ TOOLS: list[Tool] = [
                     "type": "array",
                     "items": {
                         "type": "array",
-                        "items": {"type": "number"},
+                        "items": _expression_field("Profile coordinate"),
                         "minItems": 2,
                         "maxItems": 2,
                     },
                     "minItems": 3,
                     "description": "List of [x, y] coordinate pairs forming the polygon",
                 },
-                "height": {"type": "number", "description": "Extrusion height"},
-                "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "Extrusion axis", "default": "z"},
-                "x_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the x axis (only valid with axis='x').",
+                "height": _expression_field("Extrusion height"),
+                "axis": {
+                    "type": "string",
+                    "enum": ["x", "y", "z"],
+                    "description": "Extrusion axis",
+                    "default": "z",
                 },
-                "y_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the y axis (only valid with axis='y').",
-                },
-                "z_offset": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
-                },
+                "x_offset": _expression_field(
+                    "Base-plane position on x; expressions allowed only with axis='x'",
+                    default=0,
+                ),
+                "y_offset": _expression_field(
+                    "Base-plane position on y; expressions allowed only with axis='y'",
+                    default=0,
+                ),
+                "z_offset": _expression_field(
+                    "Base-plane position on z; expressions allowed only with axis='z'",
+                    default=0,
+                ),
                 "holes": {
                     "type": "array",
                     "items": {
                         "type": "array",
                         "items": {
                             "type": "array",
-                            "items": {"type": "number"},
+                            "items": _expression_field("Profile coordinate"),
                             "minItems": 2,
                             "maxItems": 2,
                         },
@@ -454,8 +492,8 @@ TOOLS: list[Tool] = [
                     "description": (
                         "'up' (default, unchanged behaviour): solid spans offset..offset+height along "
                         "+axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': "
-                        "offset-height..offset (e.g. copper under a board). Implemented by the profile "
-                        "winding, which sets the ExtrudeCurve direction in CST 2026."
+                        "offset-height..offset. Numeric winding is normalized before generation; "
+                        "symbolic winding is evaluated independently for each profile on every rebuild."
                     ),
                 },
             },
@@ -633,14 +671,16 @@ def _num(value, field: str) -> float:
     return float(_vba_number(value, field))
 
 
-def _profile_points(points, field: str) -> list[tuple[float, float]]:
+def _profile_points(points, field: str) -> list[tuple[float | str, float | str]]:
     if not isinstance(points, (list, tuple)) or len(points) < 3:
         raise ValueError(f"{field} must contain at least 3 [x, y] points")
     out = []
     for i, pt in enumerate(points):
         if not isinstance(pt, (list, tuple)) or len(pt) != 2:
             raise ValueError(f"{field}[{i}] must be an [x, y] pair")
-        out.append((_num(pt[0], f"{field}[{i}][0]"), _num(pt[1], f"{field}[{i}][1]")))
+        for value in pt:
+            _format_expression(value)
+        out.append(tuple(pt))
     return out
 
 
@@ -656,35 +696,104 @@ def _extrude_axis_offset_holes(args: dict):
     if axis not in _OFFSET_KEYS:
         raise ValueError("axis must be x, y, or z")
     for other_axis, key in _OFFSET_KEYS.items():
-        if other_axis != axis and args.get(key) not in (None, 0):
-            raise ValueError(f"{key} only applies to axis='{other_axis}'; use {_OFFSET_KEYS[axis]} for axis='{axis}'")
-    offset = _num(args.get(_OFFSET_KEYS[axis], 0) or 0, _OFFSET_KEYS[axis])
-    points = _profile_points(args["points"], "points")
-    outer_area = _signed_area(points)
-    if outer_area == 0:
-        raise ValueError("points must enclose a non-zero area")
-    # Live CST 2026: ExtrudeCurve extrudes along the Polygon3D curve normal,
-    # which follows the winding (a clockwise square at z=1.6 went to
-    # z=1.565..1.6).  Normalise to counter-clockwise in (u, v) so the solid
-    # always grows towards +axis; the Extrude object is winding-independent.
-    if outer_area < 0:
-        points = points[::-1]
-        outer_area = -outer_area
+        value = args.get(key, 0)
+        _format_expression(value)
+        if other_axis != axis and (isinstance(value, str) or value != 0):
+            raise ValueError(
+                f"{key} only applies to axis='{other_axis}'; use {_OFFSET_KEYS[axis]} for axis='{axis}'"
+            )
+    offset = args.get(_OFFSET_KEYS[axis], 0)
+    points = _normalise_numeric_profile(_profile_points(args["points"], "points"), "points")
     holes = []
-    raw_holes = args.get("holes") or []
-    if not isinstance(raw_holes, (list, tuple)):
-        raise ValueError("holes must be a list of point lists")
+    raw_holes = args.get("holes", [])
+    match raw_holes:
+        case list() | tuple():
+            pass
+        case _:
+            raise ValueError("holes must be a list of point lists")
     for h, raw in enumerate(raw_holes):
         hole = _profile_points(raw, f"holes[{h}]")
-        area = _signed_area(hole)
-        if area == 0:
-            raise ValueError(f"holes[{h}] must enclose a non-zero area")
-        # Same (counter-clockwise) winding as the outline so the hole is
-        # extruded in the same direction as the main solid.
-        if area < 0:
-            hole = hole[::-1]
-        holes.append(hole)
+        holes.append(_normalise_numeric_profile(hole, f"holes[{h}]"))
     return axis, offset, points, holes
+
+
+def _symbolic_profile(points) -> bool:
+    return any(isinstance(value, str) for pt in points for value in pt)
+
+
+def _normalise_numeric_profile(points, field):
+    if _symbolic_profile(points):
+        return points
+    # Retain the previous double arithmetic for orientation, without replacing
+    # the original values that will be serialized into model history.
+    area = _signed_area([(float(u), float(v)) for u, v in points])
+    if area == 0:
+        raise ValueError(f"{field} must enclose a non-zero area")
+    return points[::-1] if area < 0 else points
+
+
+def _extrude_direction(args):
+    direction = args.get("extrude_direction", "up")
+    if direction not in ("up", "down"):
+        raise ValueError("extrude_direction must be 'up' or 'down'")
+    return direction
+
+
+def _negated_expression(value):
+    _format_expression(value)
+    return f"-({value})" if isinstance(value, str) else -value
+
+
+def _evaluated_argument(value):
+    """Only fixed syntax and shared serialized literals enter executable VBA."""
+    literal = _format_expression(value)
+    return f"Evaluate({literal})" if isinstance(value, str) else literal
+
+
+def _set_evaluated(vba, prop, *values):
+    """Explicit native evaluation for documented double arguments, in history."""
+    if any(isinstance(value, str) for value in values):
+        return vba.set_raw(prop, ", ".join(_evaluated_argument(value) for value in values))
+    method = {1: vba.set_expression, 2: vba.set_expression_pair, 3: vba.set_expression_triple}
+    return method[len(values)](prop, *values)
+
+
+def _profile_area_checks(script, profiles):
+    """Check every symbolic profile before geometry; return per-profile area names."""
+    areas = []
+    for index, points in enumerate(profiles):
+        if not _symbolic_profile(points):
+            areas.append(None)
+            continue
+        prefix = f"cstProfile{index}"
+        area = prefix + "Area"
+        last = len(points) - 1
+        lines = [
+            f"Dim {prefix}U({last}) As Double",
+            f"Dim {prefix}V({last}) As Double",
+            f"Dim {area} As Double",
+            f"Dim {prefix}I As Long",
+            f"Dim {prefix}J As Long",
+        ]
+        for i, (u, v) in enumerate(points):
+            # Typed array assignments require doubles even for numeric literals.
+            lines += [
+                f"{prefix}U({i}) = Evaluate({_format_expression(u)})",
+                f"{prefix}V({i}) = Evaluate({_format_expression(v)})",
+            ]
+        lines += [
+            f"{area} = 0",
+            f"For {prefix}I = 0 To {last}",
+            f"  {prefix}J = ({prefix}I + 1) Mod {len(points)}",
+            f"  {area} = {area} + {prefix}U({prefix}I) * {prefix}V({prefix}J) _",
+            f"    - {prefix}U({prefix}J) * {prefix}V({prefix}I)",
+            f"Next {prefix}I",
+            f"{area} = {area} / 2",
+            f'If {area} = 0 Then Err.Raise 5, "CST MCP extrusion", "Profile {index} has zero signed area"',
+        ]
+        script.add_raw("\n".join(lines))
+        areas.append(area)
+    return areas
 
 
 def _subtract_block(component: str, name: str, tool_name: str) -> str:
@@ -693,8 +802,14 @@ def _subtract_block(component: str, name: str, tool_name: str) -> str:
     return f"Solid.Subtract {target}, {tool}"
 
 
-def _extrude_block(name, component, material, height, axis, offset, points) -> VBABuilder:
+def _extrude_block(
+    name, component, material, height, axis, offset, points, direction
+) -> VBABuilder:
     u_vec, v_vec = _EXTRUDE_PLANES[axis]
+    if direction == "down":
+        # Reverse U cross V, while preserving the world profile: (-V) * (-v).
+        v_vec = tuple(-value for value in v_vec)
+        points = [(u, _negated_expression(v)) for u, v in points]
     origin = {"z": (0, 0, offset), "x": (offset, 0, 0), "y": (0, offset, 0)}[axis]
     vba = (
         VBABuilder("Extrude")
@@ -703,16 +818,15 @@ def _extrude_block(name, component, material, height, axis, offset, points) -> V
         .set("Component", component)
         .set("Material", material)
         .set("Mode", "pointlist")
-        .set_number("Height", height)
-        .set_triple("Origin", *origin)
-        .set_triple("Uvector", *u_vec)
-        .set_triple("Vvector", *v_vec)
+        .set_expression("Height", height)
     )
+    _set_evaluated(vba, "Origin", *origin)
+    vba.set_triple("Uvector", *u_vec).set_triple("Vvector", *v_vec)
     # First point, subsequent points as LineTo, closed back to the first point.
-    vba.set_double("Point", *points[0])
+    _set_evaluated(vba, "Point", *points[0])
     for pt in points[1:]:
-        vba.set_double("LineTo", *pt)
-    vba.set_double("LineTo", *points[0])
+        _set_evaluated(vba, "LineTo", *pt)
+    _set_evaluated(vba, "LineTo", *points[0])
     vba.call("Create")
     return vba
 
@@ -721,18 +835,22 @@ def _build_extrude(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
-    height = _num(args["height"], "height")
+    height = args["height"]
+    _format_expression(height)
     axis, offset, points, holes = _extrude_axis_offset_holes(args)
-
-    main = _extrude_block(name, component, material, height, axis, offset, points)
-    if not holes:
-        return main.build()
+    direction = _extrude_direction(args)
     script = VBAScript()
-    script.add_comment(f"Extrude with {len(holes)} hole(s): {component}:{name}")
-    script.add_block(main)
+    _profile_area_checks(script, [points, *holes])
+    if holes:
+        script.add_comment(f"Extrude with {len(holes)} hole(s): {component}:{name}")
+    script.add_block(
+        _extrude_block(name, component, material, height, axis, offset, points, direction)
+    )
     for h, hole in enumerate(holes):
         hole_name = validate_name(f"{name}_hole{h + 1}", "hole name")
-        script.add_block(_extrude_block(hole_name, component, material, height, axis, offset, hole))
+        script.add_block(
+            _extrude_block(hole_name, component, material, height, axis, offset, hole, direction)
+        )
         script.add_raw(_subtract_block(component, name, hole_name))
     return script.build()
 
@@ -785,6 +903,7 @@ def _build_wire(args: dict) -> str:
     Avoid the Wire-to-solid conversion, which stalled the CST 2026 live test.
     """
     import math
+
     from cst_mcp.tools.transforms import _build_rotate, _build_translate
 
     component = validate_name(args["component"], "component")
@@ -796,15 +915,25 @@ def _build_wire(args: dict) -> str:
     if not math.isfinite(length) or length <= 0:
         raise ValueError("Wire endpoints must be finite and distinct")
     solid = f"{component}:{name}"
-    code = [_build_cylinder(dict(component=component, name=name,
-        material=args.get("material", "PEC"), axis="z", outer_radius=radius,
-        range_min=0, range_max=length))]
-    theta = math.degrees(math.acos(max(-1, min(1, delta[2]/length))))
+    code = [
+        _build_cylinder(
+            {
+                "component": component,
+                "name": name,
+                "material": args.get("material", "PEC"),
+                "axis": "z",
+                "outer_radius": radius,
+                "range_min": 0,
+                "range_max": length,
+            }
+        )
+    ]
+    theta = math.degrees(math.acos(max(-1, min(1, delta[2] / length))))
     phi = math.degrees(math.atan2(delta[1], delta[0]))
     for axis, angle in (("y", theta), ("z", phi)):
         if abs(angle) > 1e-12:
-            code.append(_build_rotate(dict(solid=solid, axis=axis, angle=angle)))
-    code.append(_build_translate(dict(solid=solid, dx=start[0], dy=start[1], dz=start[2])))
+            code.append(_build_rotate({"solid": solid, "axis": axis, "angle": angle}))
+    code.append(_build_translate({"solid": solid, "dx": start[0], "dy": start[1], "dz": start[2]}))
     return "\n".join(code)
 
 
@@ -812,12 +941,7 @@ def _build_polygon3d(args: dict) -> str:
     name = validate_name(args["name"], "name")
     points: list[list[float | str]] = args["points"]
 
-    vba = (
-        VBABuilder("Polygon3D")
-        .call("Reset")
-        .set("Name", name)
-        .set("Curve", "Curves")
-    )
+    vba = VBABuilder("Polygon3D").call("Reset").set("Name", name).set("Curve", "Curves")
     for pt in points:
         vba.set_expression_triple("Point", pt[0], pt[1], pt[2])
     vba.call("Create")
@@ -846,12 +970,7 @@ def _build_face_from_curves(args: dict) -> str:
     name = validate_name(args["name"], "name")
     curve_names: list[str] = args["curve_names"]
 
-    vba = (
-        VBABuilder("CoverCurve")
-        .call("Reset")
-        .set("Name", name)
-        .set("Component", component)
-    )
+    vba = VBABuilder("CoverCurve").call("Reset").set("Name", name).set("Component", component)
     for curve_name in curve_names:
         validate_name(curve_name, "curve_name")
         vba.set("AddCurve", curve_name)
@@ -891,20 +1010,41 @@ def _build_ecylinder(args: dict) -> str:
     return vba.build()
 
 
-def _polygon_curve_extrude(script: VBAScript, name, curve, item, component, material,
-                           height, point_fn, points) -> None:
-    poly_vba = (
-        VBABuilder("Polygon3D")
-        .call("Reset")
-        .set("Name", item)
-        .set("Curve", curve)
-    )
-    for pt in points:
-        poly_vba.set_triple("Point", *point_fn(pt))
-    # Close the polygon
-    poly_vba.set_triple("Point", *point_fn(points[0]))
-    poly_vba.call("Create")
-    script.add_block(poly_vba)
+def _polygon_curve_extrude(
+    script: VBAScript,
+    name,
+    curve,
+    item,
+    component,
+    material,
+    height,
+    point_fn,
+    points,
+    direction,
+    area,
+) -> None:
+    poly_vba = VBABuilder("Polygon3D").call("Reset").set("Name", item).set("Curve", curve)
+
+    def polygon(ordered):
+        vba = VBABuilder("Polygon3D")
+        for pt in [*ordered, ordered[0]]:
+            _set_evaluated(vba, "Point", *point_fn(pt))
+        return vba.build()
+
+    if area:
+        # Reevaluate orientation at every reconstruction, independently for holes.
+        comparison = "<" if direction == "up" else ">"
+        script.add_raw(poly_vba.build())
+        script.add_raw(
+            f"If {area} {comparison} 0 Then\n{polygon(points[::-1])}\n"
+            f"Else\n{polygon(points)}\nEnd If"
+        )
+        script.add_block(VBABuilder("Polygon3D").call("Create"))
+    else:
+        ordered = points if direction == "up" else points[::-1]
+        for pt in [*ordered, ordered[0]]:
+            _set_evaluated(poly_vba, "Point", *point_fn(pt))
+        script.add_block(poly_vba.call("Create"))
 
     # Extrude the closed planar curve item into a solid (the curve item is consumed).
     extrude_vba = (
@@ -913,8 +1053,10 @@ def _polygon_curve_extrude(script: VBAScript, name, curve, item, component, mate
         .set("Name", name)
         .set("Component", component)
         .set("Material", material)
-        .set_number("Thickness", height)
-        .set_number("Twistangle", 0)
+    )
+    _set_evaluated(extrude_vba, "Thickness", height)
+    extrude_vba = (
+        extrude_vba.set_number("Twistangle", 0)
         .set_number("Taperangle", 0)
         .set("Curve", f"{curve}:{item}")
     )
@@ -927,55 +1069,88 @@ def _build_polygon_extrude(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
     material = args.get("material", "PEC")
-    height = _num(args["height"], "height")
+    height = args["height"]
+    _format_expression(height)
     axis, offset, points, holes = _extrude_axis_offset_holes(args)
 
     def point(pt):
         if axis == "x":
             return (offset, pt[0], pt[1])
         if axis == "y":
-            return (pt[0], offset, -pt[1])
+            return (pt[0], offset, _negated_expression(pt[1]))
         return (pt[0], pt[1], offset)
 
-    direction = args.get("extrude_direction", "up") or "up"
-    if direction not in ("up", "down"):
-        raise ValueError("extrude_direction must be 'up' or 'down'")
-    if direction == "down":
-        # Clockwise winding flips the curve normal -> extrusion towards -axis.
-        points = points[::-1]
-        holes = [h[::-1] for h in holes]
+    direction = _extrude_direction(args)
 
     curve = f"{name}_curves"
     script = VBAScript()
+    areas = _profile_area_checks(script, [points, *holes])
     script.add_comment(f"Polygon extrude: {component}:{name} ({direction}, winding sets direction)")
     script.add_raw(f'Curve.NewCurve "{_q(curve, "name")}"')
-    _polygon_curve_extrude(script, name, curve, f"{name}_profile", component, material,
-                           height, point, points)
+    _polygon_curve_extrude(
+        script,
+        name,
+        curve,
+        f"{name}_profile",
+        component,
+        material,
+        height,
+        point,
+        points,
+        direction,
+        areas[0],
+    )
     for h, hole in enumerate(holes):
         hole_name = validate_name(f"{name}_hole{h + 1}", "hole name")
-        _polygon_curve_extrude(script, hole_name, curve, f"{hole_name}_profile", component,
-                               material, height, point, hole)
+        _polygon_curve_extrude(
+            script,
+            hole_name,
+            curve,
+            f"{hole_name}_profile",
+            component,
+            material,
+            height,
+            point,
+            hole,
+            direction,
+            areas[h + 1],
+        )
         script.add_raw(_subtract_block(component, name, hole_name))
     return script.build()
 
 
 def _polygon_extrusion_note(args: dict) -> dict:
-    """Expected extent along the extrusion axis (winding-normalised profile)."""
+    """Input-contract prediction only; never measured CST bounds."""
     axis = args.get("axis", "z")
-    offset = float(args.get(_OFFSET_KEYS.get(axis, "z_offset"), 0) or 0)
-    height = float(args["height"])
-    direction = args.get("extrude_direction", "up") or "up"
-    sign = 1.0 if direction == "up" else -1.0
-    a, b = sorted((offset, offset + sign * height))
-    return {
+    offset = args.get(_OFFSET_KEYS[axis], 0)
+    height = args["height"]
+    direction = _extrude_direction(args)
+    offset_literal, height_literal = _format_expression(offset), _format_expression(height)
+    note = {
         "axis": axis,
         "direction": direction,
-        "expected_range": [a, b],
-        "note": ("CST ExtrudeCurve follows the curve winding; this tool orders the points so the "
-                 f"solid spans {axis} = {a:g}..{b:g}. Raw clockwise Polygon + ExtrudeCurve VBA with a "
-                 "positive thickness extrudes towards -axis instead (verify with "
-                 "Solid.GetLooseBoundingBoxOfShape)."),
+        "source": "input contract prediction, not measured CST bounds",
+        "note": "For positive height: up spans offset..offset+height; down spans offset-height..offset. Live CST validation is required.",
     }
+    if not isinstance(offset, str) and not isinstance(height, str):
+        import math
+
+        end = float(offset) + (1 if direction == "up" else -1) * float(height)
+        if math.isfinite(end):
+            note.update(expected_range=sorted((float(offset), end)), numeric_range_evaluated=True)
+            return note
+    # Shared formatter validates numbers; retain caller strings exactly in metadata.
+    offset_text = offset if isinstance(offset, str) else offset_literal[1:-1]
+    height_text = height if isinstance(height, str) else height_literal[1:-1]
+    operator = "+" if direction == "up" else "-"
+    note.update(
+        symbolic_endpoints={
+            "base": offset_text,
+            "end": f"({offset_text}) {operator} ({height_text})",
+        },
+        numeric_range_evaluated=False,
+    )
+    return note
 
 
 # ---------------------------------------------------------------------------
@@ -1012,26 +1187,50 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
     """
     builder_fn = _HANDLERS.get(name)
     if builder_fn is None:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Unknown geometry tool: {name}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unknown geometry tool: {name}",
+                    }
+                ),
+            )
+        ]
 
     try:
         vba_code = builder_fn(arguments)
+        extrusion = None
+        if name in {"cst_create_extrude", "cst_create_polygon_extrude"}:
+            extrusion = _polygon_extrusion_note(arguments)
+            json.dumps(extrusion, allow_nan=False)  # Prepare all metadata before mutation.
         result = client.execute_vba(vba_code)
-        if name == "cst_create_polygon_extrude" and isinstance(result, dict):
-            result["extrusion"] = _polygon_extrusion_note(arguments)
+        if (
+            extrusion is not None
+            and isinstance(result, dict)
+            and result.get("status") in {"executed", "offline"}
+            and result.get("execution_state") != "unknown"
+        ):
+            result = dict(result, extrusion=extrusion)
         return [TextContent(type="text", text=json.dumps(result))]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": str(e),
-        }))]
+        logging.getLogger(__name__).debug("Handled error in geometry.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                    }
+                ),
+            )
+        ]
 
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

@@ -12,7 +12,9 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "capabilities_test/02_parameters"
 sys.path.insert(0, str(SCRIPTS))
-spec = importlib.util.spec_from_file_location("parameter_primitives_client", SCRIPTS / "run_parameter_primitives.py")
+spec = importlib.util.spec_from_file_location(
+    "parameter_primitives_client", SCRIPTS / "run_parameter_primitives.py"
+)
 batch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(batch)
 
@@ -25,8 +27,13 @@ def client(tmp_path, monkeypatch):
     sibling.mkdir()
     (sibling / "project.cst").write_bytes(b"brick checkpoint")
     monkeypatch.setattr(batch, "WORK", work)
-    options = SimpleNamespace(cst_path=str(tmp_path / "cst"), reset=False,
-                              preflight=False, call_timeout=1, connection_timeout=1)
+    options = SimpleNamespace(
+        cst_path=str(tmp_path / "cst"),
+        reset=False,
+        preflight=False,
+        call_timeout=1,
+        connection_timeout=1,
+    )
     instance = batch.PrimitiveTest(options)
     yield instance
     instance.finalize()
@@ -39,10 +46,14 @@ def own_saved_project(client):
     client.project.write_bytes(b"primitive checkpoint")
     client.project.with_suffix("").mkdir()
     (client.project.with_suffix("") / "model.txt").write_text("companion")
-    client.manifest.update(generation_state="ready", fixture="ready",
-                           creation_requested=True, created_path=str(client.project),
-                           saved_sha256=batch.sha256(client.project),
-                           saved_files=client.project_snapshot())
+    client.manifest.update(
+        generation_state="ready",
+        fixture="ready",
+        creation_requested=True,
+        created_path=str(client.project),
+        saved_sha256=batch.sha256(client.project),
+        saved_files=client.project_snapshot(),
+    )
     client.store_manifest()
 
 
@@ -76,7 +87,9 @@ def test_reset_rejects_files_appearing_before_client_creation(client):
     assert client.project.read_bytes() == b"unverified project"
 
 
-@pytest.mark.parametrize("condition", ["file_change", "companion_change", "incomplete", "lock", "unsafe"])
+@pytest.mark.parametrize(
+    "condition", ["file_change", "companion_change", "incomplete", "lock", "unsafe"]
+)
 def test_reuse_or_reset_refuses_unverified_state(client, condition):
     own_saved_project(client)
     if condition == "file_change":
@@ -100,7 +113,11 @@ def test_reuse_or_reset_refuses_unverified_state(client, condition):
 
 
 def test_retained_os_lock_prevents_concurrent_invocation(client):
-    with batch.WorkspaceLock(), pytest.raises(batch.StopTest, match="already in use"), batch.WorkspaceLock():
+    with (
+        batch.WorkspaceLock(),
+        pytest.raises(batch.StopTest, match="already in use"),
+        batch.WorkspaceLock(),
+    ):
         raise AssertionError("second lock acquired")
     assert (batch.WORK / "workspace.lock").exists()
 

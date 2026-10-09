@@ -58,7 +58,7 @@ def require_matplotlib():
         import numpy as np
     except ImportError as exc:  # pragma: no cover - depends on environment
         raise ImportError(
-            "Figure tools need matplotlib and numpy: pip install \"cst-studio-mcp[figures]\""
+            'Figure tools need matplotlib and numpy: pip install "cst-studio-mcp[figures]"'
         ) from exc
     return matplotlib, plt, np
 

@@ -16,11 +16,11 @@ preventing blocking popups during automation.
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -204,7 +204,11 @@ TOOLS: list[Tool] = [
                         "type": "object",
                         "properties": {
                             "port_number": {"type": "integer", "minimum": 1},
-                            "type": {"type": "string", "enum": ["waveguide", "discrete"], "default": "waveguide"},
+                            "type": {
+                                "type": "string",
+                                "enum": ["waveguide", "discrete"],
+                                "default": "waveguide",
+                            },
                             "orientation": {
                                 "type": "string",
                                 "enum": ["xmin", "xmax", "ymin", "ymax", "zmin", "zmax"],
@@ -225,8 +229,16 @@ TOOLS: list[Tool] = [
                     "type": "boolean",
                     "description": "Whether Solver.ActivatePowerLoss1DMonitor is enabled.",
                 },
-                "farfield_frequencies_ghz": {"type": "array", "items": {"type": "number"}, "maxItems": 64},
-                "field_monitor_frequencies_ghz": {"type": "array", "items": {"type": "number"}, "maxItems": 64},
+                "farfield_frequencies_ghz": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "maxItems": 64,
+                },
+                "field_monitor_frequencies_ghz": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "maxItems": 64,
+                },
             },
             "required": ["boundaries"],
         },
@@ -255,28 +267,40 @@ def _check_power_balance(arguments: dict, client: CSTClient) -> dict:
     else:
         project_path = arguments.get("project_path") or getattr(client, "project_path", None)
         if not project_path:
-            return {"status": "error",
-                    "message": "Pass project_path (saved .cst) or power_curves, or connect with a saved project."}
+            return {
+                "status": "error",
+                "message": "Pass project_path (saved .cst) or power_curves, or connect with a saved project.",
+            }
         if not arguments.get("project_path"):
             running = getattr(client, "is_solver_running", None)
             if callable(running) and running(timeout_s=5) is not False:
-                return {"status": "busy", "message": "Results are not read while the solver is active "
-                        "or its state is unknown."}
-        curves, items = pb.read_power_curves(str(project_path), excitation, int(arguments.get("run_id", 0)))
+                return {
+                    "status": "busy",
+                    "message": "Results are not read while the solver is active "
+                    "or its state is unknown.",
+                }
+        curves, items = pb.read_power_curves(
+            str(project_path), excitation, int(arguments.get("run_id", 0))
+        )
         sources = {"kind": "project", "project_path": str(project_path), "items": items}
         if not curves.get("P_acc"):
-            return {"status": "no_results",
-                    "message": f"No '1D Results\\Power\\{excitation}\\Power Accepted' curve found. Run the "
-                    "solver and save the project, or check the excitation name.",
-                    "sources": sources}
+            return {
+                "status": "no_results",
+                "message": f"No '1D Results\\Power\\{excitation}\\Power Accepted' curve found. Run the "
+                "solver and save the project, or check the excitation name.",
+                "sources": sources,
+            }
     freqs = arguments.get("frequencies_ghz")
     if not freqs:
         loss = curves.get("P_loss_diel") or curves.get("P_loss_metal")
         if loss and len(loss["x"]) <= 10:
             freqs = list(loss["x"])
         else:
-            return {"status": "error", "message": "Pass frequencies_ghz (no sparse loss samples to default to).",
-                    "sources": sources}
+            return {
+                "status": "error",
+                "message": "Pass frequencies_ghz (no sparse loss samples to default to).",
+                "sources": sources,
+            }
     means: dict[float, float] = {}
     grids = []
     for g in arguments.get("farfield_grids") or []:
@@ -286,12 +310,20 @@ def _check_power_balance(arguments: dict, client: CSTClient) -> dict:
         grid = parse_farfield_ascii(g["data_file"], quantity_hint="realized_gain")
         mean = sphere_mean_linear(grid.theta, grid.phi, grid.total_db)
         means[float(g["frequency_ghz"])] = mean
-        entry = {"frequency_ghz": float(g["frequency_ghz"]), "data_file": g["data_file"],
-                 "quantity": grid.quantity, "sphere_mean_linear": round(mean, 6)}
+        entry = {
+            "frequency_ghz": float(g["frequency_ghz"]),
+            "data_file": g["data_file"],
+            "quantity": grid.quantity,
+            "sphere_mean_linear": round(mean, 6),
+        }
         if grid.quantity not in ("realized_gain", "unknown"):
-            entry["note"] = "eta_pattern assumes realized gain (4*pi*U/P_stim); this grid is " + grid.quantity
+            entry["note"] = (
+                "eta_pattern assumes realized gain (4*pi*U/P_stim); this grid is " + grid.quantity
+            )
         grids.append(entry)
-    out = pb.compute_balance(curves, [float(f) for f in freqs], threshold=threshold, pattern_means=means)
+    out = pb.compute_balance(
+        curves, [float(f) for f in freqs], threshold=threshold, pattern_means=means
+    )
     out["sources"] = sources
     if grids:
         out["farfield_grids"] = grids
@@ -308,9 +340,7 @@ def _text(data: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a diagnostics tool call."""
     try:
         if name == "cst_delete_results":
@@ -337,17 +367,20 @@ async def handle(
         if name == "cst_check_model_setup":
             from cst_mcp.execution.model_checks import check_setup
 
-            return _text(check_setup(
-                arguments.get("boundaries") or {},
-                arguments.get("ports") or [],
-                structure_bbox=arguments.get("structure_bbox"),
-                power_loss_1d=arguments.get("power_loss_1d"),
-                farfield_frequencies=arguments.get("farfield_frequencies_ghz"),
-                field_monitor_frequencies=arguments.get("field_monitor_frequencies_ghz"),
-            ))
+            return _text(
+                check_setup(
+                    arguments.get("boundaries") or {},
+                    arguments.get("ports") or [],
+                    structure_bbox=arguments.get("structure_bbox"),
+                    power_loss_1d=arguments.get("power_loss_1d"),
+                    farfield_frequencies=arguments.get("farfield_frequencies_ghz"),
+                    field_monitor_frequencies=arguments.get("field_monitor_frequencies_ghz"),
+                )
+            )
 
         return _text({"status": "error", "message": f"Unknown diagnostics tool: {name}"})
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in diagnostics.handle", exc_info=True)
         return _text({"status": "error", "message": str(e)})
 
 
@@ -358,6 +391,6 @@ async def handle(
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

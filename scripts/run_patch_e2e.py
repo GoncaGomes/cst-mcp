@@ -46,7 +46,9 @@ async def main() -> int:
     report["connect"] = conn
     print(json.dumps(conn, indent=2, default=str), flush=True)
     if conn.get("status") != "connected":
-        (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        (out_dir / "report.json").write_text(
+            json.dumps(report, indent=2, default=str), encoding="utf-8"
+        )
         return 1
 
     print("=== BUILD PATCH 2.4 GHz ===", flush=True)
@@ -66,13 +68,19 @@ async def main() -> int:
     build_data = json.loads(build[0].text)
     report["build"] = _trim(build_data)
     print("build status:", build_data.get("status"), flush=True)
-    print("parameters:", json.dumps(build_data.get("parameters_in_project"), indent=2, default=str)[:2000], flush=True)
+    print(
+        "parameters:",
+        json.dumps(build_data.get("parameters_in_project"), indent=2, default=str)[:2000],
+        flush=True,
+    )
     for s in build_data.get("steps") or []:
         if isinstance(s, dict) and s.get("label"):
             print(f"  {s.get('label'):20} {s.get('status')}", flush=True)
 
     if build_data.get("status") not in {"executed", "ok"}:
-        (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        (out_dir / "report.json").write_text(
+            json.dumps(report, indent=2, default=str), encoding="utf-8"
+        )
         print("BUILD FAILED", flush=True)
         return 2
 
@@ -119,10 +127,10 @@ async def main() -> int:
     client.save_project()
     report["project_path"] = client.project_path
     report["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    report["success"] = (
-        build_data.get("status") in {"executed", "ok"}
-        and solve.get("status") in {"executed", "ok"}
-    )
+    report["success"] = build_data.get("status") in {"executed", "ok"} and solve.get("status") in {
+        "executed",
+        "ok",
+    }
 
     json_path = out_dir / "report.json"
     json_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -141,7 +149,9 @@ async def main() -> int:
         "",
         "## Parameter list",
         "```json",
-        json.dumps(params.get("parameters") if isinstance(params, dict) else params, indent=2, default=str)[:3000],
+        json.dumps(
+            params.get("parameters") if isinstance(params, dict) else params, indent=2, default=str
+        )[:3000],
         "```",
         "",
         f"Full JSON: `{json_path}`",

@@ -49,6 +49,8 @@ def preserve_cst_processes():
     for name in ["_create_platform_compatible_process", "_terminate_process_tree"]:
         if not callable(getattr(sdk_stdio, name, None)):
             raise TypeError(f"MCP SDK lacks preservation hook {name}; refuse transport startup")
-    with patch.object(sdk_stdio, "_create_platform_compatible_process", _spawn_server_only), \
-            patch.object(sdk_stdio, "_terminate_process_tree", _terminate_server_only):
+    with (
+        patch.object(sdk_stdio, "_create_platform_compatible_process", _spawn_server_only),
+        patch.object(sdk_stdio, "_terminate_process_tree", _terminate_server_only),
+    ):
         yield

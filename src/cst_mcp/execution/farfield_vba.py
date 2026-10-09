@@ -31,38 +31,135 @@ from cst_mcp.vba_safety import vba_escape, vba_number
 
 # Every method/property listed on the CST 2026 FarfieldPlot help page.
 DOCUMENTED_FARFIELDPLOT_METHODS = frozenset(
-    """
-    ASCIIExportAsBroadbandSource ASCIIExportAsSource ASCIIExportVersion AddCut
-    AddListEvaluationPoint Alpha Azimuth CalculateList CalculatePoint
-    CalculatePointNoApprox CartSymRange ClearCuts CopyFarfieldTo1DResults DBUnit
-    DecouplingPlaneAxis DecouplingPlanePosition Distance DrawContourLines
-    DrawIsoLongitudeLatitudeLines DrawStepLines Elevation EnableFixPlotMaximum
-    EnablePhaseCenterCalculation Epsilon FarfieldSize GetAngularWidthXdB
-    GetFixPlotMaximumValue GetFrontToBackRatio GetList GetListItem GetLogRange
-    GetMainLobeDirection GetMainLobeVector GetMax GetMean GetMin GetPhaseCenterResult
-    GetPhaseCenterResultExpr GetPhaseCenterResultExprAvg GetPhaseCenterResultExprEPlane
-    GetPhaseCenterResultExprHPlane GetPlotMode GetRadiationEfficiency GetSideLobeLevel
-    GetSideLobeSuppression GetSystemRadiationEfficiency GetSystemTotalEfficiency GetTRP
-    GetTotalACS GetTotalEfficiency GetTotalRCS IncludeUnitCellSidewalls InvertAxes
-    Origin Phi Phistart Plot Plottype PolarizationVector Reset ResetPlot
-    SelectComponent SetAntennaType SetAutomaticCoordinateSystem SetAxesType
-    SetColorByValue SetCoordinateSystemType SetFarfieldTransparent
-    SetFixPlotMaximumValue SetFrequency SetInverseAxialRatio SetLockSteps SetLogNorm
-    SetLogRange SetMainLobeThreshold SetMaxReferenceMode SetMovieSamples
-    SetMultipolNumber SetNumberOfContourValues SetPhaseCenterAngularLimit
-    SetPhaseCenterComponent SetPhaseCenterPlane SetPhiEnd SetPhiStart SetPlotMode
-    SetPlotRangeOnly SetPolarizationType SetScaleLinear SetSpecials
-    SetStructureTransparent SetTheta360 SetThetaEnd SetThetaStart SetTime
-    SetTimeDomainFF SetUserDecouplingPlane SetUserMirrorPlane ShowPhaseCenter
-    ShowStructure ShowStructureProfile SlantAngle Step Step2 StoreSettings
-    SymmetricRange Theta Thetastart UseDecouplingPlane UseFarfieldApproximation
-    UseMirrorPlane Userorigin Vary
-    """.split()
+    [
+        "ASCIIExportAsBroadbandSource",
+        "ASCIIExportAsSource",
+        "ASCIIExportVersion",
+        "AddCut",
+        "AddListEvaluationPoint",
+        "Alpha",
+        "Azimuth",
+        "CalculateList",
+        "CalculatePoint",
+        "CalculatePointNoApprox",
+        "CartSymRange",
+        "ClearCuts",
+        "CopyFarfieldTo1DResults",
+        "DBUnit",
+        "DecouplingPlaneAxis",
+        "DecouplingPlanePosition",
+        "Distance",
+        "DrawContourLines",
+        "DrawIsoLongitudeLatitudeLines",
+        "DrawStepLines",
+        "Elevation",
+        "EnableFixPlotMaximum",
+        "EnablePhaseCenterCalculation",
+        "Epsilon",
+        "FarfieldSize",
+        "GetAngularWidthXdB",
+        "GetFixPlotMaximumValue",
+        "GetFrontToBackRatio",
+        "GetList",
+        "GetListItem",
+        "GetLogRange",
+        "GetMainLobeDirection",
+        "GetMainLobeVector",
+        "GetMax",
+        "GetMean",
+        "GetMin",
+        "GetPhaseCenterResult",
+        "GetPhaseCenterResultExpr",
+        "GetPhaseCenterResultExprAvg",
+        "GetPhaseCenterResultExprEPlane",
+        "GetPhaseCenterResultExprHPlane",
+        "GetPlotMode",
+        "GetRadiationEfficiency",
+        "GetSideLobeLevel",
+        "GetSideLobeSuppression",
+        "GetSystemRadiationEfficiency",
+        "GetSystemTotalEfficiency",
+        "GetTRP",
+        "GetTotalACS",
+        "GetTotalEfficiency",
+        "GetTotalRCS",
+        "IncludeUnitCellSidewalls",
+        "InvertAxes",
+        "Origin",
+        "Phi",
+        "Phistart",
+        "Plot",
+        "Plottype",
+        "PolarizationVector",
+        "Reset",
+        "ResetPlot",
+        "SelectComponent",
+        "SetAntennaType",
+        "SetAutomaticCoordinateSystem",
+        "SetAxesType",
+        "SetColorByValue",
+        "SetCoordinateSystemType",
+        "SetFarfieldTransparent",
+        "SetFixPlotMaximumValue",
+        "SetFrequency",
+        "SetInverseAxialRatio",
+        "SetLockSteps",
+        "SetLogNorm",
+        "SetLogRange",
+        "SetMainLobeThreshold",
+        "SetMaxReferenceMode",
+        "SetMovieSamples",
+        "SetMultipolNumber",
+        "SetNumberOfContourValues",
+        "SetPhaseCenterAngularLimit",
+        "SetPhaseCenterComponent",
+        "SetPhaseCenterPlane",
+        "SetPhiEnd",
+        "SetPhiStart",
+        "SetPlotMode",
+        "SetPlotRangeOnly",
+        "SetPolarizationType",
+        "SetScaleLinear",
+        "SetSpecials",
+        "SetStructureTransparent",
+        "SetTheta360",
+        "SetThetaEnd",
+        "SetThetaStart",
+        "SetTime",
+        "SetTimeDomainFF",
+        "SetUserDecouplingPlane",
+        "SetUserMirrorPlane",
+        "ShowPhaseCenter",
+        "ShowStructure",
+        "ShowStructureProfile",
+        "SlantAngle",
+        "Step",
+        "Step2",
+        "StoreSettings",
+        "SymmetricRange",
+        "Theta",
+        "Thetastart",
+        "UseDecouplingPlane",
+        "UseFarfieldApproximation",
+        "UseMirrorPlane",
+        "Userorigin",
+        "Vary",
+    ]
 )
 
 DOCUMENTED_PLOT_MODES = frozenset(
-    {"directivity", "gain", "realized gain", "efield", "epattern", "hfield", "pfield",
-     "rcs", "rcsunits", "rcssw"}
+    {
+        "directivity",
+        "gain",
+        "realized gain",
+        "efield",
+        "epattern",
+        "hfield",
+        "pfield",
+        "rcs",
+        "rcsunits",
+        "rcssw",
+    }
 )
 
 
@@ -73,8 +170,8 @@ def undocumented_farfieldplot_calls(vba: str) -> set[str]:
     names.update(re.findall(r"\bFarfieldPlot\.(\w+)", vba))
     if re.search(r"Set\s+ff\s*=\s*FarfieldPlot\b", vba):
         names.update(re.findall(r"\bff\.(\w+)", vba))
-    for block in re.findall(r"With\s+FarfieldPlot\b(.*?)End\s+With", vba, re.S):
-        names.update(re.findall(r"^\s*\.(\w+)", block, re.M))
+    for block in re.findall(r"With\s+FarfieldPlot\b(.*?)End\s+With", vba, re.DOTALL):
+        names.update(re.findall(r"^\s*\.(\w+)", block, re.MULTILINE))
     return {n for n in names if n not in DOCUMENTED_FARFIELDPLOT_METHODS}
 
 
@@ -91,8 +188,9 @@ def select_farfield_lines(tree_path: str, indent: str = "  ") -> list[str]:
     ]
 
 
-def plot_setup_lines(plot_mode: str, plottype: str = "3d", step_deg: float = 5.0,
-                     indent: str = "  ") -> list[str]:
+def plot_setup_lines(
+    plot_mode: str, plottype: str = "3d", step_deg: float = 5.0, indent: str = "  "
+) -> list[str]:
     if plot_mode not in DOCUMENTED_PLOT_MODES:
         raise ValueError(f"plot_mode must be one of {sorted(DOCUMENTED_PLOT_MODES)}")
     step = vba_number(step_deg, "step_deg")

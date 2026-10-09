@@ -1,7 +1,9 @@
 """Parse explicit CST export headers; numeric values cannot identify a layout."""
 
+import logging
 import math
 import re
+from itertools import pairwise
 from pathlib import Path
 
 from cst_mcp.execution.curves import frequency_scale
@@ -70,27 +72,30 @@ def parse_sparam_csv(path):
             mag.append(amplitude)
             db.append(20 * math.log10(amplitude) if amplitude else None)
             phase.append(ph)
-        if any(b <= a for a, b in zip(freq, freq[1:])):
+        if any(b <= a for a, b in pairwise(freq)):
             raise ValueError("Frequency must be strictly increasing")
         finite = [(f, d) for f, d in zip(freq, db) if d is not None]
         metrics = {}
         if finite:
             f, d = min(finite, key=lambda pair: pair[1])
             metrics = {"min_db": d, "freq_at_min_ghz": f}
-        return dict(
-            status="ok",
-            path=str(path),
-            layout_detected=layout,
-            frequency_unit="GHz",
-            n_points=len(freq),
-            frequency_ghz=freq,
-            real=real,
-            imag=imag,
-            magnitude_linear=mag,
-            magnitude_db=db,
-            phase_deg=phase,
-            metrics=metrics,
-            complex_available=layout in {"re_im", "db_phase", "mag_phase"},
-        )
+        return {
+            "status": "ok",
+            "path": str(path),
+            "layout_detected": layout,
+            "frequency_unit": "GHz",
+            "n_points": len(freq),
+            "frequency_ghz": freq,
+            "real": real,
+            "imag": imag,
+            "magnitude_linear": mag,
+            "magnitude_db": db,
+            "phase_deg": phase,
+            "metrics": metrics,
+            "complex_available": layout in {"re_im", "db_phase", "mag_phase"},
+        }
     except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "Handled error in csv_curves.parse_sparam_csv", exc_info=True
+        )
         return {"status": "error", "path": str(path), "message": str(exc)}

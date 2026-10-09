@@ -1,5 +1,7 @@
-from pathlib import Path
+import logging
 import sys
+from pathlib import Path
+
 sys.path.insert(0, r"E:\CST Studio Suite 2026\AMD64\python_cst_libraries")
 import cst.interface as ci
 
@@ -19,6 +21,7 @@ for tree in [
         r = m3d.SelectTreeItem(tree)
         print("py select", repr(tree), "->", r)
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in _tree_dump.main", exc_info=True)
         print("py select FAIL", tree, e)
 
 # list all tree children under Farfields via VBA Resulttree
@@ -61,5 +64,6 @@ try:
     sch.execute_vba_code(vba)
     print("vba ok")
 except Exception as e:
+    logging.getLogger(__name__).debug("Handled error in _tree_dump.main", exc_info=True)
     print("vba err", str(e)[-400:])
 print(out.read_text(encoding="utf-8", errors="replace") if out.exists() else "missing")

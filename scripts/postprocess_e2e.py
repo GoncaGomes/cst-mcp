@@ -35,7 +35,7 @@ def main() -> None:
     md = [
         "# Patch 2.4 GHz — post-fix results",
         "",
-        f"- Project: `E:\\cstprojects\\patch_2p4_e2e.cst`",
+        "- Project: `E:\\cstprojects\\patch_2p4_e2e.cst`",
         f"- Parameters: **{params.get('count')}** → `{list((params.get('parameters') or {}).keys())}`",
         f"- S11: **{s.get('status')}** metrics=`{s.get('metrics')}` n={s.get('n_points')}",
         f"- CST messages: `{msgs.get('path')}`",

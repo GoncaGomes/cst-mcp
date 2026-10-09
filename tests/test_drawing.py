@@ -33,18 +33,41 @@ def _fixture(root: Path, *, manifest: bool = True, scale: float = 1.0) -> Path:
     stl = root / "stl"
     stl.mkdir(parents=True)
     s = scale
-    write_stl(stl / "substrate.stl", box_triangles(-W / 2 * s, W / 2 * s, -L / 2 * s, L / 2 * s, 0, H * s))
-    write_stl(stl / "patch.stl", box_triangles(-9 * s, 9 * s, -7 * s, 7 * s, H * s, (H + T) * s), binary=False)
+    write_stl(
+        stl / "substrate.stl", box_triangles(-W / 2 * s, W / 2 * s, -L / 2 * s, L / 2 * s, 0, H * s)
+    )
+    write_stl(
+        stl / "patch.stl",
+        box_triangles(-9 * s, 9 * s, -7 * s, 7 * s, H * s, (H + T) * s),
+        binary=False,
+    )
     write_stl(stl / "ring.stl", ring_triangles(0, 0, 4 * s, 5 * s, -T * s, 0, 48))
     if manifest:
-        (stl / "manifest.json").write_text(json.dumps({
-            "units": "mm", "project": "demo.cst",
-            "solids": [
-                {"file": "substrate.stl", "name": "component1:substrate", "material": "FR-4 (lossy)"},
-                {"file": "patch.stl", "name": "component1:patch", "material": "Copper (annealed)"},
-                {"file": "ring.stl", "name": "component1:ring", "material": "Copper (annealed)"},
-            ],
-        }))
+        (stl / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "units": "mm",
+                    "project": "demo.cst",
+                    "solids": [
+                        {
+                            "file": "substrate.stl",
+                            "name": "component1:substrate",
+                            "material": "FR-4 (lossy)",
+                        },
+                        {
+                            "file": "patch.stl",
+                            "name": "component1:patch",
+                            "material": "Copper (annealed)",
+                        },
+                        {
+                            "file": "ring.stl",
+                            "name": "component1:ring",
+                            "material": "Copper (annealed)",
+                        },
+                    ],
+                }
+            )
+        )
     return stl
 
 
@@ -126,10 +149,14 @@ def test_load_stl_dir_uses_manifest_and_units(tmp_path):
 def test_offline_sheet_drawing(tmp_path):
     stl = _fixture(tmp_path)
     out = tmp_path / "out"
-    data = _call({
-        "stl_dir": str(stl), "output_dir": str(out),
-        "views": ["top", "front", "side", "iso"], "parameters": {"W": W, "h": H},
-    })
+    data = _call(
+        {
+            "stl_dir": str(stl),
+            "output_dir": str(out),
+            "views": ["top", "front", "side", "iso"],
+            "parameters": {"W": W, "h": H},
+        }
+    )
     assert data["status"] == "ok", data
     assert {Path(f).suffix for f in data["files"]} == {".pdf", ".svg", ".png"}
     for f in data["files"]:
@@ -152,14 +179,23 @@ def test_offline_sheet_drawing(tmp_path):
 
 def test_offline_separate_views_png_only(tmp_path):
     stl = _fixture(tmp_path, manifest=False)
-    data = _call({
-        "stl_dir": str(stl), "output_dir": str(tmp_path / "o"), "layout": "separate",
-        "views": ["top", "side"], "formats": ["png"], "dpi": 150, "z_exaggeration": 1,
-        "solids": ["substrate", "patch"],
-    })
+    data = _call(
+        {
+            "stl_dir": str(stl),
+            "output_dir": str(tmp_path / "o"),
+            "layout": "separate",
+            "views": ["top", "side"],
+            "formats": ["png"],
+            "dpi": 150,
+            "z_exaggeration": 1,
+            "solids": ["substrate", "patch"],
+        }
+    )
     assert data["status"] == "ok", data
     assert sorted(Path(f).name for f in data["files"]) == [
-        "technical_drawing_side.png", "technical_drawing_top.png"]
+        "technical_drawing_side.png",
+        "technical_drawing_top.png",
+    ]
     assert {s["name"] for s in data["solids"]} == {"substrate", "patch"}
     assert data["z_exaggeration"] == 1
 

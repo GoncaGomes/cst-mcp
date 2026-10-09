@@ -263,9 +263,13 @@ async def test_finished_without_recorded_solve_is_unconfirmed(clock) -> None:
 
 @pytest.mark.asyncio
 async def test_wait_supports_clients_without_running_only(clock) -> None:
-    client = SimpleNamespace(solver_status=lambda timeout_s=30.0: {
-        "status": "ok", "running": False, "active_solver": "HF Time Domain",
-    })
+    client = SimpleNamespace(
+        solver_status=lambda timeout_s=30.0: {
+            "status": "ok",
+            "running": False,
+            "active_solver": "HF Time Domain",
+        }
+    )
     data = await call({"max_wait_s": 4}, client)
     assert data["status"] == "finished"
     assert data["active_solver"] == "HF Time Domain"
@@ -275,7 +279,9 @@ async def test_wait_supports_clients_without_running_only(clock) -> None:
 async def test_wait_propagates_unknown_solver_state_as_error(clock) -> None:
     client = SimpleNamespace(
         solver_status=lambda timeout_s=30.0: {
-            "status": "error", "message": "CST status channel unavailable", "running": None,
+            "status": "error",
+            "message": "CST status channel unavailable",
+            "running": None,
         }
     )
     data = await call({"max_wait_s": 10}, client)
@@ -287,7 +293,10 @@ async def test_wait_propagates_unknown_solver_state_as_error(clock) -> None:
 @pytest.mark.asyncio
 async def test_wait_offline_session_returns_error(clock) -> None:
     cfg = SimpleNamespace(
-        cst_available=False, cst_path=None, python_lib_path=None, version="2026",
+        cst_available=False,
+        cst_path=None,
+        python_lib_path=None,
+        version="2026",
         work_dir=Path("."),
     )
     session = CSTSession(config=cfg)
@@ -335,7 +344,10 @@ class FakeModel3D:
 
 def make_session(model: FakeModel3D) -> CSTSession:
     cfg = SimpleNamespace(
-        cst_available=True, cst_path=None, python_lib_path=None, version="2026",
+        cst_available=True,
+        cst_path=None,
+        python_lib_path=None,
+        version="2026",
         work_dir=Path("."),
     )
     session = CSTSession(config=cfg)
@@ -349,7 +361,8 @@ def test_running_only_status_makes_one_cst_call() -> None:
     model = FakeModel3D()
     session = make_session(model)
     assert session.solver_status(timeout_s=4, running_only=True) == {
-        "status": "ok", "running": False,
+        "status": "ok",
+        "running": False,
     }
     assert model.calls == [("is_solver_running", 4)]
     full = session.solver_status(timeout_s=4)

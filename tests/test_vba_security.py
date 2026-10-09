@@ -64,7 +64,7 @@ def test_line_continuation_open_for_output_blocked():
         'Application.Run "Macro1"',
         'Name "a.txt" As "b.txt"',
         'x = 1: Name "a.txt" As "b.txt"',
-        "'#Uses \"evil.bas\"",
+        '\'#Uses "evil.bas"',
     ],
 )
 def test_indirect_execution_and_file_ops_blocked(code):
@@ -149,7 +149,8 @@ async def test_raw_vba_enabled_still_validates(monkeypatch):
     monkeypatch.setenv("CST_ALLOW_RAW_VBA", "1")
     client = _FakeClient(connected=True)
     data = await _call(
-        client, 'Declare PtrSafe Function WinExec Lib "kernel32" (ByVal c As String, ByVal n As Long) As Long'
+        client,
+        'Declare PtrSafe Function WinExec Lib "kernel32" (ByVal c As String, ByVal n As Long) As Long',
     )
     assert data["status"] == "error"
     assert "dangerous" in data["message"]
@@ -170,13 +171,15 @@ async def test_raw_vba_enabled_still_validates(monkeypatch):
         'If True Then Name "C:/a.txt" As "C:/b.txt"',
         'If False Then x = 1 Else Name "a" As "b"',
         '10 Name "a" As "b"',
-        "'#Reference {420B2830-E718-11CF-893D-00A0C9054228}#1.0#0#C:/Windows/System32/scrrun.dll"
-        "#Microsoft Scripting Runtime\nDim fso As New Scripting.FileSystemObject\nfso.DeleteFile \"C:/x\"",
-        'Dim fso As New Scripting.FileSystemObject',
-        "'#Language \"WWB.NET\"\nImports System.Diagnostics\nSub Main\n Process.Start(\"calc.exe\")\nEnd Sub",
+        (
+            "'#Reference {420B2830-E718-11CF-893D-00A0C9054228}#1.0#0#C:/Windows/System32/scrrun.dll"
+            '#Microsoft Scripting Runtime\nDim fso As New Scripting.FileSystemObject\nfso.DeleteFile "C:/x"'
+        ),
+        "Dim fso As New Scripting.FileSystemObject",
+        '\'#Language "WWB.NET"\nImports System.Diagnostics\nSub Main\n Process.Start("calc.exe")\nEnd Sub',
         'Process.Start("notepad")',
-        'Imports System.Diagnostics',
-        "' #Uses \"evil.bas\"",
+        "Imports System.Diagnostics",
+        '\' #Uses "evil.bas"',
         'MacroRun "C:/Users/Public/evil.bas"',
         'ch = DDEInitiate("Excel","System")\nDDEExecute ch, "[EXEC(""calc"")]"',
         'ShellExecute 0, "open", "calc"',
@@ -194,7 +197,7 @@ def test_reviewer_bypasses_blocked(code):
     [
         'Private Declare _\rFunction WinExec Lib _\r"kernel32" (ByVal c As String, ByVal n As Long) As Long',
         'Open "C:/temp/evil.bat" _\r    For Output As #1',
-        "x = 1\rShell \"calc\"",
+        'x = 1\rShell "calc"',
     ],
 )
 def test_lone_cr_line_breaks_blocked(code):
@@ -209,11 +212,11 @@ def test_lone_cr_line_breaks_blocked(code):
         'ReportInformation "it\'s fine": Shell "calc"',
         'ReportInformation "a ""quoted"" word": Kill "x"',
         'x = "abc""": Kill "x"',
-        "' comment with a quote \" in it\nKill \"x\"",
-        "' comment continued _\nKill \"x\"",
+        '\' comment with a quote " in it\nKill "x"',
+        '\' comment continued _\nKill "x"',
         'x = 1 _\nRem: Kill "x"',
         '[x"] : Shell "calc"',
-        "['] Shell \"calc\"",
+        '[\'] Shell "calc"',
         'x = 1: Kill "y" \' trailing comment',
         'Sh\x00ell "calc"',
     ],
@@ -226,17 +229,19 @@ def test_masking_does_not_create_bypasses(code):
 @pytest.mark.parametrize(
     "code",
     [
-        'With Brick\n.Reset\n.Name "shell"\n.Component "enclosure"\n.Material "PEC"\n'
-        '.Xrange "0","1"\n.Yrange "0","1"\n.Zrange "0","1"\n.Create\nEnd With',
-        "' Kill the old mesh settings\nMesh.MeshType \"PBA\"",
+        (
+            'With Brick\n.Reset\n.Name "shell"\n.Component "enclosure"\n.Material "PEC"\n'
+            '.Xrange "0","1"\n.Yrange "0","1"\n.Zrange "0","1"\n.Create\nEnd With'
+        ),
+        '\' Kill the old mesh settings\nMesh.MeshType "PBA"',
         'Material.Name "Shell Glass"',
         'Solid.Delete "kill:body"',
         "' Name the port As needed\n",
         "Rem Name the port As needed, then Kill the rest",
-        'x = 1: Rem Shell is only mentioned here',
+        "x = 1: Rem Shell is only mentioned here",
         'ReportInformation "Open the file For Input later"',
         'ReportInformation "say ""Shell"" and ""Kill"""',
-        'With ASCIIExport\n .Open\nEnd With',
+        "With ASCIIExport\n .Open\nEnd With",
         'Solid.Delete "comp:Name As x"',
     ],
 )
@@ -247,7 +252,7 @@ def test_reviewer_false_positives_allowed(code):
 # --- vba_builder string escaping -----------------------------------------------------
 
 
-@pytest.mark.parametrize("value", ["a\nShell \"calc\"", "a\rb", "a\r\nb", "a\x00b"])
+@pytest.mark.parametrize("value", ['a\nShell "calc"', "a\rb", "a\r\nb", "a\x00b"])
 def test_builder_rejects_line_breaks_in_values(value):
     from cst_mcp.vba_builder import VBABuilder, _escape_vba_string
 
@@ -262,7 +267,7 @@ def test_builder_rejects_line_breaks_in_values(value):
 def test_builder_comment_newlines_flattened():
     from cst_mcp.vba_builder import VBAScript
 
-    out = VBAScript().add_comment("line one\nShell \"calc\"\r\nline three").build()
+    out = VBAScript().add_comment('line one\nShell "calc"\r\nline three').build()
     assert "\n" not in out and "\r" not in out
     assert out.startswith("' ")
     validate_vba_input(out)  # it's all one comment

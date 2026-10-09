@@ -7,16 +7,16 @@ exporting models, and handling Touchstone and far-field data files.
 from __future__ import annotations
 
 import json
-from typing import Callable
+import logging
+from collections.abc import Callable
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.vba_builder import VBABuilder, VBAScript
 from cst_mcp.validators import validate_file_path, validate_name
+from cst_mcp.vba_builder import VBABuilder, VBAScript
 from cst_mcp.vba_safety import validate_file_path as _vba_file_path
 from cst_mcp.vba_safety import vba_escape, vba_number
-
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -52,7 +52,6 @@ TOOLS: list[Tool] = [
             "required": ["file_path", "format"],
         },
     ),
-
     # 2. Export CAD
     Tool(
         name="cst_export_cad",
@@ -82,7 +81,6 @@ TOOLS: list[Tool] = [
             "required": ["file_path", "format"],
         },
     ),
-
     # 3. Import Touchstone
     Tool(
         name="cst_import_touchstone",
@@ -106,7 +104,6 @@ TOOLS: list[Tool] = [
             "required": ["file_path"],
         },
     ),
-
     # 4. Export Touchstone
     Tool(
         name="cst_export_touchstone",
@@ -131,7 +128,6 @@ TOOLS: list[Tool] = [
             "required": ["file_path"],
         },
     ),
-
     # 5. Export far-field
     Tool(
         name="cst_export_farfield",
@@ -219,9 +215,7 @@ def _build_import_cad(args: dict) -> str:
     # Format-specific options
     if fmt == "stl":
         vba.set("ScaleToUnit", "True")
-    elif fmt in ("stp", "sat"):
-        vba.set_bool("Healing", True)
-    elif fmt == "igs":
+    elif fmt in ("stp", "sat") or fmt == "igs":
         vba.set_bool("Healing", True)
 
     vba.call("Read")
@@ -243,11 +237,7 @@ def _build_export_cad(args: dict) -> str:
     script = VBAScript()
     script.add_comment(f"Export model to {fmt.upper()}: {file_path}")
 
-    vba = (
-        VBABuilder(cst_object)
-        .call("Reset")
-        .set("FileName", file_path)
-    )
+    vba = VBABuilder(cst_object).call("Reset").set("FileName", file_path)
 
     if component:
         vba.set("Component", component)
@@ -259,7 +249,9 @@ def _build_export_cad(args: dict) -> str:
 
 def _build_import_touchstone(args: dict) -> str:
     """Build VBA script for Touchstone file import."""
-    raise ValueError("TouchstoneImport is not a documented 3D VBA object. A Touchstone network needs an explicit schematic block or lumped-element pin mapping, which this tool's port_number-only schema cannot represent. No project was changed. Use cst_read_help for LumpedElement or the schematic API before defining the connection.")
+    raise ValueError(
+        "TouchstoneImport is not a documented 3D VBA object. A Touchstone network needs an explicit schematic block or lumped-element pin mapping, which this tool's port_number-only schema cannot represent. No project was changed. Use cst_read_help for LumpedElement or the schematic API before defining the connection."
+    )
 
 
 def _build_export_touchstone(args: dict) -> str:
@@ -445,10 +437,13 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
         return _text(result)
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in import_export.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +453,6 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

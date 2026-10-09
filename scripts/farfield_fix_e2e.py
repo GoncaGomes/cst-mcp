@@ -1,8 +1,10 @@
 """Fresh farfield fix verification using CSTClient + improved monitor + GetMax metrics."""
+
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -14,7 +16,6 @@ sys.path.insert(0, r"E:\CST Studio Suite 2026\AMD64\python_cst_libraries")
 from cst_mcp.config import CSTConfig
 from cst_mcp.cst_client import CSTClient
 from cst_mcp.tools import workflows
-
 
 PROJ = Path(r"E:\cstprojects\patch_2p4_fffix.cst")
 OUT = Path(r"E:\cstprojects\exports\farfield_fix.json")
@@ -86,6 +87,9 @@ Monitor.Delete "farfield (f=2.4)"
         try:
             print("select", tree, "->", m3d.SelectTreeItem(tree))
         except Exception as e:
+            logging.getLogger(__name__).debug(
+                "Handled error in farfield_fix_e2e.main", exc_info=True
+            )
             print("select fail", tree, e)
 
     # GetMax metrics immediately after solve (mesh may still be present)
@@ -146,9 +150,12 @@ End Sub'''
         session._project.schematic.execute_vba_code(vba)
         print("metrics VBA OK")
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in farfield_fix_e2e.main", exc_info=True)
         print("metrics VBA ERR", str(e)[-500:])
 
-    text = metrics_file.read_text(encoding="utf-8", errors="replace") if metrics_file.exists() else ""
+    text = (
+        metrics_file.read_text(encoding="utf-8", errors="replace") if metrics_file.exists() else ""
+    )
     print("METRICS:\n", text)
 
     s11 = c.get_s_parameters(1, 1, max_points=40)

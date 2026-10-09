@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.types import TextContent, Tool
 
@@ -210,9 +211,8 @@ TOOLS: list[Tool] = [
     ),
 ]
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a mesh tool call."""
     try:
         if name == "cst_set_mesh_type":
@@ -232,15 +232,23 @@ async def handle(
         elif name == "cst_add_fixpoint_mesh":
             return _add_fixpoint_mesh(arguments, client)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": f"Unknown mesh tool: {name}"}, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"tool": name, "status": "error", "message": f"Unknown mesh tool: {name}"},
+                    indent=2,
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in mesh.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 def _set_mesh_type(arguments: dict, client: CSTClient) -> list[TextContent]:
@@ -323,8 +331,7 @@ def _set_adaptive_mesh(arguments: dict, client: CSTClient) -> list[TextContent]:
     max_passes = int(arguments.get("max_passes", 3))
     threshold = float(arguments.get("threshold", 0.02))
 
-    if max_passes < 1:
-        max_passes = 1
+    max_passes = max(max_passes, 1)
     validate_range(max_passes, 1, 100, "max_passes")
     validate_positive(threshold, "threshold")
 
@@ -372,19 +379,27 @@ def _query_mesh(client: CSTClient) -> dict:
     errors = dict(result.get("errors") or {})
     # Right after a mesh setting change CST can report 0 cells while the point
     # count is already populated; a zero there is stale, not a real count.
-    if values.get("total_cells") == 0 and isinstance(values.get("mesh_points"), (int, float)) and values["mesh_points"] > 0:
+    if (
+        values.get("total_cells") == 0
+        and isinstance(values.get("mesh_points"), (int, float))
+        and values["mesh_points"] > 0
+    ):
         values.pop("total_cells")
         errors["total_cells"] = "stale cell count (0 cells with mesh points present); query again"
     out = {"status": "ok", **values, "source": result.get("source")}
     if errors:
         out["unavailable"] = errors
-        out["note"] = ("Some values are unavailable (typically no mesh has been generated yet); "
-                       "this tool never triggers meshing.")
+        out["note"] = (
+            "Some values are unavailable (typically no mesh has been generated yet); "
+            "this tool never triggers meshing."
+        )
     return out
 
 
 def _get_mesh_info(arguments: dict, client: CSTClient) -> list[TextContent]:
-    script = client.build_query_vba(_MESH_QUERY_FIELDS) if hasattr(client, "build_query_vba") else ""
+    script = (
+        client.build_query_vba(_MESH_QUERY_FIELDS) if hasattr(client, "build_query_vba") else ""
+    )
     if client.connected:
         result = _query_mesh(client)
     else:
@@ -411,7 +426,9 @@ def _get_mesh_info(arguments: dict, client: CSTClient) -> list[TextContent]:
 
 
 def _get_mesh_quality(arguments: dict, client: CSTClient) -> list[TextContent]:
-    script = client.build_query_vba(_MESH_QUERY_FIELDS) if hasattr(client, "build_query_vba") else ""
+    script = (
+        client.build_query_vba(_MESH_QUERY_FIELDS) if hasattr(client, "build_query_vba") else ""
+    )
     if client.connected:
         result = _query_mesh(client)
         if result.get("status") == "ok":
@@ -483,6 +500,6 @@ def _add_fixpoint_mesh(arguments: dict, client: CSTClient) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

@@ -12,7 +12,7 @@ import math
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from cst_mcp.config import CSTConfig
 from cst_mcp.vba_safety import vba_escape
@@ -58,7 +58,7 @@ class CSTSession:
             return True
         try:
             return bool(checker())
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("Design Environment connection check failed", exc_info=True)
             return False
 
@@ -104,7 +104,7 @@ class CSTSession:
                 except (TypeError, ValueError):
                     pids.append(item)
             return pids
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("running_design_environments failed", exc_info=True)
             return None
 
@@ -115,7 +115,7 @@ class CSTSession:
             return None
         try:
             return int(getter())
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("DesignEnvironment.pid() failed", exc_info=True)
             return None
 
@@ -126,7 +126,7 @@ class CSTSession:
         if callable(lister):
             try:
                 return [str(p) for p in list(lister() or [])]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.debug("list_open_projects failed", exc_info=True)
         paths = []
         for ref in open_projects:
@@ -225,14 +225,14 @@ class CSTSession:
             open_projects = []
             try:
                 open_projects = list(self._de.get_open_projects() or [])
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                logger.debug("Handled error in session.connect", exc_info=True)
             if open_projects and self._project is None:
                 active = None
                 try:
                     if self._de.has_active_project():
                         active = self._de.active_project()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.debug("active_project lookup failed", exc_info=True)
                 self._project = active or self._project_from_open_ref(self._de, open_projects[0])
                 self._project_path = self._safe_filename(self._project)
@@ -264,7 +264,7 @@ class CSTSession:
                     " Use cst_connect mode='new' for an isolated Design Environment."
                 )
             return result
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._de = None
             self._project = None
             self._project_path = None
@@ -288,7 +288,7 @@ class CSTSession:
     # Project lifecycle
     # ------------------------------------------------------------------
 
-    _FACTORIES = {
+    _FACTORIES: ClassVar[dict[str, str]] = {
         "MWS": "new_mws",
         "EMS": "new_ems",
         "PS": "new_ps",
@@ -334,16 +334,18 @@ class CSTSession:
                 project.save(path)
             except Exception as save_exc:
                 # Last resort: unique suffix
+                logger.debug("Handled error in session.new_project", exc_info=True)
                 stem = Path(path)
                 alt = stem.with_name(f"{stem.stem}_{int(time.time())}{stem.suffix}")
                 try:
                     project.save(str(alt))
                     path = str(alt)
                 except Exception:
+                    logger.debug("Handled error in session.new_project", exc_info=True)
                     try:
                         project.close()
-                    except Exception:  # noqa: BLE001
-                        pass
+                    except Exception:
+                        logger.debug("Handled error in session.new_project", exc_info=True)
                     return {
                         "status": "error",
                         "message": f"Failed to save project: {save_exc}",
@@ -420,9 +422,11 @@ class CSTSession:
             return {
                 "status": "error",
                 "code": "results_exist",
-                "message": ("The project has simulation results, and changing the model would make "
-                            "CST block on a modal 'Results May Get Incompatible With Model' dialog. "
-                            "Call cst_delete_results first (export anything you need), then retry."),
+                "message": (
+                    "The project has simulation results, and changing the model would make "
+                    "CST block on a modal 'Results May Get Incompatible With Model' dialog. "
+                    "Call cst_delete_results first (export anything you need), then retry."
+                ),
             }
         CSTSession._history_seq += 1
         hist_label = label or f"cst_mcp_{CSTSession._history_seq}"
@@ -437,9 +441,14 @@ class CSTSession:
             # A timed-out native call may still be running; do not issue more API
             # requests or replay its mutation while CST's state is uncertain.
             if self._is_timeout_error(exc):
-                return {"status": "timeout", "message": str(exc), "label": hist_label,
-                        "execution_state": "unknown", "vba": vba,
-                        "note": "Command exceeded 30 seconds; no replay or solver termination was attempted."}
+                return {
+                    "status": "timeout",
+                    "message": str(exc),
+                    "label": hist_label,
+                    "execution_state": "unknown",
+                    "vba": vba,
+                    "note": "Command exceeded 30 seconds; no replay or solver termination was attempted.",
+                }
             # Surface CST-side context so the agent does not rely only on user paste
             extra: dict[str, Any] = {}
             try:
@@ -447,14 +456,14 @@ class CSTSession:
                 if msgs.get("status") == "ok":
                     extra["cst_messages_tail"] = msgs.get("tail")
                     extra["cst_message_file"] = msgs.get("path")
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                logger.debug("Handled error in session.run_history", exc_info=True)
             try:
                 dlg = self.read_dialogs() if hasattr(self, "read_dialogs") else {}
                 if dlg.get("count"):
                     extra["cst_dialogs"] = dlg
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                logger.debug("Handled error in session.run_history", exc_info=True)
             return {
                 "status": "error",
                 "message": str(exc),
@@ -525,9 +534,12 @@ class CSTSession:
                 schematic.execute_vba_code(wrapped, timeout=30)
                 return {"status": "executed", "entrypoint": "schematic.execute_vba_code"}
         except Exception as exc:  # noqa: BLE001
-            return {"status": "timeout" if self._is_timeout_error(exc) else "error",
-                    "message": str(exc), "entrypoint": "schematic.execute_vba_code",
-                    "note": "Execution may have partially completed; no fallback replay was attempted."}
+            return {
+                "status": "timeout" if self._is_timeout_error(exc) else "error",
+                "message": str(exc),
+                "entrypoint": "schematic.execute_vba_code",
+                "note": "Execution may have partially completed; no fallback replay was attempted.",
+            }
 
         # 2) model3d._execute_vba_code (CST 2026)
         try:
@@ -537,15 +549,21 @@ class CSTSession:
                 exe(wrapped, timeout=30)
                 return {"status": "executed", "entrypoint": "model3d._execute_vba_code"}
         except Exception as exc:  # noqa: BLE001
-            return {"status": "timeout" if self._is_timeout_error(exc) else "error",
-                    "message": str(exc), "entrypoint": "model3d._execute_vba_code",
-                    "note": "Execution may have partially completed; no fallback replay was attempted."}
+            return {
+                "status": "timeout" if self._is_timeout_error(exc) else "error",
+                "message": str(exc),
+                "entrypoint": "model3d._execute_vba_code",
+                "note": "Execution may have partially completed; no fallback replay was attempted.",
+            }
 
         # 3) history fallback — NEVER pass Sub Main here
         if not history_fallback:
-            return {"status": "error", "entrypoint": None,
-                    "message": "No non-history VBA entrypoint is available in this CST binding; "
-                               "read-only queries are never written to the model history."}
+            return {
+                "status": "error",
+                "entrypoint": None,
+                "message": "No non-history VBA entrypoint is available in this CST binding; "
+                "read-only queries are never written to the model history.",
+            }
         try:
             return {
                 **self.run_history(bare, label="mcp_silent_fallback"),
@@ -576,7 +594,9 @@ class CSTSession:
         except Exception as exc:  # noqa: BLE001
             return {"status": "error", "message": str(exc), "vba": vba_code}
 
-    def start_blocking_vba(self, vba_code: str, *, what: str, probe_timeout_s: float = 10.0) -> dict[str, Any]:
+    def start_blocking_vba(
+        self, vba_code: str, *, what: str, probe_timeout_s: float = 10.0
+    ) -> dict[str, Any]:
         """Launch a VBA command that blocks until a long CST job ends.
 
         ``ParameterSweep.Start`` / ``Optimizer.Start`` do not return until every
@@ -595,8 +615,10 @@ class CSTSession:
             return blocked
         execute = getattr(self.model3d, "_execute_vba_code", None)
         if not callable(execute):
-            return {"status": "error",
-                    "message": "This CST binding does not expose model3d._execute_vba_code"}
+            return {
+                "status": "error",
+                "message": "This CST binding does not expose model3d._execute_vba_code",
+            }
         t0 = time.monotonic()
         try:
             execute(self._ensure_sub_main(vba_code), timeout=self._api_timeout(probe_timeout_s))
@@ -606,14 +628,25 @@ class CSTSession:
             running = self.is_solver_running(timeout_s=5)
             if running is True:
                 self._pending_solve = {"t0": t0, "seen_running": True, "what": what}
-                return {"status": "started", "running": True, "what": what,
-                        "message": (f"{what} is running inside CST. Poll cst_wait_for_simulation "
-                                    "until it reports finished, then read per-run results "
-                                    "(cst_list_saved_results shows run_ids).")}
-            return {"status": "timeout", "running": running, "what": what,
-                    "execution_state": "unknown", "message": str(exc),
-                    "note": "The start call timed out but no running solver was reported; "
-                            "check cst_get_messages / dialogs before retrying."}
+                return {
+                    "status": "started",
+                    "running": True,
+                    "what": what,
+                    "message": (
+                        f"{what} is running inside CST. Poll cst_wait_for_simulation "
+                        "until it reports finished, then read per-run results "
+                        "(cst_list_saved_results shows run_ids)."
+                    ),
+                }
+            return {
+                "status": "timeout",
+                "running": running,
+                "what": what,
+                "execution_state": "unknown",
+                "message": str(exc),
+                "note": "The start call timed out but no running solver was reported; "
+                "check cst_get_messages / dialogs before retrying.",
+            }
         return {"status": "completed", "what": what, "elapsed_s": round(time.monotonic() - t0, 2)}
 
     _RESULT_FOLDERS = ("1D Results", "2D/3D Results", "Farfields")
@@ -630,8 +663,12 @@ class CSTSession:
         # A missing folder raises in CST; treat that as "no results there".
         # mcpNext is reset before each call so a failing GetNextItemName ends
         # the loop instead of repeating the same item; mcpCount caps it anyway.
-        probe_lines = ["On Error Resume Next", "Dim mcpChild As String",
-                       "Dim mcpNext As String", "Dim mcpCount As Integer"]
+        probe_lines = [
+            "On Error Resume Next",
+            "Dim mcpChild As String",
+            "Dim mcpNext As String",
+            "Dim mcpCount As Integer",
+        ]
         for folder in self._RESULT_FOLDERS:
             probe_lines += [
                 'mcpChild = ""',
@@ -659,6 +696,7 @@ class CSTSession:
     def capture_vba_output(self, code: str) -> dict[str, Any]:
         """Return legacy Debug.Print/MsgBox query text through MCP, with no popup."""
         import uuid
+
         from cst_mcp.vba_builder import _escape_vba_string
 
         blocked = self._idle_error()
@@ -666,12 +704,18 @@ class CSTSession:
             return blocked
         out = self.config.work_dir / f"query_{uuid.uuid4().hex}.txt"
         body = self._strip_sub_main(code)
-        body = re.sub(r"(?im)^(\s*)(?:Debug\.Print|MsgBox)\s+(.+)$", r"\1Print #mcpOutput, \2", body)
-        wrapped = ('Dim mcpOutput As Integer\nDim mcpError As String\n'
-                   'mcpOutput = FreeFile\nOpen "' + _escape_vba_string(str(out)) + '" For Output As #mcpOutput\n'
-                   'On Error GoTo mcpQueryFailed\n' + body + '\nClose #mcpOutput\nExit Sub\n'
-                   'mcpQueryFailed:\nmcpError = Err.Description\nClose #mcpOutput\n'
-                   'Err.Raise vbObjectError + 1, , mcpError')
+        body = re.sub(
+            r"(?im)^(\s*)(?:Debug\.Print|MsgBox)\s+(.+)$", r"\1Print #mcpOutput, \2", body
+        )
+        wrapped = (
+            "Dim mcpOutput As Integer\nDim mcpError As String\n"
+            'mcpOutput = FreeFile\nOpen "'
+            + _escape_vba_string(str(out))
+            + '" For Output As #mcpOutput\n'
+            "On Error GoTo mcpQueryFailed\n" + body + "\nClose #mcpOutput\nExit Sub\n"
+            "mcpQueryFailed:\nmcpError = Err.Description\nClose #mcpOutput\n"
+            "Err.Raise vbObjectError + 1, , mcpError"
+        )
         try:
             # Queries must never reach the model history (read-only contract).
             result = self.run_vba_silent(wrapped, history_fallback=False)
@@ -680,8 +724,15 @@ class CSTSession:
             if not out.is_file():
                 return {"status": "error", "message": "CST returned without writing query output"}
             # VBA Print uses the Windows ANSI code page, not UTF-8.
-            text = out.read_text(encoding="mbcs" if __import__("os").name == "nt" else "utf-8", errors="replace")
-            return {"status": "ok", "output": text, "source": "VBA query via Python", "popup": False}
+            text = out.read_text(
+                encoding="mbcs" if __import__("os").name == "nt" else "utf-8", errors="replace"
+            )
+            return {
+                "status": "ok",
+                "output": text,
+                "source": "VBA query via Python",
+                "popup": False,
+            }
         finally:
             try:
                 out.unlink(missing_ok=True)
@@ -762,8 +813,11 @@ class CSTSession:
     def _idle_error(self) -> dict[str, Any] | None:
         state = self.is_solver_running(timeout_s=5)
         if state is not False:
-            return {"status": "busy", "running": state,
-                    "message": "Operation blocked: solver is active or its state is unknown. Check status; do not retry mutations until idle."}
+            return {
+                "status": "busy",
+                "running": state,
+                "message": "Operation blocked: solver is active or its state is unknown. Check status; do not retry mutations until idle.",
+            }
         return None
 
     @staticmethod
@@ -777,11 +831,13 @@ class CSTSession:
             return False
         try:
             value = self.model3d.is_solver_running(timeout=self._api_timeout(timeout_s))
-            self._last_solver_error = None if isinstance(value, bool) else "CST solver state is unknown"
+            self._last_solver_error = (
+                None if isinstance(value, bool) else "CST solver state is unknown"
+            )
             if value is True and self._pending_solve is not None:
                 self._pending_solve["seen_running"] = True
             return value if isinstance(value, bool) else None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._last_solver_error = str(exc)
             logger.debug("is_solver_running failed", exc_info=True)
             return None
@@ -824,7 +880,11 @@ class CSTSession:
         try:
             running = self.is_solver_running(timeout_s=timeout)
             if running is None:
-                return {"status": "error", "message": self._last_solver_error or "CST solver state is unknown", "running": None}
+                return {
+                    "status": "error",
+                    "message": self._last_solver_error or "CST solver state is unknown",
+                    "running": None,
+                }
             out: dict[str, Any] = {
                 "status": "ok",
                 "running": running,
@@ -852,7 +912,7 @@ class CSTSession:
         if callable(get_name):
             try:
                 out["active_solver"] = str(get_name(timeout=timeout))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.debug("get_active_solver_name failed", exc_info=True)
         get_info = getattr(m3d, "get_solver_run_info", None)
         if callable(get_info):
@@ -866,7 +926,7 @@ class CSTSession:
                         for key, value in info.items()
                     }
                     out["run_info"] = self._label_run_info(run_info, running)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.debug("get_solver_run_info failed", exc_info=True)
         return out
 
@@ -995,13 +1055,18 @@ class CSTSession:
         safe_path = str(out).replace("\\", "/")
         try:
             from cst_mcp.vba_builder import _escape_vba_string
+
             # Model3D exposes add_to_history/run_solver, not COM-style ASCIIExport.
             # ASCIIExport is an official VBA object; execute it through the Python bridge.
-            vba = ('If Not SelectTreeItem("' + _escape_vba_string(tree_path) + '") Then\n'
-                   'Err.Raise vbObjectError + 1, , "Result tree item not found"\nEnd If\n'
-                   + ('FarfieldPlot.Plot\n' if tree_path.startswith('Farfields\\') else '') +
-                   'With ASCIIExport\n.Reset\n.FileName "' + _escape_vba_string(safe_path) + '"\n'
-                   '.SetFileType "csv"\n.Execute\nEnd With')
+            vba = (
+                'If Not SelectTreeItem("' + _escape_vba_string(tree_path) + '") Then\n'
+                'Err.Raise vbObjectError + 1, , "Result tree item not found"\nEnd If\n'
+                + ("FarfieldPlot.Plot\n" if tree_path.startswith("Farfields\\") else "")
+                + 'With ASCIIExport\n.Reset\n.FileName "'
+                + _escape_vba_string(safe_path)
+                + '"\n'
+                '.SetFileType "csv"\n.Execute\nEnd With'
+            )
             executed = self.run_vba_silent(vba)
             if executed.get("status") != "executed":
                 return executed
@@ -1027,14 +1092,18 @@ class CSTSession:
         max_points: int = 200,
     ) -> dict[str, Any]:
         """Read complex S-parameters through the official Python results API."""
-        from cst_mcp.execution.curves import read_curve, format_curve, frequency_scale
+        from cst_mcp.execution.curves import format_curve, frequency_scale, read_curve
         from cst_mcp.execution.results_reader import downsample_series
 
         if not self.has_project or not self.project_path:
             return {"status": "error", "message": "Open and save a project before reading results"}
         running = self.is_solver_running(timeout_s=5)
         if running is not False:
-            return {"status": "busy", "running": running, "message": "Solver is active or its state is unknown"}
+            return {
+                "status": "busy",
+                "running": running,
+                "message": "Solver is active or its state is unknown",
+            }
         tree = f"1D Results\\S-Parameters\\S{port_out},{port_in}"
         raw = read_curve(self.project_path, tree, allow_interactive=True)
         if raw.get("status") != "ok":
@@ -1048,15 +1117,26 @@ class CSTSession:
             if finite:
                 f, y = min(finite, key=lambda p: p[1])
                 metrics = {"min_db": y, "freq_at_min_ghz": f}
-            data = {"status": "ok", "source": "cst.results", "tree_path": tree,
-                    "port_out": port_out, "port_in": port_in, "n_points": len(freqs),
-                    "frequency_unit": "GHz", "frequency_ghz": freqs,
-                    "real": raw["real"], "imag": raw["imag"], "magnitude_db": db,
-                    "magnitude_linear": format_curve(raw, "mag")["y"],
-                    "phase_deg": format_curve(raw, "phase")["y"], "metrics": metrics,
-                    "snapshot": raw["snapshot"]}
+            data = {
+                "status": "ok",
+                "source": "cst.results",
+                "tree_path": tree,
+                "port_out": port_out,
+                "port_in": port_in,
+                "n_points": len(freqs),
+                "frequency_unit": "GHz",
+                "frequency_ghz": freqs,
+                "real": raw["real"],
+                "imag": raw["imag"],
+                "magnitude_db": db,
+                "magnitude_linear": format_curve(raw, "mag")["y"],
+                "phase_deg": format_curve(raw, "phase")["y"],
+                "metrics": metrics,
+                "snapshot": raw["snapshot"],
+            }
             return downsample_series(data, max_points=max_points) if max_points else data
         except Exception as exc:
+            logger.debug("Handled error in session.get_s_parameters", exc_info=True)
             return {"status": "error", "message": str(exc)}
 
     def set_params_rebuild_solve(
@@ -1099,16 +1179,28 @@ class CSTSession:
 
             out: dict[str, Any] = {"status": "ok", "params": params, "solver": solved}
             if export_s11:
-                s_parameters = self.get_s_parameters(port, port, max_points=0 if export_path else 200)
+                s_parameters = self.get_s_parameters(
+                    port, port, max_points=0 if export_path else 200
+                )
                 if export_path and s_parameters.get("status") == "ok":
                     values = s_parameters["magnitude_db"]
                     if any(value is None for value in values):
-                        return {"status": "error", "stage": "export", "message": "Undefined dB samples; use complex results"}
+                        return {
+                            "status": "error",
+                            "stage": "export",
+                            "message": "Undefined dB samples; use complex results",
+                        }
                     destination = Path(export_path)
                     destination.parent.mkdir(parents=True, exist_ok=True)
-                    destination.write_text("Frequency / GHz    S / dB\n" + "\n".join(
-                        f"{frequency:.17g} {value:.17g}" for frequency, value in
-                        zip(s_parameters["frequency_ghz"], values)) + "\n", encoding="utf-8")
+                    destination.write_text(
+                        "Frequency / GHz    S / dB\n"
+                        + "\n".join(
+                            f"{frequency:.17g} {value:.17g}"
+                            for frequency, value in zip(s_parameters["frequency_ghz"], values)
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
                 if s_parameters.get("status") != "ok":
                     return {
                         **s_parameters,
@@ -1130,7 +1222,9 @@ class CSTSession:
         """Best-effort parameter table dump via VBA GetNumberOfParameters."""
         if not self.is_connected or not self.has_project:
             return {"status": "offline", "parameters": {}}
-        result = self.capture_vba_output('Dim i As Long\nFor i = 0 To GetNumberOfParameters() - 1\nDebug.Print GetParameterName(i) & vbTab & CStr(GetParameterNValue(i))\nNext i')
+        result = self.capture_vba_output(
+            "Dim i As Long\nFor i = 0 To GetNumberOfParameters() - 1\nDebug.Print GetParameterName(i) & vbTab & CStr(GetParameterNValue(i))\nNext i"
+        )
         if result.get("status") != "ok":
             return result
         parameters = {}
@@ -1138,7 +1232,12 @@ class CSTSession:
             if "\t" in line:
                 name, value = line.split("\t", 1)
                 parameters[name.strip()] = value.strip()
-        return {"status": "ok", "parameters": parameters, "count": len(parameters), "source": "VBA via Python"}
+        return {
+            "status": "ok",
+            "parameters": parameters,
+            "count": len(parameters),
+            "source": "VBA via Python",
+        }
 
     def _find_message_output(self) -> str | None:
         """Locate CST Message output / solver log for the active project."""
@@ -1164,7 +1263,12 @@ class CSTSession:
                     messages = getter()
                     text = str(messages) if messages is not None else ""
                     if text and text not in {"[]", "{}"}:
-                        return {"status": "ok", "source": "Project.get_messages", "tail": text[-max_chars:], "size": len(text)}
+                        return {
+                            "status": "ok",
+                            "source": "Project.get_messages",
+                            "tail": text[-max_chars:],
+                            "size": len(text),
+                        }
                 except Exception:
                     logger.debug("Project.get_messages failed; trying saved log", exc_info=True)
         path = self._find_message_output()
@@ -1181,6 +1285,7 @@ class CSTSession:
             }
         except OSError as exc:
             return {"status": "error", "message": str(exc), "path": path}
+
     def export_plot_images(
         self,
         out_dir: str | Path | None = None,
@@ -1208,8 +1313,8 @@ class CSTSession:
             if self._de is not None and hasattr(self._de, "set_quiet_mode"):
                 self._de.set_quiet_mode(False)
                 quiet_restored = True
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:
+            logger.debug("Handled error in session.export_plot_images", exc_info=True)
         # Logical names → CST reserved view + optional rotate tweaks
         # RestoreView reserved: Left, Right, Front, Back, Top, Bottom, Perspective
         views = views or ["perspective", "front", "top", "left", "right"]
@@ -1307,12 +1412,15 @@ class CSTSession:
             try:
                 if self._de is not None and hasattr(self._de, "set_quiet_mode"):
                     self._de.set_quiet_mode(True)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                logger.debug("Handled error in session.export_plot_images", exc_info=True)
 
         ok_any = any(r.get("exists") for r in results)
-        distinct_sizes = {r.get("path") and Path(str(r["path"])).stat().st_size
-                          for r in results if r.get("exists") and r.get("path")}
+        distinct_sizes = {
+            r.get("path") and Path(str(r["path"])).stat().st_size
+            for r in results
+            if r.get("exists") and r.get("path")
+        }
         return {
             "status": "ok" if ok_any else "error",
             "out_dir": str(out),
@@ -1355,8 +1463,10 @@ class CSTSession:
                 if c not in candidates:
                     candidates.insert(0, c)
 
-        out = Path(filepath) if filepath else (
-            self.config.work_dir / "exports" / f"farfield_{frequency_ghz or 'auto'}.csv"
+        out = (
+            Path(filepath)
+            if filepath
+            else (self.config.work_dir / "exports" / f"farfield_{frequency_ghz or 'auto'}.csv")
         )
         out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1410,20 +1520,18 @@ class CSTSession:
                 "message": "Farfield summary requires connected mode with results.",
             }
 
-        out = Path(filepath) if filepath else (
-            self.config.work_dir
-            / "exports"
-            / f"farfield_metrics_{frequency_ghz or 'auto'}.txt"
+        out = (
+            Path(filepath)
+            if filepath
+            else (
+                self.config.work_dir / "exports" / f"farfield_metrics_{frequency_ghz or 'auto'}.txt"
+            )
         )
         out.parent.mkdir(parents=True, exist_ok=True)
 
         candidates = farfield_tree_candidates(frequency_ghz, monitor_name)
         # Only concrete monitor paths — never parent "Farfields" folder
-        candidates = [
-            c
-            for c in candidates
-            if c.count("\\") >= 1 and "farfield (f=" in c.lower()
-        ]
+        candidates = [c for c in candidates if c.count("\\") >= 1 and "farfield (f=" in c.lower()]
         # Prefer paths that SelectTreeItem accepts right now
         ordered: list[str] = []
         for tree in candidates:
@@ -1514,9 +1622,12 @@ class CSTSession:
             errors.append(f"model3d: {exc}")
         return {
             "status": "error",
-            "message": " ; ".join(errors) if errors else "VBA execute unavailable (history disabled)",
+            "message": " ; ".join(errors)
+            if errors
+            else "VBA execute unavailable (history disabled)",
             "vba": wrapped,
         }
+
     def get_farfield_metrics(
         self,
         frequency_ghz: float | None = None,
@@ -1658,6 +1769,7 @@ class CSTSession:
             "sources": sources,
             "available": False,
         }
+
     def design_report(
         self,
         *,
@@ -1675,8 +1787,10 @@ class CSTSession:
         Safe aggregation: each section is independent; failures are reported
         per-section without aborting the whole report.
         """
-        base = Path(out_dir) if out_dir else (
-            self.config.work_dir / "exports" / f"report_{int(time.time())}"
+        base = (
+            Path(out_dir)
+            if out_dir
+            else (self.config.work_dir / "exports" / f"report_{int(time.time())}")
         )
         base.mkdir(parents=True, exist_ok=True)
 
@@ -1724,16 +1838,18 @@ class CSTSession:
             if isinstance(v, dict) and v.get("status") in {"error", "offline"}
         ]
         report["partial_failures"] = failed
-        if failed and include_sparams and report["sections"].get("s_parameters", {}).get("status") != "ok":
+        if (
+            failed
+            and include_sparams
+            and report["sections"].get("s_parameters", {}).get("status") != "ok"
+        ):
             report["status"] = "partial"
         return report
 
     def status(self) -> dict[str, Any]:
         project_open = self.has_project
         solver_state = (
-            self.solver_status()
-            if project_open
-            else {"status": "unavailable", "running": False}
+            self.solver_status() if project_open else {"status": "unavailable", "running": False}
         )
         result = {
             "mode": self.mode,

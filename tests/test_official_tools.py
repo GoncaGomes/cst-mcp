@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from cst_mcp.tools import official
 from cst_mcp.config import CSTConfig
 from cst_mcp.cst_client import CSTClient
+from cst_mcp.tools import official
 
 
 @pytest.mark.asyncio
@@ -48,7 +48,7 @@ def _fake_help(tmp_path):
     )
     (vba / "special_vbaports/special_vbaports_port_object.htm").write_text(
         "<html><head><title>Port Object</title></head><body><p>Mode Settings</p>"
-        "<p>AddPotentialNumerically ( int modeset, enum {\"Positive\", \"Negative\"} potential )"
+        '<p>AddPotentialNumerically ( int modeset, enum {"Positive", "Negative"} potential )'
         " defines a potential.</p></body></html>",
         encoding="utf-8",
     )
@@ -117,7 +117,13 @@ async def test_preview_is_explicit_and_never_claims_full_curve(tmp_path, monkeyp
     monkeypatch.setattr(
         official,
         "read_curve",
-        lambda *args, **kwargs: dict(status="ok", n=5, x=list(range(5)), real=[1] * 5, imag=[0] * 5),
+        lambda *args, **kwargs: {
+            "status": "ok",
+            "n": 5,
+            "x": list(range(5)),
+            "real": [1] * 5,
+            "imag": [0] * 5,
+        },
     )
     client = CSTClient(CSTConfig())
     result = json.loads(
@@ -148,8 +154,8 @@ def test_mutations_do_not_interrupt_solver(running, operation):
 
 def test_official_builder_signatures():
     from cst_mcp.tools.geometry import _build_polygon_extrude, _build_wire
-    from cst_mcp.tools.parameters import _build_parameter_sweep, _build_yield_analysis
     from cst_mcp.tools.import_export import _build_export_touchstone
+    from cst_mcp.tools.parameters import _build_parameter_sweep, _build_yield_analysis
     from cst_mcp.vba_builder import VBABuilder
 
     assert (
@@ -157,33 +163,41 @@ def test_official_builder_signatures():
         in VBABuilder("DiscretePort").set_point("SetP1", 1, 2, 3).build()
     )
     code = _build_wire(
-        dict(
-            component="c",
-            name="w",
-            radius=0.1,
-            start_x=0,
-            start_y=0,
-            start_z=0,
-            end_x=1,
-            end_y=0,
-            end_z=0,
-        )
+        {
+            "component": "c",
+            "name": "w",
+            "radius": 0.1,
+            "start_x": 0,
+            "start_y": 0,
+            "start_z": 0,
+            "end_x": 1,
+            "end_y": 0,
+            "end_z": 0,
+        }
     )
-    assert "StartPoint" not in code and "With Cylinder" in code and "ConvertToSolidShape" not in code
+    assert (
+        "StartPoint" not in code and "With Cylinder" in code and "ConvertToSolidShape" not in code
+    )
     code = _build_polygon_extrude(
-        dict(component="c", name="p", height=1, points=[[0, 0], [1, 0], [1, 1]], axis="x")
+        {
+            "component": "c",
+            "name": "p",
+            "height": 1,
+            "points": [[0, 0], [1, 0], [1, 1]],
+            "axis": "x",
+        }
     )
     assert ".Axis" not in code and "Polygon3D" in code and '.Twistangle "0"' in code
-    code = _build_parameter_sweep(dict(parameter="p", start=1, stop=2, steps=3))
+    code = _build_parameter_sweep({"parameter": "p", "start": 1, "stop": 2, "steps": 3})
     assert "AddParameter_Samples" in code and ".Create" not in code and ".Reset" not in code
-    code = _build_export_touchstone(dict(file_path="test.s2p"))
+    code = _build_export_touchstone({"file_path": "test.s2p"})
     assert "With TOUCHSTONE" in code and '.Format "RI"' in code and ".Write" in code
     code = _build_yield_analysis(
-        dict(
-            parameters=[dict(name="p", nominal=1, tolerance=0.1)],
-            pass_criteria=[dict(result_path="s", operator="<", threshold=1)],
-            num_samples=3,
-        )
+        {
+            "parameters": [{"name": "p", "nominal": 1, "tolerance": 0.1}],
+            "pass_criteria": [{"result_path": "s", "operator": "<", "threshold": 1}],
+            "num_samples": 3,
+        }
     )
     assert code.count(".AddSequence") == 3 and code.count(".AddParameter_ArbitraryPoints") == 3
 
@@ -193,8 +207,14 @@ def test_polygon_extrude_base_plane_offset_and_holes():
 
     square = [[0, 0], [10, 0], [10, 10], [0, 10]]
     code = _build_polygon_extrude(
-        dict(component="c", name="p", height=0.035, points=square, z_offset=1.6,
-             holes=[[[2, 2], [2, 4], [4, 4], [4, 2]], [[6, 6], [8, 6], [8, 8]]])
+        {
+            "component": "c",
+            "name": "p",
+            "height": 0.035,
+            "points": square,
+            "z_offset": 1.6,
+            "holes": [[[2, 2], [2, 4], [4, 4], [4, 2]], [[6, 6], [8, 6], [8, 8]]],
+        }
     )
     assert '.Point "0", "0", "1.6"' in code and '.Point "10", "10", "1.6"' in code
     assert code.count("With ExtrudeCurve") == 3 and code.count("With Polygon3D") == 3
@@ -204,43 +224,77 @@ def test_polygon_extrude_base_plane_offset_and_holes():
     # Subtract only after both the main solid and the hole solid exist.
     assert code.index('.Name "p_hole1"') < code.index('Solid.Subtract "c:p", "c:p_hole1"')
     # Clockwise hole is re-wound to match the counter-clockwise outline.
-    hole1 = code[code.index('.Name "p_hole1_profile"'):]
+    hole1 = code[code.index('.Name "p_hole1_profile"') :]
     assert hole1.index('"4", "2", "1.6"') < hole1.index('"2", "2", "1.6"')
 
     # Clockwise outline is re-wound counter-clockwise: live CST 2026 extrudes a
     # clockwise Polygon3D towards -z (z=1.565..1.6 instead of 1.6..1.635).
     code = _build_polygon_extrude(
-        dict(component="c", name="w", height=0.035, points=square[::-1], z_offset=1.6,
-             holes=[[[2, 2], [4, 2], [4, 4], [2, 4]]])
+        {
+            "component": "c",
+            "name": "w",
+            "height": 0.035,
+            "points": square[::-1],
+            "z_offset": 1.6,
+            "holes": [[[2, 2], [4, 2], [4, 4], [2, 4]]],
+        }
     )
-    outline = code[code.index('.Name "w_profile"'):code.index("With ExtrudeCurve")]
+    outline = code[code.index('.Name "w_profile"') : code.index("With ExtrudeCurve")]
     assert outline.index('"10", "0", "1.6"') < outline.index('"10", "10", "1.6"')
-    hole = code[code.index('.Name "w_hole1_profile"'):]
+    hole = code[code.index('.Name "w_hole1_profile"') :]
     assert hole.index('"4", "2", "1.6"') < hole.index('"4", "4", "1.6"')
 
     code = _build_polygon_extrude(
-        dict(component="c", name="q", height=1, points=[[0, 0], [1, 0], [1, 1]], axis="x", x_offset=-2.5)
+        {
+            "component": "c",
+            "name": "q",
+            "height": 1,
+            "points": [[0, 0], [1, 0], [1, 1]],
+            "axis": "x",
+            "x_offset": -2.5,
+        }
     )
     assert '.Point "-2.5", "1", "1"' in code and "Solid.Subtract" not in code
     code = _build_polygon_extrude(
-        dict(component="c", name="q", height=1, points=[[0, 0], [1, 0], [1, 1]], axis="y", y_offset=3)
+        {
+            "component": "c",
+            "name": "q",
+            "height": 1,
+            "points": [[0, 0], [1, 0], [1, 1]],
+            "axis": "y",
+            "y_offset": 3,
+        }
     )
     assert '.Point "1", "3", "-1"' in code
     with pytest.raises(ValueError):
         _build_polygon_extrude(
-            dict(component="c", name="q", height=1, points=[[0, 0], [1, 0], [1, 1]], axis="x", z_offset=1)
+            {
+                "component": "c",
+                "name": "q",
+                "height": 1,
+                "points": [[0, 0], [1, 0], [1, 1]],
+                "axis": "x",
+                "z_offset": 1,
+            }
         )
     with pytest.raises(ValueError):
         _build_polygon_extrude(
-            dict(component="c", name="q", height=1, points=[[0, 0], [1, 0], [1, 1]],
-                 holes=[[[0, 0], ["1 : Kill", 0], [1, 1]]])
+            {
+                "component": "c",
+                "name": "q",
+                "height": 1,
+                "points": [[0, 0], [1, 0], [1, 1]],
+                "holes": [[[0, 0], ["1\nKill", 0], [1, 1]]],
+            }
         )
 
 
 def test_extrude_pointlist_syntax_offset_and_holes():
     from cst_mcp.tools.geometry import _build_extrude
 
-    code = _build_extrude(dict(component="c", name="e", height=2, points=[[0, 0], [1, 0], [1, 1]]))
+    code = _build_extrude(
+        {"component": "c", "name": "e", "height": 2, "points": [[0, 0], [1, 0], [1, 1]]}
+    )
     # CST 2026 Extrude object: Mode "pointlist", Origin/Uvector/Vvector take 3 doubles.
     assert '.Mode "pointlist"' in code and '.Mode "0"' not in code
     assert '.Origin "0", "0", "0"' in code
@@ -248,14 +302,58 @@ def test_extrude_pointlist_syntax_offset_and_holes():
     assert code.rstrip().endswith("End With") and "Solid.Subtract" not in code
 
     code = _build_extrude(
-        dict(component="c", name="e", height=2, points=[[0, 0], [4, 0], [4, 4], [0, 4]],
-             z_offset=-1.5, holes=[[[1, 1], [2, 1], [2, 2]]])
+        {
+            "component": "c",
+            "name": "e",
+            "height": 2,
+            "points": [[0, 0], [4, 0], [4, 4], [0, 4]],
+            "z_offset": -1.5,
+            "holes": [[[1, 1], [2, 1], [2, 2]]],
+        }
     )
     assert code.count("With Extrude") == 2 and code.count('.Origin "0", "0", "-1.5"') == 2
     assert '.Name "e_hole1"' in code and 'Solid.Subtract "c:e", "c:e_hole1"' in code
-    code = _build_extrude(dict(component="c", name="e", height=2, points=[[0, 0], [1, 0], [1, 1]],
-                               axis="y", y_offset=0.5))
+    code = _build_extrude(
+        {
+            "component": "c",
+            "name": "e",
+            "height": 2,
+            "points": [[0, 0], [1, 0], [1, 1]],
+            "axis": "y",
+            "y_offset": 0.5,
+        }
+    )
     assert '.Origin "0", "0.5", "0"' in code and '.Vvector "0", "0", "-1"' in code
+
+    for axis, offset, vector in (
+        ("z", '.Origin "0", "0", "5"', '.Vvector "0", "-1", "0"'),
+        ("x", '.Origin "5", "0", "0"', '.Vvector "0", "0", "-1"'),
+        ("y", '.Origin "0", "5", "0"', '.Vvector "0", "0", "1"'),
+    ):
+        down = _build_extrude(
+            dict(
+                component="c",
+                name="e",
+                height=2,
+                points=[[0, 0], [4, 0], [4, 3], [0, 3]],
+                axis=axis,
+                **{f"{axis}_offset": 5},
+                extrude_direction="down",
+            )
+        )
+        assert offset in down and vector in down and '.LineTo "4", "-3"' in down
+        assert '.Height "2"' in down and '.Point "0", "0"' in down
+        # Negative and zero height remain accepted, with native semantics.
+        for height in (-2, 0):
+            assert f'.Height "{height}"' in _build_extrude(
+                {
+                    "component": "c",
+                    "name": "e",
+                    "height": height,
+                    "points": [[0, 0], [1, 0], [1, 1]],
+                    "axis": axis,
+                }
+            )
 
 
 @pytest.mark.asyncio
@@ -268,8 +366,13 @@ async def test_extrude_tool_rejects_injection_in_holes():
 
     result = await geometry.handle(
         "cst_create_polygon_extrude",
-        dict(component="c", name="p", height=1, points=[[0, 0], [1, 0], [1, 1]],
-             holes=[[[0, 0], ["1\nKill", 0], [1, 1]]]),
+        {
+            "component": "c",
+            "name": "p",
+            "height": 1,
+            "points": [[0, 0], [1, 0], [1, 1]],
+            "holes": [[[0, 0], ["1\nKill", 0], [1, 1]]],
+        },
         Client(),
     )
     assert json.loads(result[0].text)["status"] == "error"

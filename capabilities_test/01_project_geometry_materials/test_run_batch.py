@@ -25,10 +25,19 @@ from run_batch import Batch, Case, UnknownState, classify, interpret, parse_shap
 
 class ResponseTests(unittest.TestCase):
     def test_multiblock_error_without_structured_content_is_preserved(self):
-        raw = {"isError": True, "content": [
-            {"type": "text", "text": "Output schema failed"},
-            {"type": "image", "data": "unchanged", "mimeType": "image/png"},
-            {"type": "text", "text": json.dumps({"status": "error", "message": "bad object", "vba": "With Brick\nEnd With"})}]}
+        raw = {
+            "isError": True,
+            "content": [
+                {"type": "text", "text": "Output schema failed"},
+                {"type": "image", "data": "unchanged", "mimeType": "image/png"},
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"status": "error", "message": "bad object", "vba": "With Brick\nEnd With"}
+                    ),
+                },
+            ],
+        }
         saved = json.loads(json.dumps(raw))
         decoded = interpret(raw)
         result = classify(Case("error", "cst_create_brick"), raw, decoded, False, True)
@@ -42,14 +51,25 @@ class ResponseTests(unittest.TestCase):
         for payload, expected in [
             ({"status": "offline", "vba": "generated"}, "offline_only"),
             ({"status": "timeout", "execution_state": "unknown"}, "indeterminate_state"),
-            ({"status": "error", "connection": {"status": "offline", "message": "native call timed out"}}, "indeterminate_state"),
+            (
+                {
+                    "status": "error",
+                    "connection": {"status": "offline", "message": "native call timed out"},
+                },
+                "indeterminate_state",
+            ),
             ({"status": "busy", "running": None}, "indeterminate_state"),
-            ({"mode": "connected", "project_open": True, "solver_running": None}, "indeterminate_state"),
+            (
+                {"mode": "connected", "project_open": True, "solver_running": None},
+                "indeterminate_state",
+            ),
             ({"status": "error", "connection": {"status": "offline"}}, "failure"),
         ]:
             with self.subTest(payload=payload):
                 raw = {"content": [{"type": "text", "text": json.dumps(payload)}]}
-                result = classify(Case("probe", "cst_create_brick"), raw, interpret(raw), False, True)
+                result = classify(
+                    Case("probe", "cst_create_brick"), raw, interpret(raw), False, True
+                )
                 self.assertEqual(result["classification"], expected)
                 self.assertFalse(result["executed_in_real_cst"])
                 if payload.get("status") == "busy":
@@ -57,8 +77,13 @@ class ResponseTests(unittest.TestCase):
 
     def test_statusless_database_response_and_incomplete_shapes(self):
         raw = {"content": [{"type": "text", "text": '{"material":{"name":"Copper"}}'}]}
-        result = classify(Case("database", "cst_get_material_info", kind="database"), raw,
-                          interpret(raw), False, True)
+        result = classify(
+            Case("database", "cst_get_material_info", kind="database"),
+            raw,
+            interpret(raw),
+            False,
+            True,
+        )
         self.assertEqual(result["classification"], "database_query")
         self.assertFalse(result["executed_in_real_cst"])
         with self.assertRaises(ValueError):
@@ -68,8 +93,12 @@ class ResponseTests(unittest.TestCase):
 
 class PreservationTests(unittest.IsolatedAsyncioTestCase):
     def options(self):
-        return argparse.Namespace(preflight=True, cst_path=batch_module.DEFAULT_CST_PATH,
-                                  call_timeout=0.01, connection_timeout=0.01)
+        return argparse.Namespace(
+            preflight=True,
+            cst_path=batch_module.DEFAULT_CST_PATH,
+            call_timeout=0.01,
+            connection_timeout=0.01,
+        )
 
     async def test_client_timeout_stops_calls_and_keeps_terminal_log(self):
         class SlowSession:
@@ -79,7 +108,10 @@ class PreservationTests(unittest.IsolatedAsyncioTestCase):
                 self.calls += 1
                 await asyncio.sleep(1)
 
-        with tempfile.TemporaryDirectory() as temporary, patch.object(batch_module, "BATCH_DIR", Path(temporary)):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(batch_module, "BATCH_DIR", Path(temporary)),
+        ):
             runner = Batch(self.options())
             runner.catalog = {"probe": {"inputSchema": {"type": "object"}}}
             session = SlowSession()
@@ -91,7 +123,10 @@ class PreservationTests(unittest.IsolatedAsyncioTestCase):
             runner.exit_code = 2
             runner.reason = "Client timeout"
             runner.finalize()
-            events = [json.loads(line) for line in (runner.work / "mcp_calls.jsonl").read_text().splitlines()]
+            events = [
+                json.loads(line)
+                for line in (runner.work / "mcp_calls.jsonl").read_text().splitlines()
+            ]
             terminal = [e for e in events if e["event"] == "error"]
             self.assertEqual(len(terminal), 1)
             self.assertTrue(terminal[0]["timeout"])
@@ -124,9 +159,13 @@ class PreservationTests(unittest.IsolatedAsyncioTestCase):
         async def transport(*args, **kwargs):
             yield None, None
 
-        with tempfile.TemporaryDirectory() as temporary, patch.object(batch_module, "BATCH_DIR", Path(temporary)), \
-                patch.object(batch_module, "ClientSession", InterruptedSession), \
-                patch.object(batch_module, "stdio_client", transport), patch.object(Batch, "probe_import"):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(batch_module, "BATCH_DIR", Path(temporary)),
+            patch.object(batch_module, "ClientSession", InterruptedSession),
+            patch.object(batch_module, "stdio_client", transport),
+            patch.object(Batch, "probe_import"),
+        ):
             runner = Batch(self.options())
             self.assertEqual(await runner.run(), 130)
             self.assertEqual(InterruptedSession.methods, ["initialize"])
@@ -134,13 +173,23 @@ class PreservationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(summary["state"], "indeterminate")
             self.assertFalse(summary["completed"])
             self.assertIn("Interrupted", (runner.work / "summary.md").read_text(encoding="utf-8"))
-            self.assertTrue(all((runner.work / file).exists() for file in [
-                "metadata.json", "tool_catalog.json", "mcp_calls.jsonl", "server_stderr.log", "cst_messages.jsonl"]))
+            self.assertTrue(
+                all(
+                    (runner.work / file).exists()
+                    for file in [
+                        "metadata.json",
+                        "tool_catalog.json",
+                        "mcp_calls.jsonl",
+                        "server_stderr.log",
+                        "cst_messages.jsonl",
+                    ]
+                )
+            )
 
     async def test_real_sdk_shutdown_escalation_preserves_descendant(self):
         # A finite-lived Python child represents CST process ownership, with no
         # vendor imports. The parent deliberately ignores EOF to force escalation.
-        script = '''import pathlib, subprocess, sys, time
+        script = """import pathlib, subprocess, sys, time
 folder = pathlib.Path(sys.argv[1])
 child_code = "import pathlib, sys, time; time.sleep(4); pathlib.Path(sys.argv[1]).write_text('survived')"
 child = subprocess.Popen([sys.executable, "-c", child_code, str(folder / "survived.txt")],
@@ -148,11 +197,15 @@ child = subprocess.Popen([sys.executable, "-c", child_code, str(folder / "surviv
 (folder / "ready.txt").write_text(str(child.pid))
 sys.stdin.buffer.read()
 time.sleep(30)
-'''
+"""
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
-            params = StdioServerParameters(command=sys.executable, args=["-c", script, temporary],
-                                           cwd=temporary, env=os.environ.copy())
+            params = StdioServerParameters(
+                command=sys.executable,
+                args=["-c", script, temporary],
+                cwd=temporary,
+                env=os.environ.copy(),
+            )
             with (folder / "stderr.log").open("w") as stderr, preserve_cst_processes():
                 async with stdio_client(params, errlog=stderr):
                     deadline = asyncio.get_running_loop().time() + 10
@@ -161,34 +214,54 @@ time.sleep(30)
                         await asyncio.sleep(0.02)
             deadline = asyncio.get_running_loop().time() + 10
             while not (folder / "survived.txt").exists():
-                self.assertLess(asyncio.get_running_loop().time(), deadline,
-                                "SDK shutdown killed the descendant or it did not finish")
+                self.assertLess(
+                    asyncio.get_running_loop().time(),
+                    deadline,
+                    "SDK shutdown killed the descendant or it did not finish",
+                )
                 await asyncio.sleep(0.02)
             self.assertEqual((folder / "survived.txt").read_text(), "survived")
 
     async def test_complete_multiblock_response_and_vba_reach_disk(self):
-        raw = {"isError": True, "content": [
-            {"type": "text", "text": "Output schema mismatch"},
-            {"type": "image", "data": "preserved", "mimeType": "image/png"},
-            {"type": "text", "text": json.dumps({"status": "error", "message": "failed", "vba": "With Brick\nEnd With"})}]}
+        raw = {
+            "isError": True,
+            "content": [
+                {"type": "text", "text": "Output schema mismatch"},
+                {"type": "image", "data": "preserved", "mimeType": "image/png"},
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"status": "error", "message": "failed", "vba": "With Brick\nEnd With"}
+                    ),
+                },
+            ],
+        }
 
         class Session:
             async def call_tool(self, name, args):
                 return raw
 
-        with tempfile.TemporaryDirectory() as temporary, patch.object(batch_module, "BATCH_DIR", Path(temporary)):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(batch_module, "BATCH_DIR", Path(temporary)),
+        ):
             runner = Batch(self.options())
             runner.catalog = {"probe": {"inputSchema": {"type": "object"}}}
             await runner.request(Session(), Case("multiblock", "probe"))
             runner.reason = "Expected local error fixture"
             runner.finalize()
-            events = [json.loads(line) for line in (runner.work / "mcp_calls.jsonl").read_text().splitlines()]
+            events = [
+                json.loads(line)
+                for line in (runner.work / "mcp_calls.jsonl").read_text().splitlines()
+            ]
             completion = next(event for event in events if event["event"] == "completion")
             self.assertEqual(completion["response"], raw)
             self.assertTrue(completion["isError"])
             sources = [event["source"] for event in events if event["event"] == "vba_saved"]
             self.assertIn("content[2].text", sources[0])
-            self.assertEqual(next((runner.work / "vba").glob("*.bas")).read_text(), "With Brick\nEnd With")
+            self.assertEqual(
+                next((runner.work / "vba").glob("*.bas")).read_text(), "With Brick\nEnd With"
+            )
 
 
 if __name__ == "__main__":

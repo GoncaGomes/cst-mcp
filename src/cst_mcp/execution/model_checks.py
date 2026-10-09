@@ -17,10 +17,22 @@ from __future__ import annotations
 from typing import Any
 
 FACES = ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max")
-_ORIENT_TO_FACE = {"xmin": "x_min", "xmax": "x_max", "ymin": "y_min", "ymax": "y_max",
-                   "zmin": "z_min", "zmax": "z_max"}
-_FACE_AXIS = {"x_min": (0, "min"), "x_max": (0, "max"), "y_min": (1, "min"), "y_max": (1, "max"),
-              "z_min": (2, "min"), "z_max": (2, "max")}
+_ORIENT_TO_FACE = {
+    "xmin": "x_min",
+    "xmax": "x_max",
+    "ymin": "y_min",
+    "ymax": "y_max",
+    "zmin": "z_min",
+    "zmax": "z_max",
+}
+_FACE_AXIS = {
+    "x_min": (0, "min"),
+    "x_max": (0, "max"),
+    "y_min": (1, "min"),
+    "y_max": (1, "max"),
+    "z_min": (2, "min"),
+    "z_max": (2, "max"),
+}
 # Boundary types that touch the structure and extend it into the PML.
 TOUCHING_OPEN = {"open"}
 
@@ -52,17 +64,21 @@ def open_face_warnings(boundaries: dict[str, str]) -> list[dict[str, Any]]:
     for face in FACES:
         btype = str(boundaries.get(face, "")).strip().lower()
         if btype in TOUCHING_OPEN:
-            out.append({
-                "severity": "warning",
-                "code": "open_boundary_touches_structure",
-                "face": face,
-                "message": f"{face} is 'open' (no added space): structure reaching this face is "
-                           "extended into the PML. " + PML_EXTENSION,
-            })
+            out.append(
+                {
+                    "severity": "warning",
+                    "code": "open_boundary_touches_structure",
+                    "face": face,
+                    "message": f"{face} is 'open' (no added space): structure reaching this face is "
+                    "extended into the PML. " + PML_EXTENSION,
+                }
+            )
     return out
 
 
-def _touches(bbox: dict[str, float] | None, face: str, plane: float | None, tol: float) -> bool | None:
+def _touches(
+    bbox: dict[str, float] | None, face: str, plane: float | None, tol: float
+) -> bool | None:
     if not bbox:
         return None
     axis, side = _FACE_AXIS[face]
@@ -107,29 +123,51 @@ def check_setup(
             if touches is None:
                 touches = True if on_bound in (None, True) else None
             if touches is False:
-                issues.append({
-                    "severity": "info", "code": "port_on_open_face_clear", "face": face, "port": pn,
-                    "message": f"Port {pn} faces the 'open' {face} boundary but its plane is not at the "
-                               "structure extreme; still check that nothing else touches that face.",
-                })
+                issues.append(
+                    {
+                        "severity": "info",
+                        "code": "port_on_open_face_clear",
+                        "face": face,
+                        "port": pn,
+                        "message": f"Port {pn} faces the 'open' {face} boundary but its plane is not at the "
+                        "structure extreme; still check that nothing else touches that face.",
+                    }
+                )
             else:
-                issues.append({
-                    "severity": "error" if touches else "warning",
-                    "code": "waveguide_port_on_open_boundary",
-                    "face": face, "port": pn,
-                    "message": (f"Waveguide port {pn} sits on the 'open' {face} face"
-                                + (" and the structure touches that face. " if touches else
-                                   " (cannot tell whether structure touches it; pass structure_bbox). ")
-                                + PML_EXTENSION),
-                    "fix": PORT_FIX,
-                })
-        if kind == "waveguide" and on_bound is True and btype in {"expanded open", "open (add space)"}:
-            issues.append({
-                "severity": "warning", "code": "port_on_bound_with_added_space", "face": face, "port": pn,
-                "message": f"Port {pn} uses PortOnBound True on a face with added space: CST snaps it to "
-                           "the expanded domain boundary, away from the feed. Use PortOnBound False with "
-                           "the port on the feed/coax face.",
-            })
+                issues.append(
+                    {
+                        "severity": "error" if touches else "warning",
+                        "code": "waveguide_port_on_open_boundary",
+                        "face": face,
+                        "port": pn,
+                        "message": (
+                            f"Waveguide port {pn} sits on the 'open' {face} face"
+                            + (
+                                " and the structure touches that face. "
+                                if touches
+                                else " (cannot tell whether structure touches it; pass structure_bbox). "
+                            )
+                            + PML_EXTENSION
+                        ),
+                        "fix": PORT_FIX,
+                    }
+                )
+        if (
+            kind == "waveguide"
+            and on_bound is True
+            and btype in {"expanded open", "open (add space)"}
+        ):
+            issues.append(
+                {
+                    "severity": "warning",
+                    "code": "port_on_bound_with_added_space",
+                    "face": face,
+                    "port": pn,
+                    "message": f"Port {pn} uses PortOnBound True on a face with added space: CST snaps it to "
+                    "the expanded domain boundary, away from the feed. Use PortOnBound False with "
+                    "the port on the feed/coax face.",
+                }
+            )
     for w in open_face_warnings(bnd):
         if w["face"] in port_faces:
             continue  # already reported with the port
@@ -141,15 +179,18 @@ def check_setup(
     if power_loss_1d is not True and ff:
         missing = [f for f in ff if all(abs(f - g) > 1e-9 for g in fm)]
         if missing:
-            issues.append({
-                "severity": "warning", "code": "losses_missing_at_farfield_frequencies",
-                "frequencies_ghz": missing,
-                "message": "Loss in Dielectrics/Metals is computed only at 3D field-monitor frequencies "
-                           "unless Solver.ActivatePowerLoss1DMonitor True (with "
-                           "UseFarFieldMonitorForPowerLoss1DMonitor True). Without it the power balance "
-                           f"cannot be checked at {missing} GHz. Use cst_configure_time_domain_solver "
-                           "activate_power_loss_1d=true.",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "code": "losses_missing_at_farfield_frequencies",
+                    "frequencies_ghz": missing,
+                    "message": "Loss in Dielectrics/Metals is computed only at 3D field-monitor frequencies "
+                    "unless Solver.ActivatePowerLoss1DMonitor True (with "
+                    "UseFarFieldMonitorForPowerLoss1DMonitor True). Without it the power balance "
+                    f"cannot be checked at {missing} GHz. Use cst_configure_time_domain_solver "
+                    "activate_power_loss_1d=true.",
+                }
+            )
     severities = {i["severity"] for i in issues}
     return {
         "status": "ok",

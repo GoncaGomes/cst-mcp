@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Sequence
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +86,7 @@ def bandwidth_metrics(
         raise ValueError("Frequency and dB arrays differ in length")
     if len(f) < 2:
         raise ValueError("Need at least two samples")
-    if any(b <= a for a, b in zip(f, f[1:])):
+    if any(b <= a for a, b in pairwise(f)):
         raise ValueError("Frequency samples must be strictly increasing")
     if not math.isfinite(threshold_db):
         raise ValueError("threshold_db must be finite")

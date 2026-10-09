@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.types import TextContent, Tool
 
@@ -74,22 +75,27 @@ TOOLS: list[Tool] = [
                     ),
                 },
                 "power_loss_1d_use_field_monitors": {
-                    "type": "boolean", "default": True,
+                    "type": "boolean",
+                    "default": True,
                     "description": "Use3DFieldMonitorForPowerLoss1DMonitor (losses at 3D field-monitor frequencies).",
                 },
                 "power_loss_1d_use_farfield_monitors": {
-                    "type": "boolean", "default": True,
+                    "type": "boolean",
+                    "default": True,
                     "description": "UseFarFieldMonitorForPowerLoss1DMonitor (losses at farfield-monitor "
                     "frequencies; internal full-domain monitors, extra memory).",
                 },
                 "power_loss_1d_extra_frequencies": {
-                    "type": "array", "items": {"type": "number", "exclusiveMinimum": 0}, "maxItems": 64,
+                    "type": "array",
+                    "items": {"type": "number", "exclusiveMinimum": 0},
+                    "maxItems": 64,
                     "default": [],
                     "description": "Extra frequencies (project unit) via UseExtraFreqForPowerLoss1DMonitor "
                     "+ AddPowerLoss1DMonitorExtraFreq.",
                 },
                 "power_loss_1d_per_solid": {
-                    "type": "boolean", "default": False,
+                    "type": "boolean",
+                    "default": False,
                     "description": "PowerLoss1DMonitorPerSolid: extra per-solid loss subfolder.",
                 },
             },
@@ -307,9 +313,8 @@ TOOLS: list[Tool] = [
     ),
 ]
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a solver configuration tool call."""
     try:
         if name == "cst_configure_time_domain_solver":
@@ -329,15 +334,23 @@ async def handle(
         elif name == "cst_configure_multilayer_solver":
             return _configure_multilayer_solver(arguments, client)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": f"Unknown solver tool: {name}"}, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"tool": name, "status": "error", "message": f"Unknown solver tool: {name}"},
+                    indent=2,
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in solvers.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 def build_power_loss_1d_vba(
@@ -387,10 +400,8 @@ def _configure_time_domain(arguments: dict, client: CSTClient) -> list[TextConte
     fixed_impedance = float(arguments.get("fixed_impedance", 50))
 
     validate_range(accuracy, -80, 0, "accuracy")
-    if max_time_steps < 0:
-        max_time_steps = 0
-    if stimulation_port < 1:
-        stimulation_port = 1
+    max_time_steps = max(max_time_steps, 0)
+    stimulation_port = max(stimulation_port, 1)
     validate_enum_value(excitation_type, ExcitationType, "excitation_type")
     validate_positive(fixed_impedance, "fixed_impedance")
 
@@ -403,30 +414,42 @@ def _configure_time_domain(arguments: dict, client: CSTClient) -> list[TextConte
     # mode setting, not the signal shape, so none of them is emitted.
     notes: list[str] = []
     vba = VBABuilder("Solver")
-    vba.set("SteadyStateLimit", str(int(round(accuracy))))
+    vba.set("SteadyStateLimit", str(round(accuracy)))
     vba.set_number("StimulationPort", stimulation_port)
     vba.set_bool("AutoNormImpedance", bool(normalize))
     if normalize:
         vba.set_number("NormingImpedance", fixed_impedance)
     script = vba.build()
     if max_time_steps:
-        notes.append("max_time_steps is not applied: the CST 2026 Solver object has no MaxTimeSteps "
-                     "(the run length is limited by SteadyStateLimit / NumberOfPulseWidths).")
+        notes.append(
+            "max_time_steps is not applied: the CST 2026 Solver object has no MaxTimeSteps "
+            "(the run length is limited by SteadyStateLimit / NumberOfPulseWidths)."
+        )
     if excitation_type != "Gaussian":
-        notes.append(f"excitation_type '{excitation_type}' is not applied: the signal shape is an "
-                     "excitation-signal definition, not a Solver setting; the default Gaussian is used.")
+        notes.append(
+            f"excitation_type '{excitation_type}' is not applied: the signal shape is an "
+            "excitation-signal definition, not a Solver setting; the default Gaussian is used."
+        )
     power_loss = None
     if arguments.get("activate_power_loss_1d"):
-        script = script + "\n" + build_power_loss_1d_vba(
-            use_field_monitors=bool(arguments.get("power_loss_1d_use_field_monitors", True)),
-            use_farfield_monitors=bool(arguments.get("power_loss_1d_use_farfield_monitors", True)),
-            extra_frequencies=arguments.get("power_loss_1d_extra_frequencies") or [],
-            per_solid=bool(arguments.get("power_loss_1d_per_solid", False)),
+        script = (
+            script
+            + "\n"
+            + build_power_loss_1d_vba(
+                use_field_monitors=bool(arguments.get("power_loss_1d_use_field_monitors", True)),
+                use_farfield_monitors=bool(
+                    arguments.get("power_loss_1d_use_farfield_monitors", True)
+                ),
+                extra_frequencies=arguments.get("power_loss_1d_extra_frequencies") or [],
+                per_solid=bool(arguments.get("power_loss_1d_per_solid", False)),
+            )
         )
         power_loss = {
             "activated": True,
             "use_field_monitors": bool(arguments.get("power_loss_1d_use_field_monitors", True)),
-            "use_farfield_monitors": bool(arguments.get("power_loss_1d_use_farfield_monitors", True)),
+            "use_farfield_monitors": bool(
+                arguments.get("power_loss_1d_use_farfield_monitors", True)
+            ),
             "extra_frequencies": list(arguments.get("power_loss_1d_extra_frequencies") or []),
             "result_items": "1D Results\\Power\\Excitation [1]\\Loss in Dielectrics / Loss in Metals",
         }
@@ -455,14 +478,16 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
 
     validate_positive(accuracy, "accuracy")
     validate_positive(f_max, "f_max")
-    if f_min < 0:
-        f_min = 0
+    f_min = max(f_min, 0)
     if f_min >= f_max:
         return [
             TextContent(
                 type="text",
                 text=json.dumps(
-                    {"status": "error", "message": f"f_min ({f_min}) must be less than f_max ({f_max})"}
+                    {
+                        "status": "error",
+                        "message": f"f_min ({f_min}) must be less than f_max ({f_max})",
+                    }
                 ),
             )
         ]
@@ -473,7 +498,10 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
             TextContent(
                 type="text",
                 text=json.dumps(
-                    {"status": "error", "message": f"Invalid sweep_type '{sweep_type}'. Valid: {valid_sweeps}"}
+                    {
+                        "status": "error",
+                        "message": f"Invalid sweep_type '{sweep_type}'. Valid: {valid_sweeps}",
+                    }
                 ),
             )
         ]
@@ -503,8 +531,7 @@ def _configure_eigenmode(arguments: dict, client: CSTClient) -> list[TextContent
 
     validate_range(number_of_modes, 1, 1000, "number_of_modes")
     validate_positive(accuracy, "accuracy")
-    if f_min < 0:
-        f_min = 0
+    f_min = max(f_min, 0)
 
     vba = VBABuilder("EigenmodeSolver")
     vba.set_number("NumberOfModes", number_of_modes)
@@ -665,10 +692,17 @@ def _configure_ie_solver_advanced(arguments: dict, client: CSTClient) -> list[Te
     validate_range(max_iterations, 1, 100000, "max_iterations")
     valid_preconditioners = ["ILU", "Multilevel"]
     if preconditioner not in valid_preconditioners:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid preconditioner '{preconditioner}'. Valid: {valid_preconditioners}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid preconditioner '{preconditioner}'. Valid: {valid_preconditioners}",
+                    }
+                ),
+            )
+        ]
 
     vba = VBABuilder("IESolver")
     vba.set_number("SetAccuracy", accuracy)
@@ -695,20 +729,33 @@ def _configure_multilayer_solver(arguments: dict, client: CSTClient) -> list[Tex
     sweep_type = arguments.get("sweep_type", "Interpolated")
 
     validate_positive(f_max, "f_max")
-    if f_min < 0:
-        f_min = 0
+    f_min = max(f_min, 0)
     if f_min >= f_max:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"f_min ({f_min}) must be less than f_max ({f_max})",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"f_min ({f_min}) must be less than f_max ({f_max})",
+                    }
+                ),
+            )
+        ]
     validate_positive(num_samples, "num_samples")
     valid_sweeps = ["Interpolated", "Discrete"]
     if sweep_type not in valid_sweeps:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Invalid sweep_type '{sweep_type}'. Valid: {valid_sweeps}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid sweep_type '{sweep_type}'. Valid: {valid_sweeps}",
+                    }
+                ),
+            )
+        ]
 
     vba = VBABuilder("FDSolver")
     vba.set_number("FrequencyMin", f_min)
@@ -727,6 +774,6 @@ def _configure_multilayer_solver(arguments: dict, client: CSTClient) -> list[Tex
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

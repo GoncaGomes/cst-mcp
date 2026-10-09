@@ -12,6 +12,7 @@ starts or waits for a solver.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from pathlib import Path
@@ -49,8 +50,9 @@ def _plot_setup(quantity: str, step_deg: float, basis: str) -> list[str]:
     ]
 
 
-def build_ascii_export_vba(tree_path: str, out_file: str, quantity: str, step_deg: float,
-                           basis: str = "ludwig3") -> str:
+def build_ascii_export_vba(
+    tree_path: str, out_file: str, quantity: str, step_deg: float, basis: str = "ludwig3"
+) -> str:
     lines = _plot_setup(quantity, step_deg, basis) + [
         f'If Not SelectTreeItem("{_q(tree_path)}") Then',
         '  Err.Raise vbObjectError + 1, , "Farfield tree item not found"',
@@ -65,8 +67,9 @@ def build_ascii_export_vba(tree_path: str, out_file: str, quantity: str, step_de
     return "\n".join(lines)
 
 
-def build_list_export_vba(tree_path: str, out_file: str, quantity: str, step_deg: float,
-                          basis: str = "ludwig3") -> str:
+def build_list_export_vba(
+    tree_path: str, out_file: str, quantity: str, step_deg: float, basis: str = "ludwig3"
+) -> str:
     """Fallback: evaluate the full sphere with CalculateList and write CST-like ASCII."""
     mode, label = QUANTITY_MODES[quantity]
     c1, c2 = ("horizontal", "vertical") if basis == "ludwig3" else ("theta", "phi")
@@ -105,16 +108,20 @@ def build_list_export_vba(tree_path: str, out_file: str, quantity: str, step_deg
 
 
 def build_monitor_list_vba(out_file: str) -> str:
-    return "\n".join([
-        "Dim i As Long, f As Integer",
-        "f = FreeFile",
-        f'Open "{_q(out_file)}" For Output As #f',
-        "For i = 0 To Monitor.GetNumberOfMonitors - 1",
-        '  Print #f, Monitor.GetMonitorNameFromIndex(i) & vbTab & Monitor.GetMonitorTypeFromIndex(i) & vbTab & '
-        "CStr(Monitor.GetMonitorFrequencyFromIndex(i))",
-        "Next i",
-        "Close #f",
-    ])
+    return "\n".join(
+        [
+            "Dim i As Long, f As Integer",
+            "f = FreeFile",
+            f'Open "{_q(out_file)}" For Output As #f',
+            "For i = 0 To Monitor.GetNumberOfMonitors - 1",
+            (
+                "  Print #f, Monitor.GetMonitorNameFromIndex(i) & vbTab & Monitor.GetMonitorTypeFromIndex(i) & vbTab & "
+                "CStr(Monitor.GetMonitorFrequencyFromIndex(i))"
+            ),
+            "Next i",
+            "Close #f",
+        ]
+    )
 
 
 def _run(client: Any, vba: str) -> dict[str, Any]:
@@ -131,7 +138,9 @@ def list_monitors(client: Any, work_dir: Path) -> list[dict[str, Any]] | None:
         run = _run(client, build_monitor_list_vba(str(out)))
         if run.get("status") != "executed" or not out.is_file():
             return None
-        text = out.read_text(encoding="mbcs" if __import__("os").name == "nt" else "utf-8", errors="replace")
+        text = out.read_text(
+            encoding="mbcs" if __import__("os").name == "nt" else "utf-8", errors="replace"
+        )
     except Exception:  # noqa: BLE001
         return None
     finally:
@@ -151,7 +160,9 @@ def list_monitors(client: Any, work_dir: Path) -> list[dict[str, Any]] | None:
     return monitors
 
 
-def tree_candidates(client: Any, farfield_name: str | None, frequency_ghz: float | None) -> list[str]:
+def tree_candidates(
+    client: Any, farfield_name: str | None, frequency_ghz: float | None
+) -> list[str]:
     from cst_mcp.execution.farfield import farfield_tree_candidates
 
     cands = farfield_tree_candidates(frequency_ghz, farfield_name)
@@ -160,9 +171,11 @@ def tree_candidates(client: Any, farfield_name: str | None, frequency_ghz: float
     except Exception:  # noqa: BLE001
         disk = []
     for mon in disk:
-        if frequency_ghz is not None and mon.get("frequency_ghz") is not None and abs(
-            float(mon["frequency_ghz"]) - frequency_ghz
-        ) > 1e-6:
+        if (
+            frequency_ghz is not None
+            and mon.get("frequency_ghz") is not None
+            and abs(float(mon["frequency_ghz"]) - frequency_ghz) > 1e-6
+        ):
             continue
         if farfield_name and farfield_name.lower() not in str(mon.get("monitor_name", "")).lower():
             continue
@@ -206,7 +219,10 @@ def acquire(
             if client.model3d.SelectTreeItem(tree):
                 selectable.append(tree)
                 break
-        except Exception:  # noqa: BLE001
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in figures_3d_cst.acquire", exc_info=True
+            )
             continue
     if not selectable:
         monitors = list_monitors(client, export_dir)
@@ -216,13 +232,17 @@ def acquire(
         except Exception:  # noqa: BLE001
             disk = []
         if monitors is not None and not ff:
-            guidance = ("No farfield monitor is defined. Add one (cst_add_farfield_monitor at the design "
-                        "frequency), then run cst_run_simulation_async and cst_wait_for_simulation, and call "
-                        "cst_plot_farfield again.")
+            guidance = (
+                "No farfield monitor is defined. Add one (cst_add_farfield_monitor at the design "
+                "frequency), then run cst_run_simulation_async and cst_wait_for_simulation, and call "
+                "cst_plot_farfield again."
+            )
         else:
-            guidance = ("Farfield monitor(s) exist but no farfield result is available (not simulated yet or "
-                        "results deleted). Run cst_run_simulation_async + cst_wait_for_simulation, then retry; "
-                        "or pass data_file with a previously exported farfield ASCII.")
+            guidance = (
+                "Farfield monitor(s) exist but no farfield result is available (not simulated yet or "
+                "results deleted). Run cst_run_simulation_async + cst_wait_for_simulation, then retry; "
+                "or pass data_file with a previously exported farfield ASCII."
+            )
         return {
             "status": "no_results",
             "message": guidance,
@@ -235,7 +255,10 @@ def acquire(
     tree = selectable[0]
     safe = re.sub(r"[^A-Za-z0-9._=-]+", "_", tree.split("\\")[-1]).strip("_")
     attempts: list[dict[str, Any]] = []
-    for method, builder in (("ascii_export", build_ascii_export_vba), ("calculate_list", build_list_export_vba)):
+    for method, builder in (
+        ("ascii_export", build_ascii_export_vba),
+        ("calculate_list", build_list_export_vba),
+    ):
         out = export_dir / f"{safe}_{quantity}_{basis}_{method}.txt"
         try:
             out.unlink(missing_ok=True)
@@ -243,10 +266,20 @@ def acquire(
             pass
         vba = builder(tree, str(out), quantity, step_deg, basis)
         run = _run(client, vba)
-        entry = {"method": method, "run": run.get("status"), "message": str(run.get("message") or "")[:300]}
+        entry = {
+            "method": method,
+            "run": run.get("status"),
+            "message": str(run.get("message") or "")[:300],
+        }
         attempts.append(entry)
         if out.is_file() and out.stat().st_size > 0:
-            return {"status": "ok", "path": str(out), "tree_path": tree, "method": method, "attempts": attempts}
+            return {
+                "status": "ok",
+                "path": str(out),
+                "tree_path": tree,
+                "method": method,
+                "attempts": attempts,
+            }
     return {
         "status": "error",
         "message": f"Farfield export produced no data for {tree}",

@@ -1,9 +1,10 @@
 import asyncio
 import json
+import logging
 import time
 import traceback
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 from cst_mcp.config import CSTConfig
 from cst_mcp.cst_client import CSTClient
@@ -17,6 +18,7 @@ def parse_tc(result):
     try:
         return json.loads(text)
     except Exception:
+        logging.getLogger(__name__).debug("Handled error in run_patch_2p4.parse_tc", exc_info=True)
         return {"_raw": text}
 
 
@@ -183,9 +185,7 @@ async def main():
         slim = {k: v for k, v in patch_data.items() if k != "vba"}
         if "steps" in slim:
             slim["steps"] = [
-                {kk: vv for kk, vv in s.items() if kk != "vba"}
-                if isinstance(s, dict)
-                else s
+                {kk: vv for kk, vv in s.items() if kk != "vba"} if isinstance(s, dict) else s
                 for s in slim["steps"]
             ]
         report["stages"]["patch_antenna"] = slim
@@ -200,13 +200,14 @@ async def main():
         )
 
         if patch_data.get("status") not in ("ok", "executed"):
-            report["failures"].append(
-                f"patch status={patch_data.get('status')}: {slim}"
-            )
+            report["failures"].append(f"patch status={patch_data.get('status')}: {slim}")
         else:
             try:
                 report["stages"]["save"] = client.save_project()
             except Exception as e:
+                logging.getLogger(__name__).debug(
+                    "Handled error in run_patch_2p4.main", exc_info=True
+                )
                 report["failures"].append(f"save: {e}")
 
             print("=== SIMULATE AND REPORT timeout=1000s ===", flush=True)
@@ -220,19 +221,13 @@ async def main():
                 "out_dir": str(Path(r"E:\cstprojects\exports\patch_2p4_report")),
             }
             sim_data = parse_tc(
-                await workflows.handle(
-                    "cst_workflow_simulate_and_report", sim_args, client
-                )
+                await workflows.handle("cst_workflow_simulate_and_report", sim_args, client)
             )
             report["stages"]["simulate_status"] = sim_data.get("status")
             report["simulation"] = sim_data.get("solver")
             rep = sim_data.get("report") or {}
             if isinstance(rep, dict):
-                report["s11"] = (
-                    rep.get("s_parameters")
-                    or rep.get("sparams")
-                    or rep.get("s11")
-                )
+                report["s11"] = rep.get("s_parameters") or rep.get("sparams") or rep.get("s11")
                 report["farfield"] = rep.get("farfield")
                 report["design_report_keys"] = list(rep.keys())
                 report["report_out_dir"] = rep.get("out_dir")
@@ -265,6 +260,7 @@ async def main():
                     (report.get("simulation") or {}).get("message", "solver error")
                 )
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in run_patch_2p4.main", exc_info=True)
         report["failures"].append(f"top_level: {e}")
         traceback.print_exc()
     finally:

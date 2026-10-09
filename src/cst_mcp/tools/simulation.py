@@ -284,9 +284,7 @@ def _select_solver(solver_type: str | None, client: CSTClient) -> dict | None:
     )
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a simulation control tool call."""
     try:
         if name == "cst_run_simulation":
@@ -317,10 +315,13 @@ async def handle(
             )
         ]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logger.debug("Handled error in simulation.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 def _handle_run_simulation(
@@ -333,11 +334,13 @@ def _handle_run_simulation(
         return [
             TextContent(
                 type="text",
-                text=json.dumps({
-                    "status": "error",
-                    "error": f"Invalid solver_type '{solver_type}'",
-                    "valid_options": _VALID_SOLVER_TYPES,
-                }),
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "error": f"Invalid solver_type '{solver_type}'",
+                        "valid_options": _VALID_SOLVER_TYPES,
+                    }
+                ),
             )
         ]
 
@@ -439,9 +442,7 @@ def _finished_payload(client: CSTClient, pending: dict | None) -> dict[str, Any]
     return {"confirmed": False, "solve_observed": False, "warning": warning}
 
 
-async def _handle_wait_for_simulation(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_wait_for_simulation(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle cst_wait_for_simulation: a bounded poll of the solver state.
 
     Intermediate polls read only the running flag (one CST call, timeout cut to
@@ -489,27 +490,31 @@ async def _handle_wait_for_simulation(
         status = state.get("status")
 
         if status == "offline":
-            return _json({
-                "status": "error",
-                "code": "offline",
-                "message": (
-                    "cst_wait_for_simulation requires connected mode with an open "
-                    "project; call cst_connect first."
-                ),
-                "running": None,
-                "elapsed_s": elapsed(),
-                "polls": polls,
-                "solver_status": state,
-            })
+            return _json(
+                {
+                    "status": "error",
+                    "code": "offline",
+                    "message": (
+                        "cst_wait_for_simulation requires connected mode with an open "
+                        "project; call cst_connect first."
+                    ),
+                    "running": None,
+                    "elapsed_s": elapsed(),
+                    "polls": polls,
+                    "solver_status": state,
+                }
+            )
         if status != "ok":
-            return _json({
-                "status": "error",
-                "message": state.get("message") or "CST solver state is unknown",
-                "running": state.get("running"),
-                "elapsed_s": elapsed(),
-                "polls": polls,
-                "solver_status": state,
-            })
+            return _json(
+                {
+                    "status": "error",
+                    "message": state.get("message") or "CST solver state is unknown",
+                    "running": state.get("running"),
+                    "elapsed_s": elapsed(),
+                    "polls": polls,
+                    "solver_status": state,
+                }
+            )
 
         running = bool(state.get("running"))
         pending = _pending_solve(client)
@@ -522,43 +527,49 @@ async def _handle_wait_for_simulation(
 
         if not running and not starting:
             extra = details(state)
-            return _json({
-                "status": "finished",
-                "running": False,
-                "elapsed_s": elapsed(),
-                "max_wait_s": max_wait_s,
-                "polls": polls,
-                **extra,
-                **_finished_payload(client, pending),
-                "hint": (
-                    "Solver is idle. Read results, e.g. with cst_get_s_parameters "
-                    "or cst_get_farfield_metrics."
-                ),
-            })
-
-        remaining = deadline - _clock()
-        if remaining <= _WAIT_MIN_CALL_S:
-            if starting:
-                return _json({
-                    "status": "starting",
+            return _json(
+                {
+                    "status": "finished",
                     "running": False,
                     "elapsed_s": elapsed(),
                     "max_wait_s": max_wait_s,
                     "polls": polls,
+                    **extra,
+                    **_finished_payload(client, pending),
                     "hint": (
-                        "The solve was launched but CST has not reported it running "
-                        "yet; call cst_wait_for_simulation again."
+                        "Solver is idle. Read results, e.g. with cst_get_s_parameters "
+                        "or cst_get_farfield_metrics."
                     ),
-                })
-            return _json({
-                "status": "running",
-                "running": True,
-                "elapsed_s": elapsed(),
-                "max_wait_s": max_wait_s,
-                "polls": polls,
-                **{key: state[key] for key in ("active_solver", "run_info") if key in state},
-                "hint": "Solver still running; call cst_wait_for_simulation again.",
-            })
+                }
+            )
+
+        remaining = deadline - _clock()
+        if remaining <= _WAIT_MIN_CALL_S:
+            if starting:
+                return _json(
+                    {
+                        "status": "starting",
+                        "running": False,
+                        "elapsed_s": elapsed(),
+                        "max_wait_s": max_wait_s,
+                        "polls": polls,
+                        "hint": (
+                            "The solve was launched but CST has not reported it running "
+                            "yet; call cst_wait_for_simulation again."
+                        ),
+                    }
+                )
+            return _json(
+                {
+                    "status": "running",
+                    "running": True,
+                    "elapsed_s": elapsed(),
+                    "max_wait_s": max_wait_s,
+                    "polls": polls,
+                    **{key: state[key] for key in ("active_solver", "run_info") if key in state},
+                    "hint": "Solver still running; call cst_wait_for_simulation again.",
+                }
+            )
         # Keep at least _WAIT_MIN_CALL_S for the next poll so its CST timeout
         # (whole seconds, >= 1) still fits inside the budget.
         pause = min(_WAIT_POLL_S, remaining - _WAIT_MIN_CALL_S)
@@ -578,6 +589,6 @@ def _handle_simple_solver_command(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

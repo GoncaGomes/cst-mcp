@@ -3,8 +3,10 @@
 This deterministic Python 3.12 client uses a real MCP stdio session with
 `sys.executable -m cst_mcp.server`. No LLM/SLM is involved. Creation and parameter
 changes use dedicated MCP tools; the client never imports server handlers or
-calls CST APIs directly. The brick and primitive clients have separate fixed
-workspaces. Live CST validation of the new primitive scenario is still pending.
+calls CST APIs directly. The brick, primitive and extrusion clients have separate fixed
+workspaces. The recorded primitive live scenario completed within its stated
+coverage. Extrusion live validation of creation, parametric reconstruction, hole
+effects and persistence also completed within the recorded measurement coverage.
 
 ## Server change
 
@@ -34,9 +36,9 @@ line-breaking characters, NUL, booleans, null, unsupported types and nonfinite
 numbers are rejected before execution. Existing builder injection checks remain.
 
 There is no retroactive geometry-edit tool. Existing number-only builder methods,
-extrusions, wires, analytical curves, transformations, loft, faces, workflows,
+wires, analytical curves, transformations, loft, faces, workflows,
 sweeps, optimization and solvers are unchanged. The six additional primitive
-contracts are listed below.
+contracts and the extrusion extension are listed below.
 `cst_set_parameter` is reused without modification: it stores values outside model
 history and performs a separate native rebuild. Its returned `value` is an input
 echo; the test separately reads actual values using the parameter query tools.
@@ -306,12 +308,13 @@ a fixed workspace:
 
 - `artifacts\01_brick`: `run_parameter_brick.py`, including its copied project.
 - `artifacts\02_primitives`: `run_parameter_primitives.py`, with a new blank MWS project.
+- `artifacts\03_extrusions`: `run_parameter_extrusions.py`, with its own new blank MWS project.
 
 Each workspace owns its project and companion data, retained workspace lock,
 manifest, MCP/CST/stderr logs, invocation metadata, effective tool catalog and
 latest `summary.json` and `summary.md`. Logs append records with invocation IDs
 and UTC timestamps. Latest reports use fixed paths. There are no timestamped
-run directories. Future scopes such as `03_extrusions` do not change these paths.
+run directories. The `03_extrusions` scope does not change these paths.
 Artifacts and generated Python files remain ignored by Git.
 
 The existing root-level brick contents were relocated on 8 October 2026 after
@@ -449,4 +452,202 @@ including queries, save/close/reset/disconnect. Only local reporting and Python
 server teardown proceed. CST is never killed to recover a test.
 
 Focused offline tests, lint and the real disabled-server preflight are recorded
-in `REVIEW.md`. Live CST validation is still pending.
+in `REVIEW.md`. Existing primitive evidence in `artifacts/02_primitives/summary.json`
+and `summary.md`, invocation `0659b7cbd45e4e019e8dda5d01d5a467`, records a completed
+live scenario at phase `disconnect`, exit 0. Initial, updated, reopened and final
+parameter/unit/material, native volume and supported surface-area checks passed.
+This evidence does not extend the verification coverage described above.
+
+## Extrusion expression contracts
+
+Both `cst_create_extrude` and `cst_create_polygon_extrude` now accept finite JSON
+numbers or nonempty, single-line CST expressions in `height`, every coordinate
+of `points`, every coordinate of every profile in `holes`, and the selected
+axis's offset. Numeric and symbolic values may be mixed. Names, material defaults,
+axes, profile mapping and closure remain unchanged. No new height-sign restriction
+is imposed. Null, booleans, nonfinite numbers, empty expressions, control characters
+and unsupported types are rejected through the shared expression validation.
+Inactive offsets may be absent or numeric zero; any expression on an inactive
+axis is rejected, including the string `"0"`. Invalid optional values are not
+coerced through truthiness defaults.
+
+The installed CST 2025 references inspected are under
+`C:\Program Files (x86)\CST Studio Suite 2025\Online Help\mergedProjects`:
+
+- `VBA_3D/common_vbaextrude/common_vbaextrudeextrude_object.htm`
+- `VBA_3D/common_vbacurves/common_vbacurves_extrudecurve_object.htm`
+- `VBA_3D/common_vbacurves/common_vbacurves_polygon3d.htm`
+- `VBA_3D/common_vbaapp/common_vbaappapplication_object.htm`
+
+`Extrude.Height` is documented as a string, with an expression example. Origin,
+profile coordinates and `ExtrudeCurve.Thickness` are documented as doubles;
+Polygon3D also has a coordinate-expression example. The generated history uses
+native `Evaluate(serialized_literal)` where a symbolic value is supplied to a
+double argument. `Evaluate(string)` returns a double. Syntax comes only from fixed
+server templates; caller text is safely quoted by `_format_expression`. Python
+does not evaluate expressions, query initial values or freeze dependencies.
+Expressions, signed-area evaluation and winding branches remain in history.
+Native evaluation and reconstruction completed in the recorded live scenario.
+This does not promise editable expressions in every native geometry dialog.
+
+Numeric profiles retain signed-area rejection and counter-clockwise normalization.
+Symbolic profiles check signed area in VBA before geometry creation. Polygon
+extrusion selects winding on every rebuild, separately for the outline and each
+hole. Holes grow in the same direction as the outline before subtraction.
+Zero signed area raises a native error. CST remains responsible for semantic
+expression errors, self-intersections and invalid hole geometry; no general
+topology validator was added.
+
+The profile-to-world mapping is z: `(u,v,offset)`, x: `(offset,u,v)`,
+y: `(u,offset,-v)`. Symbolic negation is parenthesized. For positive height,
+`up` spans offset to offset+height and `down` spans offset-height to offset.
+Polygon extrusion uses normalized winding. Pointlist extrusion reverses V and
+negates local v for `down`, reversing U cross V while preserving the world
+profile and base plane. This corrects its previously ignored `down` option;
+default/up numeric behavior is retained. No invented native direction property
+or pointlist-winding assumption is used.
+
+Responses provide `extrusion.expected_range` when height and offset are numeric.
+Symbolic values instead produce `symbolic_endpoints.base` and `.end`, with
+`numeric_range_evaluated=false`. These are input-contract predictions, never
+measured CST bounds; symbolic endpoints are not numerically sorted. Metadata
+is prepared before execution and attached only to successful/offline responses.
+Native error and timeout payloads remain complete without creation metadata.
+
+## Extrusion client commands and fixed workspace
+
+Run from `C:\dev\cst-studio-mcp`:
+
+```powershell
+# Offline real MCP preflight, CST access disabled
+uv run capabilities_test\02_parameters\run_parameter_extrusions.py --preflight
+
+# First live execution creates the owned blank MWS project and four fixtures
+uv run capabilities_test\02_parameters\run_parameter_extrusions.py
+
+# Later reuse, after saving/closing the owned project; validation is deferred
+uv run capabilities_test\02_parameters\run_parameter_extrusions.py
+
+# Explicit reset of verified owned extrusion project files only
+uv run capabilities_test\02_parameters\run_parameter_extrusions.py --reset
+```
+
+`--cst-path "D:\CST Studio Suite 2025"`, `--connection-timeout 120` and
+`--call-timeout 60` follow the existing clients. Client timeouts do not extend
+native server limits. Preflight and reset cannot be combined.
+
+Focused offline regression and lint commands:
+
+```powershell
+uv run --python 3.12 --extra dev pytest tests\test_extrusion_expressions.py tests\test_official_tools.py tests\test_campaign_lessons.py tests\test_primitive_expressions.py -q
+uv run --python 3.12 --extra dev ruff check capabilities_test\02_parameters\run_parameter_extrusions.py tests\test_extrusion_expressions.py tests\test_primitive_expressions.py
+```
+
+Repository-wide formatting and lint checks use `uv run ruff format --check`
+and `uv run ruff check` from the repository root.
+
+The fixed workspace is `capabilities_test\02_parameters\artifacts\03_extrusions`.
+Its owned project is `project.cst` with companion `project\`. It retains
+`workspace.lock`, ownership/checkpoint `workspace.json`, append-only
+`mcp_calls.jsonl`, `cst_messages.jsonl`, `server_stderr.log`, `metadata.jsonl`,
+and latest `metadata.json`, `tool_catalog.json`, `summary.json`, `summary.md`.
+Records carry invocation IDs and UTC timestamps; complete MCP responses, native
+diagnostic payloads and stderr are retained. There are no timestamped run folders
+and no duplicate fixture creation. This client imports inspected stateless helpers
+without constructing either earlier client or changing their workspace globals.
+
+First live initialization connects with `mode=new` and verifies a newly started
+DesignEnvironment with no adopted projects, then creates a blank MWS project.
+Later runs require the same owned project, ready fixture state, saved SHA-256
+and complete companion/sidecar fingerprint inventory. OS workspace locks and
+project locks are checked separately. Changed files, incomplete state, unknown
+project files, links/junctions or ownership inconsistencies stop reuse. Locks
+are never removed or judged stale. Reset checks all targets first and deletes
+only manifest-owned project files inside `03_extrusions`, retaining logs and
+reports. `01_brick` and `02_primitives` are preserved. The brick checkpoint
+mismatch is neither repaired nor adopted.
+
+Preflight sets `CST_CONNECT_MODE=disabled` in the child server, validates the
+effective catalog and every planned call schema, and retrieves generated VBA
+through MCP for numeric/mixed fixtures and representative invalid inputs. It
+does not prepare/reset a workspace project or call connect, create/open/save/close
+or disconnect. Live raw VBA is enabled only in the child environment and restricted
+by this client to fixed setup and read-only blocks. Geometry creation and parameter
+changes use dedicated tools. Queries use output capture outside model history.
+
+After timeout, transport loss, interrupted in-flight requests or unknown execution
+or activity state, every later MCP call stops. No retry, query, save, close, reset,
+disconnect or CST termination occurs. Only local reports and Python server transport
+teardown proceed, using the existing `preserve_cst_processes` mechanism. Known
+failures may collect diagnostics while state is known, then stop without saving
+or closing the failed project. Exit codes match the primitive client: 0 completed,
+1 known failure, 2 indeterminate, 130 interruption.
+
+## Extrusion scenario and verification limits
+
+The four PEC solids in component `ParameterExtrusions` share these states:
+
+| State | `PEx_W` | `PEx_H` | `PEx_Offset` | `PEx_Side` |
+| --- | --- | --- | --- | --- |
+| Initial | 8 | 3 | 2 | 1 |
+| Updated and reopened | 10 | 4 | 5 | -1 |
+| Final | 6 | 2 | 1 | 1 |
+
+All heights use `PEx_H` and active offsets use `PEx_Offset`. Profiles have v=0..4.
+
+| Solid | Tool / direction | Profile u extent | Hole u extent / v extent |
+| --- | --- | --- | --- |
+| `PointZUp` | pointlist / z up | 0..W | W/4..3W/4 / 1..3 |
+| `PointXDown` | pointlist / x down | 30..30+W | none |
+| `PolygonYUp` | polygon / y up | 60..60+Side*W | 60+Side*W/4..60+3Side*W/4 / 1..3 |
+| `PolygonZDown` | polygon / z down | 90..90+W | none |
+
+The outline of `PointZUp` and initially `PolygonYUp` is clockwise. The
+`PolygonYUp` outline and hole have opposite initial caller winding. Switching
+Side from 1 to -1 flips both winding signs and mirrors the profile about u=60;
+all three states remain nondegenerate, separated and have valid internal holes.
+Outer and hole normalization must therefore be independent and rebuilt.
+
+The client establishes mm/GHz/ns and reads effective units, sets initial
+parameters and creates fixtures only once. It reads actual parameters, enumerates
+solids/materials and measures initial geometry. It then changes parameters,
+rebuilds and repeats readbacks, saves/closes/reopens and checks persistence,
+then applies the final state, rebuilds, measures, saves/closes and disconnects.
+
+Independent analytic expectations use known fixture dimensions, never arbitrary
+expression evaluation: unperforated profile area A=4W and boundary length P=2W+8;
+holed profile A=3W and P=3W+12, including internal walls. Prism volume is A*H and
+surface area is 2A+P*H. Both `Solid.GetVolume` and `Solid.GetArea` are compared for
+all four solids with absolute and relative tolerances `1e-6`. Reports retain
+complete query output, actual parameter states, expected/measured values, units,
+tolerances, exact queries and installed-reference paths/hashes.
+
+Volume/area establish only aggregate quantities, including hole effects. They
+do not independently prove offset, direction, every coordinate, the selected
+winding branch or expression association. No additional documented query was
+used as exact dimensional evidence; the installed loose-box query is non-tight.
+After a successful live run, inspect the owned saved project without saving edits:
+check stored history for parameter expressions, native Evaluate and both winding
+branches; check base planes/directions and the axis-y profile at z=-4..0 against
+the fixture contract. The final predicted ranges are PointZUp z=1..3,
+PointXDown x=-1..1, PolygonYUp y=1..3, PolygonZDown z=-1..1 mm. Close the project
+before reuse. This is brief inspection guidance, not a separate validation suite.
+
+Live invocation `98f64bf7619b4746a1f3961414ad537a` completed with exit 0 and
+178 passed checks, including 32 native volume/area comparisons across initial,
+updated, reopened and final stages. This validates creation, parametric
+reconstruction, hole effects and save/close/reopen persistence within that
+coverage. The user also manually confirmed the created solids; that confirmation
+does not add coordinate, direction or history-expression measurements.
+
+The latest retained `artifacts/03_extrusions/summary.md`, `summary.json` and
+`metadata.json` now identify a later successful invocation,
+`ac201e49e35d4f9aa50329fe0ec890f1`, with the same exit status, check counts and
+measurement coverage. Historical reports, projects, manifests and accumulated
+logs are preserved. Volume/area do not independently establish offsets,
+directions, every coordinate or history-expression association.
+
+Reuse without `--reset` is deferred and is not a completion requirement for this
+task. No reuse test was performed for this documentation update. Catalog presence,
+implementation, offline checks, real execution and independently confirmed
+effects remain separate evidence categories in the client reports.

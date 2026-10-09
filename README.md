@@ -631,14 +631,14 @@ Create, open, save projects and check CST connection.
 | `cst_create_cone` | Create a cone or truncated cone in CST Studio. |
 | `cst_create_sphere` | Create a sphere in CST Studio. |
 | `cst_create_torus` | Create a torus in CST Studio. |
-| `cst_create_extrude` | Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode 'pointlist'). The profile lies in the plane normal to 'a… |
+| `cst_create_extrude` | Pointlist extrusion with numeric/mixed CST expressions in height, profiles/holes and active offset; down reverses the plane normal. |
 | `cst_create_loft` | Create a lofted solid between two or more 2D profiles in CST Studio. |
 | `cst_create_wire` | Create a bondwire / wire between two points in CST Studio. |
 | `cst_create_polygon3d` | Create a 3D polygon curve in CST Studio. |
 | `cst_create_analytical_curve` | Create a parametric analytical curve in CST Studio using expressions of parameter t. |
 | `cst_create_face_from_curves` | Create a planar face from one or more closed curves in CST Studio. |
 | `cst_create_ecylinder` | Create an elliptical cylinder in CST Studio. |
-| `cst_create_polygon_extrude` | Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and ex… |
+| `cst_create_polygon_extrude` | Polygon extrusion with numeric/mixed CST expressions and independent profile/hole winding evaluation on every rebuild. |
 
 ### Boolean operations (4)
 

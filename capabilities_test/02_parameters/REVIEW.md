@@ -148,3 +148,80 @@ associations. No loose-box or manual-validation suite was added.
 
 Live CST connection, project opening, model rebuild or simulation was performed
 by this extension task. 
+
+## 2026-10-09: extrusion expressions and deterministic capability client
+
+Verified baseline: `feat/brick-parameter-expressions`, commit `6d34392`, clean
+working tree. No branch switch, commit, push or discard was performed.
+
+Both extrusion tools now preserve expressions in height, profile/hole coordinates
+and active-axis offsets. Installed CST 2025 Extrude, ExtrudeCurve, Polygon3D and
+Application help was inspected. String Height remains symbolic; documented double
+arguments use safe native Evaluate calls inside stored history. Numeric winding
+behavior is retained; symbolic signed-area checks and independent outline/hole
+winding selection run during reconstruction. Pointlist down now reverses the
+plane normal with consistent local remapping, correcting the previously ignored
+option. Height-sign contracts and unrelated geometry functions remain unchanged.
+Metadata is prepared before mutation; symbolic endpoints are labeled predictions
+and native errors/timeouts retain their complete payloads without creation metadata.
+
+`run_parameter_extrusions.py` owns only `artifacts/03_extrusions`, with four retained
+PEC fixtures, both tools/directions, x/y/z mappings and two rectangular holes.
+The updated parameter state flips symbolic outline and hole winding. The client
+uses real MCP stdio, inspected stateless helpers, owned blank-project initialization,
+checkpoint/lock guards, scoped explicit reset and accumulated logs. Unknown state
+forbids all further MCP calls; teardown preserves CST and affects only the Python
+server transport. No earlier client is instantiated or workspace global changed.
+
+Offline checks performed:
+
+- Focused extrusion, existing primitive/brick client, VBA/security, registry and
+  catalog selection: **516 passed, 4 skipped**, without CST access. The compact
+  extrusion module covers meaningful history/metadata/input regressions and three
+  focused checkpoint/unknown-state cases; it contains no fake CST interpreter.
+- Real MCP disabled-server preflight: **passed**, latest invocation
+  `0a0c63da8d1c4f55a1d171152701fee3`, 31 complete responses. Effective schemas,
+  planned calls, generated numeric/mixed VBA and representative rejections checked.
+  No connect or project lifecycle calls occurred; no project/manifest was created.
+- New files and updated schema tests pass Ruff. Baseline comparison retains nine
+  geometry and twenty official-test diagnostics, with no added diagnostics.
+  Python compilation and `git diff --check` pass.
+- All **235 existing files** in `01_brick` and `02_primitives` retain their hashes
+  with no new files in either scope. The brick checkpoint mismatch is untouched.
+  Static and embedded catalog audits confirm only the two extrusion entries changed.
+
+The README now cites the existing completed primitive live evidence, invocation
+`0659b7cbd45e4e019e8dda5d01d5a467`. Extrusion live validation remains pending.
+No CST connection, launch, project opening, reconstruction or live validation was
+performed for this task. Analytic volume/area comparisons do not prove exact
+offsets, direction, every coordinate or history-expression association. Native
+reconstruction and persistence require the user-run scenario and evidence review;
+native dialogs may show evaluated values. Brief inspection guidance is in README.md.
+
+## 2026-10-09: typed coordinate assignment correction
+
+User-run invocation `dc5899a603d147c9b878303699beac35` failed during the first
+extrusion's history update with a native Type mismatch at
+`cstProfile0U(0) = "0"`. The component setup completed, but the profile checks
+failed before solid creation. This is a known failure, not completed validation.
+
+`_profile_area_checks` now wraps every coordinate assignment in native Evaluate,
+including numeric literals, so typed Double arrays receive double values. Shared
+expression serialization and validation remain in use. Geometry-property formatting
+and the capability client's lifecycle/ownership rules were not changed. The existing
+mixed-profile regression now checks numeric outer/hole assignments for both tools.
+
+Focused offline tests: **188 passed, 4 skipped**. Updated regression lint and
+Python compilation pass; geometry retains its nine existing lint diagnostics,
+with none in the changed helper. Disabled-server MCP preflight passed, invocation
+`694c645ce7b248c5806cdf4efa69b8ae`, with 31 responses and no CST lifecycle calls.
+`git diff --check` passes. No CST connection, project operation or live validation
+was performed during this correction.
+
+The failed live summaries/metadata are preserved as `failed_live_summary.json`,
+`failed_live_summary.md` and `failed_live_metadata.json` in `03_extrusions` before
+preflight updated latest reports. Complete native responses remain in accumulated
+logs. Owned project and manifest hashes are unchanged; no reset was performed.
+The failed initialization remains incomplete. For another live run, save and
+close the owned project, then use the existing explicit `--reset` command.
+Native geometry, winding/reconstruction and persistence still require live checks.

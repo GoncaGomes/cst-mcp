@@ -130,8 +130,14 @@ def draw_dim(ax, p1, p2, side: str, offset: float, text: str, fontsize: float, g
     """
     (x1, y1), (x2, y2) = p1, p2
     kw = {"color": DIM_COLOR, "lw": DIM_LW, "zorder": 5, "solid_capstyle": "butt"}
-    arrow = {"arrowstyle": "<|-|>,head_length=0.35,head_width=0.12", "lw": DIM_LW,
-             "color": DIM_COLOR, "shrinkA": 0, "shrinkB": 0, "mutation_scale": fontsize * 1.4}
+    arrow = {
+        "arrowstyle": "<|-|>,head_length=0.35,head_width=0.12",
+        "lw": DIM_LW,
+        "color": DIM_COLOR,
+        "shrinkA": 0,
+        "shrinkB": 0,
+        "mutation_scale": fontsize * 1.4,
+    }
     if side in ("below", "above"):
         sgn = -1 if side == "below" else 1
         ref = min(y1, y2) if side == "below" else max(y1, y2)
@@ -139,9 +145,16 @@ def draw_dim(ax, p1, p2, side: str, offset: float, text: str, fontsize: float, g
         for x, y in ((x1, y1), (x2, y2)):
             ax.plot([x, x], [y + sgn * gap, yd + sgn * gap * 1.5], **kw)
         ax.annotate("", xy=(x1, yd), xytext=(x2, yd), arrowprops=arrow, zorder=5)
-        ax.text((x1 + x2) / 2, yd + sgn * gap * 0.6, text, ha="center",
-                va="top" if side == "below" else "bottom", fontsize=fontsize, zorder=6,
-                bbox={"fc": "white", "ec": "none", "pad": 0.4})
+        ax.text(
+            (x1 + x2) / 2,
+            yd + sgn * gap * 0.6,
+            text,
+            ha="center",
+            va="top" if side == "below" else "bottom",
+            fontsize=fontsize,
+            zorder=6,
+            bbox={"fc": "white", "ec": "none", "pad": 0.4},
+        )
     else:
         sgn = -1 if side == "left" else 1
         ref = min(x1, x2) if side == "left" else max(x1, x2)
@@ -149,9 +162,17 @@ def draw_dim(ax, p1, p2, side: str, offset: float, text: str, fontsize: float, g
         for x, y in ((x1, y1), (x2, y2)):
             ax.plot([x + sgn * gap, xd + sgn * gap * 1.5], [y, y], **kw)
         ax.annotate("", xy=(xd, y1), xytext=(xd, y2), arrowprops=arrow, zorder=5)
-        ax.text(xd + sgn * gap * 0.6, (y1 + y2) / 2, text, rotation=90,
-                ha="right" if side == "left" else "left", va="center",
-                fontsize=fontsize, zorder=6, bbox={"fc": "white", "ec": "none", "pad": 0.4})
+        ax.text(
+            xd + sgn * gap * 0.6,
+            (y1 + y2) / 2,
+            text,
+            rotation=90,
+            ha="right" if side == "left" else "left",
+            va="center",
+            fontsize=fontsize,
+            zorder=6,
+            bbox={"fc": "white", "ec": "none", "pad": 0.4},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -206,17 +227,32 @@ def _draw_view(ax, vg: ViewGeom, origin: np.ndarray, opts: DrawingOptions, thin_
         area = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
         poly = poly[area > 1e-12]
         if len(poly):
-            ax.add_collection(PolyCollection(poly, facecolors=color, edgecolors=color,
-                                             linewidths=0.05, zorder=1))
+            ax.add_collection(
+                PolyCollection(poly, facecolors=color, edgecolors=color, linewidths=0.05, zorder=1)
+            )
     tol = float(np.linalg.norm(vg.hi - vg.lo)) * 1e-6
     for solid, _tris, vis, hid in vg.per_solid:
         if len(hid) and opts.hidden_lines == "dashed":
-            ax.add_collection(LineCollection(chain_segments(hid[..., :2] + shift, tol), colors="0.25",
-                                             linewidths=HIDDEN_LW, linestyles=(0, (3, 2)), zorder=2))
+            ax.add_collection(
+                LineCollection(
+                    chain_segments(hid[..., :2] + shift, tol),
+                    colors="0.25",
+                    linewidths=HIDDEN_LW,
+                    linestyles=(0, (3, 2)),
+                    zorder=2,
+                )
+            )
         if len(vis):
-            ax.add_collection(LineCollection(chain_segments(vis[..., :2] + shift, tol), colors="black",
-                                             linewidths=VISIBLE_LW, capstyle="round",
-                                             joinstyle="round", zorder=3))
+            ax.add_collection(
+                LineCollection(
+                    chain_segments(vis[..., :2] + shift, tol),
+                    colors="black",
+                    linewidths=VISIBLE_LW,
+                    capstyle="round",
+                    joinstyle="round",
+                    zorder=3,
+                )
+            )
 
 
 def _solid_dims_candidates(solids: list[Solid], lo, hi, limit: int) -> list[Solid]:
@@ -243,10 +279,26 @@ def _dimension_view(ax, vg: ViewGeom, origin, solids, opts, lo3, hi3, fs, unit_s
     o = np.asarray(origin, dtype=float)
     w, h = vg.hi - vg.lo
     if vg.name == "top":
-        draw_dim(ax, (o[0], o[1]), (o[0] + w, o[1]), "below", stack.next("below"),
-                 _fmt(hi3[0] - lo3[0], d), fs, gap)
-        draw_dim(ax, (o[0], o[1]), (o[0], o[1] + h), "left", stack.next("left"),
-                 _fmt(hi3[1] - lo3[1], d), fs, gap)
+        draw_dim(
+            ax,
+            (o[0], o[1]),
+            (o[0] + w, o[1]),
+            "below",
+            stack.next("below"),
+            _fmt(hi3[0] - lo3[0], d),
+            fs,
+            gap,
+        )
+        draw_dim(
+            ax,
+            (o[0], o[1]),
+            (o[0], o[1] + h),
+            "left",
+            stack.next("left"),
+            _fmt(hi3[1] - lo3[1], d),
+            fs,
+            gap,
+        )
         seen_x, seen_y = {_fmt(w, d)}, {_fmt(h, d)}
         for s in _solid_dims_candidates(solids, lo3, hi3, opts.max_solid_dims):
             slo, shi = s.bbox
@@ -263,8 +315,16 @@ def _dimension_view(ax, vg: ViewGeom, origin, solids, opts, lo3, hi3, fs, unit_s
                 draw_dim(ax, (x1, y0), (x1, y1), "right", r_off, ty, fs, gap)
     elif vg.name in ("front", "side"):
         axis = 0 if vg.name == "front" else 1
-        draw_dim(ax, (o[0], o[1]), (o[0] + w, o[1]), "below", stack.next("below"),
-                 _fmt(hi3[axis] - lo3[axis], d), fs, gap)
+        draw_dim(
+            ax,
+            (o[0], o[1]),
+            (o[0] + w, o[1]),
+            "below",
+            stack.next("below"),
+            _fmt(hi3[axis] - lo3[axis], d),
+            fs,
+            gap,
+        )
         # Layer thicknesses (distinct Z intervals), stacked on the right/left.
         zs = vg.z_scale
         intervals: dict[tuple[float, float], list[str]] = {}
@@ -276,8 +336,9 @@ def _dimension_view(ax, vg: ViewGeom, origin, solids, opts, lo3, hi3, fs, unit_s
                 if s.material and s.material not in mats:
                     mats.append(s.material)
         z_total = (round(float(lo3[2]), 9), round(float(hi3[2]), 9))
-        ordered = [z_total] + sorted((k for k in intervals if k != z_total),
-                                     key=lambda k: k[1] - k[0], reverse=True)
+        ordered = [z_total] + sorted(
+            (k for k in intervals if k != z_total), key=lambda k: k[1] - k[0], reverse=True
+        )
         side = "right" if vg.name == "side" else "left"
         edge_x = o[0] + w if side == "right" else o[0]
         thin, shown = [], set()
@@ -297,13 +358,26 @@ def _dimension_view(ax, vg: ViewGeom, origin, solids, opts, lo3, hi3, fs, unit_s
             y_mid = o[1] + ((z0 + z1) / 2 - lo3[2]) * zs
             tip_x = o[0] + w * (0.08 + 0.3 * k) if side == "left" else o[0] + w * (0.92 - 0.3 * k)
             label = f"t = {text}" + (f", {mats[0]}" if mats else "")
-            ax.annotate(label, xy=(tip_x, y_mid),
-                        xytext=(tip_x + (unit_step if side == "left" else -unit_step),
-                                o[1] + h + unit_step * 1.6),
-                        ha="left" if side == "left" else "right", va="bottom", fontsize=fs - 0.5,
-                        arrowprops={"arrowstyle": "-|>,head_length=0.3,head_width=0.1",
-                                    "lw": DIM_LW, "color": DIM_COLOR, "shrinkA": 1, "shrinkB": 0,
-                                    "mutation_scale": fs * 1.4}, zorder=6)
+            ax.annotate(
+                label,
+                xy=(tip_x, y_mid),
+                xytext=(
+                    tip_x + (unit_step if side == "left" else -unit_step),
+                    o[1] + h + unit_step * 1.6,
+                ),
+                ha="left" if side == "left" else "right",
+                va="bottom",
+                fontsize=fs - 0.5,
+                arrowprops={
+                    "arrowstyle": "-|>,head_length=0.3,head_width=0.1",
+                    "lw": DIM_LW,
+                    "color": DIM_COLOR,
+                    "shrinkA": 1,
+                    "shrinkB": 0,
+                    "mutation_scale": fs * 1.4,
+                },
+                zorder=6,
+            )
     return stack.levels
 
 
@@ -318,7 +392,9 @@ def _layout(vgs: dict[str, ViewGeom], gap: float) -> dict[str, np.ndarray]:
         y_cursor = size["front"][1] + gap
     if top is not None:
         pos["top"] = np.array([0.0, y_cursor])
-    ref_w = max(size["top"][0] if top is not None else 0.0, size["front"][0] if front is not None else 0.0)
+    ref_w = max(
+        size["top"][0] if top is not None else 0.0, size["front"][0] if front is not None else 0.0
+    )
     if side is not None:
         pos["side"] = np.array([ref_w + gap, 0.0])
     if iso is not None:
@@ -349,7 +425,9 @@ def _param_lines(params: dict[str, Any], limit: int = 40) -> list[str]:
     return lines
 
 
-def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptions) -> dict[str, Any]:
+def render(
+    solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptions
+) -> dict[str, Any]:
     matplotlib, plt, _np = style.require_matplotlib()
     style.apply_style(plt)
     from matplotlib.patches import Patch
@@ -366,7 +444,9 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
 
     materials = []
     for s in solids:
-        key = s.material or ("metal (assumed)" if is_metal(s, thin_limit) else "dielectric (assumed)")
+        key = s.material or (
+            "metal (assumed)" if is_metal(s, thin_limit) else "dielectric (assumed)"
+        )
         c = shade(s, thin_limit) if opts.fill else None
         if c is not None and (key, c) not in materials:
             materials.append((key, c))
@@ -376,14 +456,26 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
 
     def caption(ax, vg, origin, below_levels):
         w, _h = vg.hi - vg.lo
-        name = {"top": "TOP VIEW", "front": "FRONT VIEW", "side": "RIGHT SIDE VIEW",
-                "iso": "ISOMETRIC VIEW"}[vg.name]
+        name = {
+            "top": "TOP VIEW",
+            "front": "FRONT VIEW",
+            "side": "RIGHT SIDE VIEW",
+            "iso": "ISOMETRIC VIEW",
+        }[vg.name]
         note = ""
         if vg.name in ("front", "side") and vg.z_scale != 1.0:
             note = f"\n(Z exaggerated ×{_fmt(vg.z_scale, 2)}, not to scale)"
         y = origin[1] - unit * (1.4 + 2.0 * below_levels + 1.0)
-        ax.text(origin[0] + w / 2, y, name + note, ha="center", va="top",
-                fontsize=fs + 0.5, fontweight="bold", linespacing=1.1)
+        ax.text(
+            origin[0] + w / 2,
+            y,
+            name + note,
+            ha="center",
+            va="top",
+            fontsize=fs + 0.5,
+            fontweight="bold",
+            linespacing=1.1,
+        )
 
     def save(fig, stem: str) -> list[str]:
         written = []
@@ -402,18 +494,40 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
         pax.set_axis_off()
         y = 1.0
         if opts.parameters:
-            pax.text(0, y, "PARAMETERS", fontsize=fs + 0.5, fontweight="bold", va="top",
-                     transform=pax.transAxes)
+            pax.text(
+                0,
+                y,
+                "PARAMETERS",
+                fontsize=fs + 0.5,
+                fontweight="bold",
+                va="top",
+                transform=pax.transAxes,
+            )
             y -= 0.035
             lines = _param_lines(opts.parameters)
-            pax.text(0, y, "\n".join(lines), fontsize=fs - 0.5, va="top", family="monospace",
-                     transform=pax.transAxes, linespacing=1.25)
+            pax.text(
+                0,
+                y,
+                "\n".join(lines),
+                fontsize=fs - 0.5,
+                va="top",
+                family="monospace",
+                transform=pax.transAxes,
+                linespacing=1.25,
+            )
             y -= line_frac * (len(lines) + 1.5)
         if materials:
             handles = [Patch(facecolor=c, edgecolor="black", lw=0.4, label=m) for m, c in materials]
-            pax.legend(handles=handles, loc="upper left", bbox_to_anchor=(0, max(y, 0.3)),
-                       frameon=False, fontsize=fs - 0.5, title="MATERIALS",
-                       title_fontproperties={"size": fs + 0.5, "weight": "bold"}, alignment="left")
+            pax.legend(
+                handles=handles,
+                loc="upper left",
+                bbox_to_anchor=(0, max(y, 0.3)),
+                frameon=False,
+                fontsize=fs - 0.5,
+                title="MATERIALS",
+                title_fontproperties={"size": fs + 0.5, "weight": "bold"},
+                alignment="left",
+            )
         if opts.title_block:
             rows = [
                 ("TITLE", _clip(opts.title)),
@@ -424,8 +538,13 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
                 ("DATE", _dt.datetime.now().astimezone().date().isoformat()),
                 ("SOURCE", "CST Studio Suite (STL)"),
             ]
-            table = pax.table(cellText=[[k, v] for k, v in rows], colWidths=[0.36, 0.64],
-                              loc="lower left", cellLoc="left", edges="closed")
+            table = pax.table(
+                cellText=[[k, v] for k, v in rows],
+                colWidths=[0.36, 0.64],
+                loc="lower left",
+                cellLoc="left",
+                edges="closed",
+            )
             table.auto_set_font_size(False)
             table.set_fontsize(fs - 0.5)
             for (r, c), cell in table.get_celld().items():
@@ -443,8 +562,12 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
     def scale_label(ax_w_in: float, data_w: float) -> str:
         paper_mm_per_model_mm = ax_w_in * 25.4 / max(data_w, 1e-12)
         if paper_mm_per_model_mm >= 1:
-            return f"{_fmt(paper_mm_per_model_mm, 2)}:1 at {style.DOUBLE_COLUMN_IN:g} in sheet width"
-        return f"1:{_fmt(1 / paper_mm_per_model_mm, 2)} at {style.DOUBLE_COLUMN_IN:g} in sheet width"
+            return (
+                f"{_fmt(paper_mm_per_model_mm, 2)}:1 at {style.DOUBLE_COLUMN_IN:g} in sheet width"
+            )
+        return (
+            f"1:{_fmt(1 / paper_mm_per_model_mm, 2)} at {style.DOUBLE_COLUMN_IN:g} in sheet width"
+        )
 
     margin = unit * 10
 
@@ -473,12 +596,20 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
             if v != "iso":
                 levels = _dimension_view(ax, vg, pos[v], solids, opts, lo3, hi3, fs, unit)
             caption(ax, vg, pos[v], levels.get("below", 0))
-            view_info.append({"view": v, "z_scale": vg.z_scale,
-                              "extent_mm": [round(float(x), 6) for x in (vg.hi - vg.lo)]})
+            view_info.append(
+                {
+                    "view": v,
+                    "z_scale": vg.z_scale,
+                    "extent_mm": [round(float(x), 6) for x in (vg.hi - vg.lo)],
+                }
+            )
         finish_axes(ax, (xy_lo[0], xy_hi[0]), (xy_lo[1], xy_hi[1]))
         # Border frame (sheet)
-        fig.add_artist(matplotlib.patches.Rectangle((0.004, 0.004), 0.992, 0.992, fill=False,
-                                                    lw=0.8, transform=fig.transFigure))
+        fig.add_artist(
+            matplotlib.patches.Rectangle(
+                (0.004, 0.004), 0.992, 0.992, fill=False, lw=0.8, transform=fig.transFigure
+            )
+        )
         eff_w = min(fig_w * main_frac, fig_h * 0.98 * data_w / data_h)
         scale_text = scale_label(eff_w, data_w)
         if panel:
@@ -500,6 +631,11 @@ def render(solids: list[Solid], out_dir: Path, basename: str, opts: DrawingOptio
             caption(ax, vg, o, levels.get("below", 0))
             finish_axes(ax, (-margin, w + margin), (-margin - unit * 3, h + margin))
             files += save(fig, f"{basename}_{v}")
-            view_info.append({"view": v, "z_scale": vg.z_scale,
-                              "extent_mm": [round(float(x), 6) for x in (w, h)]})
+            view_info.append(
+                {
+                    "view": v,
+                    "z_scale": vg.z_scale,
+                    "extent_mm": [round(float(x), 6) for x in (w, h)],
+                }
+            )
     return {"files": files, "views": view_info, "z_exaggeration": zk}

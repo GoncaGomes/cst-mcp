@@ -1,7 +1,9 @@
 """Push fractal match toward 867 MHz while keeping S11 < -10 dB if possible."""
+
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -24,11 +26,19 @@ def s11_curve(c):
     r = read_1d_item(path, r"1D Results\S-Parameters\S1,1")
     if r.get("status") != "ok":
         sp = c.get_s_parameters(1, 1, max_points=400)
-        return sp.get("frequency") or sp.get("x") or [], sp.get("s_db") or sp.get("y") or [], sp.get("metrics")
-    return r.get("x") or [], r.get("y") or [], {
-        "min_db": r.get("y_at_extremum"),
-        "freq_at_min_ghz": r.get("x_at_extremum"),
-    }
+        return (
+            sp.get("frequency") or sp.get("x") or [],
+            sp.get("s_db") or sp.get("y") or [],
+            sp.get("metrics"),
+        )
+    return (
+        r.get("x") or [],
+        r.get("y") or [],
+        {
+            "min_db": r.get("y_at_extremum"),
+            "freq_at_min_ghz": r.get("x_at_extremum"),
+        },
+    )
 
 
 def at_freq(xs, ys, f):
@@ -61,7 +71,7 @@ def run(c, params):
         "n_pts": len(xs),
     }
     print(
-        f"S={p['frac_S']:.1f} d={p['frac_depth']:.2f} fw={p.get('feed_w',3.2):.1f} | "
+        f"S={p['frac_S']:.1f} d={p['frac_depth']:.2f} fw={p.get('feed_w', 3.2):.1f} | "
         f"min={out['s11_min_db']}@{out['s11_freq_ghz']} | "
         f"@867={out['s11_at_867']} | band={out['band_0p8_0p95_best']} t={dt}s"
     )
@@ -103,7 +113,16 @@ def main():
         for fw in [2.5, 4.0, 5.5, 7.0]:
             trials.append(run(c, {"frac_S": bs, "feed_w": fw}))
         for ratio in [2.8, 3.2, 4.0, 5.0]:
-            trials.append(run(c, {"frac_S": bs, "feed_w": best867["params"].get("feed_w", 3.2), "frac_depth": bs / ratio}))
+            trials.append(
+                run(
+                    c,
+                    {
+                        "frac_S": bs,
+                        "feed_w": best867["params"].get("feed_w", 3.2),
+                        "frac_depth": bs / ratio,
+                    },
+                )
+            )
         best867 = min(trials, key=score)
 
     # Also keep track of absolute best min_db < -10 (any freq)
@@ -132,6 +151,9 @@ def main():
         try:
             prev = json.loads(OUT.read_text(encoding="utf-8"))
         except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in fractal_867_opt_phase2.main", exc_info=True
+            )
             prev = {}
     report = {
         **prev,
@@ -150,14 +172,20 @@ def main():
         "success_at_867": final.get("s11_at_867") is not None and final["s11_at_867"] <= -10,
     }
     OUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-    print(json.dumps({
-        "chosen": chosen,
-        "final": final,
-        "success_any_freq": report["success_any_freq"],
-        "success_at_867": report["success_at_867"],
-        "ff_gain": (ff.get("metrics") or {}).get("max_realized_gain_dbi"),
-        "n": len(trials),
-    }, indent=2, default=str))
+    print(
+        json.dumps(
+            {
+                "chosen": chosen,
+                "final": final,
+                "success_any_freq": report["success_any_freq"],
+                "success_at_867": report["success_at_867"],
+                "ff_gain": (ff.get("metrics") or {}).get("max_realized_gain_dbi"),
+                "n": len(trials),
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
 
 if __name__ == "__main__":

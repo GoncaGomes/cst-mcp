@@ -1,4 +1,5 @@
 """867 MHz Minkowski fractal microstrip patch — build, solve, metrics."""
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,6 @@ from cst_mcp.execution.farfield import farfield_monitor_vba
 from cst_mcp.execution.port_helpers import microstrip_waveguide_port_vba
 from cst_mcp.execution.vba_builder import fmt_num, vba_str
 from cst_mcp.vba_builder import VBABuilder
-
 
 PROJ = Path(r"E:\cstprojects\fractal_patch_867.cst")
 OUT = Path(r"E:\cstprojects\exports\fractal_867_report.json")
@@ -83,9 +83,7 @@ def minkowski_patch_bricks(
         ("BumpW", -half - d1, -half, -mid, mid),
     ]
     for name, x0, x1, y0, y1 in bumps:
-        steps.append(
-            (f"frac_{name}", brick("Antenna", name, "PEC", x0, x1, y0, y1, z0, z1))
-        )
+        steps.append((f"frac_{name}", brick("Antenna", name, "PEC", x0, x1, y0, y1, z0, z1)))
         steps.append((f"add_{name}", solid_add("Antenna:FracCore", f"Antenna:{name}")))
 
     if order >= 2:
@@ -104,9 +102,7 @@ def minkowski_patch_bricks(
             ("NubW2", -half - d1 - d2, -half - d1, mid - w2 * 0.2, mid + w2),
         ]
         for name, x0, x1, y0, y1 in nubs:
-            steps.append(
-                (f"frac_{name}", brick("Antenna", name, "PEC", x0, x1, y0, y1, z0, z1))
-            )
+            steps.append((f"frac_{name}", brick("Antenna", name, "PEC", x0, x1, y0, y1, z0, z1)))
             steps.append((f"add_{name}", solid_add("Antenna:FracCore", f"Antenna:{name}")))
 
     # Rename final solid to Patch for clarity
@@ -191,15 +187,7 @@ def main() -> int:
     steps.append(
         (
             "units",
-            "\n".join(
-                [
-                    "With Units",
-                    '  .SetUnit "Length", "mm"',
-                    '  .SetUnit "Frequency", "GHz"',
-                    '  .SetUnit "Time", "ns"',
-                    "End With",
-                ]
-            ),
+            'With Units\n  .SetUnit "Length", "mm"\n  .SetUnit "Frequency", "GHz"\n  .SetUnit "Time", "ns"\nEnd With',
         )
     )
     steps.append(("store_parameters", store_params_vba(params)))
@@ -246,11 +234,7 @@ def main() -> int:
             ),
         )
     )
-    steps.extend(
-        minkowski_patch_bricks(
-            s=s, depth=depth, z0=h, z1=h + metal_t, order=2
-        )
-    )
+    steps.extend(minkowski_patch_bricks(s=s, depth=depth, z0=h, z1=h + metal_t, order=2))
     steps.append(
         (
             "brick_feed",
@@ -284,16 +268,7 @@ def main() -> int:
     steps.append(
         (
             "boundaries",
-            "\n".join(
-                [
-                    'Boundary.Xmin "expanded open"',
-                    'Boundary.Xmax "expanded open"',
-                    'Boundary.Ymin "expanded open"',
-                    'Boundary.Ymax "expanded open"',
-                    'Boundary.Zmin "expanded open"',
-                    'Boundary.Zmax "expanded open"',
-                ]
-            ),
+            'Boundary.Xmin "expanded open"\nBoundary.Xmax "expanded open"\nBoundary.Ymin "expanded open"\nBoundary.Ymax "expanded open"\nBoundary.Zmin "expanded open"\nBoundary.Zmax "expanded open"',
         )
     )
     steps.append(
@@ -317,13 +292,14 @@ def main() -> int:
     for label, vba in steps:
         r = c.run_history(vba, label=label)
         st = r.get("status")
-        msg = (r.get("message") or r.get("result") or "")
+        msg = r.get("message") or r.get("result") or ""
         print(f"  {label:22} {st} {str(msg)[:80]}")
         results_steps.append({"label": label, "status": st, "message": str(msg)[:200]})
-        if st == "error" and label not in {"units", "rename_patch"}:
-            # rename might fail if already named; continue
-            if label.startswith("add_") or label.startswith("frac_"):
-                print("    WARN continuing after", label)
+        # rename might fail if already named; continue
+        if (st == "error" and label not in {"units", "rename_patch"}) and (
+            label.startswith(("add_", "frac_"))
+        ):
+            print("    WARN continuing after", label)
 
     print("SAVE", c.save_project())
     print("SOLVE...")
@@ -356,15 +332,21 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print("==== REPORT ====")
-    print(json.dumps({
-        "s11": report["s11"],
-        "farfield_status": ff.get("status"),
-        "farfield_available": ff.get("available"),
-        "farfield_metrics": ff.get("metrics"),
-        "method": ff.get("method"),
-        "disk": disk.get("count"),
-        "solve_s": dt,
-    }, indent=2, default=str))
+    print(
+        json.dumps(
+            {
+                "s11": report["s11"],
+                "farfield_status": ff.get("status"),
+                "farfield_available": ff.get("available"),
+                "farfield_metrics": ff.get("metrics"),
+                "method": ff.get("method"),
+                "disk": disk.get("count"),
+                "solve_s": dt,
+            },
+            indent=2,
+            default=str,
+        )
+    )
     print("wrote", OUT)
     return 0
 

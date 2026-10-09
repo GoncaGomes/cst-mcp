@@ -35,7 +35,7 @@ _IS_WINDOWS = platform.system() == "Windows"
 
 if _IS_WINDOWS:
     import ctypes
-    import ctypes.wintypes as wintypes
+    from ctypes import wintypes
 
     user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 
@@ -136,7 +136,7 @@ if _IS_WINDOWS:
 _CST_MAIN_WINDOW_KEYWORDS = [
     "cst studio suite",
     "cst design environment",
-    "cst microwave studio -",   # Main window has " - project path"
+    "cst microwave studio -",  # Main window has " - project path"
     "cst em studio -",
 ]
 
@@ -225,14 +225,16 @@ def find_cst_dialogs() -> list[dict[str, Any]]:
 
         if matched_by is not None:
             child_texts = _get_child_texts(hwnd)
-            dialogs.append({
-                "hwnd": hwnd,
-                "title": title,
-                "class": _get_class_name(hwnd),
-                "texts": child_texts,
-                "full_text": "\n".join(child_texts),
-                "match": matched_by,
-            })
+            dialogs.append(
+                {
+                    "hwnd": hwnd,
+                    "title": title,
+                    "class": _get_class_name(hwnd),
+                    "texts": child_texts,
+                    "full_text": "\n".join(child_texts),
+                    "match": matched_by,
+                }
+            )
             seen.add(hwnd)
 
         return True

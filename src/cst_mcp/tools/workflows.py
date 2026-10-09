@@ -13,9 +13,9 @@ from cst_mcp.execution.port_helpers import (
     microstrip_waveguide_port_vba,
 )
 from cst_mcp.execution.vba_builder import fmt_num, vba_str
-from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.tools.registry import as_json, err
 from cst_mcp.vba_builder import VBABuilder
+from cst_mcp.vba_safety import vba_escape as _q
 
 # Output schemas describe success payloads only and stay permissive: offline
 # mode returns status='offline' without data, which must still validate.
@@ -82,9 +82,16 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "frequency_ghz": {"type": "number", "description": "Center frequency (GHz) / Merkez frekans"},
+                "frequency_ghz": {
+                    "type": "number",
+                    "description": "Center frequency (GHz) / Merkez frekans",
+                },
                 "epsilon_r": {"type": "number", "default": 4.4, "description": "Substrate εr"},
-                "height_mm": {"type": "number", "default": 1.6, "description": "Substrate height (mm)"},
+                "height_mm": {
+                    "type": "number",
+                    "default": 1.6,
+                    "description": "Substrate height (mm)",
+                },
                 "tan_delta": {"type": "number", "default": 0.02, "description": "Loss tangent"},
                 "feed_type": {
                     "type": "string",
@@ -372,8 +379,15 @@ def _probe_feed_steps() -> list[tuple[str, str]]:
         (
             "cylinder_ground_clearance",
             _cylinder_expr(
-                "Antenna", "GndClearance", "PEC", "coax_r_out", "0",
-                "0", "-probe_y", "-metal_t", "0",
+                "Antenna",
+                "GndClearance",
+                "PEC",
+                "coax_r_out",
+                "0",
+                "0",
+                "-probe_y",
+                "-metal_t",
+                "0",
             ),
         ),
         (
@@ -383,8 +397,15 @@ def _probe_feed_steps() -> list[tuple[str, str]]:
         (
             "cylinder_probe_pin",
             _cylinder_expr(
-                "Antenna", "ProbePin", "PEC", "probe_r", "0",
-                "0", "-probe_y", "-coax_len", "sub_h",
+                "Antenna",
+                "ProbePin",
+                "PEC",
+                "probe_r",
+                "0",
+                "0",
+                "-probe_y",
+                "-coax_len",
+                "sub_h",
             ),
         ),
         (
@@ -395,15 +416,29 @@ def _probe_feed_steps() -> list[tuple[str, str]]:
         (
             "cylinder_coax_dielectric",
             _cylinder_expr(
-                "Antenna", "CoaxPTFE", "PTFE", "coax_r_out", "probe_r",
-                "0", "-probe_y", "-coax_len", "0",
+                "Antenna",
+                "CoaxPTFE",
+                "PTFE",
+                "coax_r_out",
+                "probe_r",
+                "0",
+                "-probe_y",
+                "-coax_len",
+                "0",
             ),
         ),
         (
             "cylinder_coax_shield",
             _cylinder_expr(
-                "Antenna", "CoaxShield", "PEC", "coax_r_out+coax_t", "coax_r_out",
-                "0", "-probe_y", "-coax_len", "-metal_t",
+                "Antenna",
+                "CoaxShield",
+                "PEC",
+                "coax_r_out+coax_t",
+                "coax_r_out",
+                "0",
+                "-probe_y",
+                "-coax_len",
+                "-metal_t",
             ),
         ),
     ]
@@ -440,7 +475,7 @@ def _patch_vba_steps(design) -> list[tuple[str, str]]:
     inset = d.inset_mm
     f0 = d.frequency_ghz
     fmin, fmax = f0 * 0.7, f0 * 1.3
-    feed_y0, feed_y1 = feed_line_y_range(
+    feed_y0, _feed_y1 = feed_line_y_range(
         ground_y=gy, patch_length=length, inset=inset, feed_type=d.feed_type
     )
     mon = f"farfield (f={f0})"
@@ -480,15 +515,7 @@ def _patch_vba_steps(design) -> list[tuple[str, str]]:
     steps.append(
         (
             "units",
-            "\n".join(
-                [
-                    "With Units",
-                    '  .SetUnit "Length", "mm"',
-                    '  .SetUnit "Frequency", "GHz"',
-                    '  .SetUnit "Time", "ns"',
-                    "End With",
-                ]
-            ),
+            'With Units\n  .SetUnit "Length", "mm"\n  .SetUnit "Frequency", "GHz"\n  .SetUnit "Time", "ns"\nEnd With',
         )
     )
 
@@ -602,21 +629,14 @@ def _patch_vba_steps(design) -> list[tuple[str, str]]:
         steps.append(
             (
                 "boolean_inset_notches",
-                "\n".join(
-                    [
-                        'Solid.Subtract "Antenna:Patch", "Antenna:Notch_left"',
-                        'Solid.Subtract "Antenna:Patch", "Antenna:Notch_right"',
-                    ]
-                ),
+                'Solid.Subtract "Antenna:Patch", "Antenna:Notch_left"\nSolid.Subtract "Antenna:Patch", "Antenna:Notch_right"',
             )
         )
     if probe:
         steps.extend(_probe_feed_steps())
     if d.feed_type in ("inset", "microstrip"):
         # Outer end = -gnd_y/2 (port plane); inner toward patch
-        y_inner = (
-            "-patch_L/2+inset" if d.feed_type == "inset" else "-patch_L/2"
-        )
+        y_inner = "-patch_L/2+inset" if d.feed_type == "inset" else "-patch_L/2"
         steps.append(
             (
                 "brick_feed",
@@ -652,16 +672,7 @@ def _patch_vba_steps(design) -> list[tuple[str, str]]:
     steps.append(
         (
             "boundaries",
-            "\n".join(
-                [
-                    'Boundary.Xmin "expanded open"',
-                    'Boundary.Xmax "expanded open"',
-                    'Boundary.Ymin "expanded open"',
-                    'Boundary.Ymax "expanded open"',
-                    'Boundary.Zmin "expanded open"',
-                    'Boundary.Zmax "expanded open"',
-                ]
-            ),
+            'Boundary.Xmin "expanded open"\nBoundary.Xmax "expanded open"\nBoundary.Ymin "expanded open"\nBoundary.Ymax "expanded open"\nBoundary.Zmin "expanded open"\nBoundary.Zmax "expanded open"',
         )
     )
     if probe:
@@ -715,6 +726,8 @@ def _patch_vba_steps(design) -> list[tuple[str, str]]:
 def _build_patch_model(design) -> str:
     """Full VBA as a single script (offline / debugging)."""
     return "\n\n".join(vba for _, vba in _patch_vba_steps(design))
+
+
 async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextContent]:
     try:
         if name == "cst_design_patch_only":
@@ -725,9 +738,7 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
                 tan_delta=float(args.get("tan_delta") or 0.02),
                 feed_type=str(args.get("feed_type") or "inset"),
                 notch_gap_mm=(
-                    float(args["notch_gap_mm"])
-                    if args.get("notch_gap_mm") is not None
-                    else None
+                    float(args["notch_gap_mm"]) if args.get("notch_gap_mm") is not None else None
                 ),
             )
             return as_json({"design": d.to_dict()})
@@ -740,9 +751,7 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
                 tan_delta=float(args.get("tan_delta") or 0.02),
                 feed_type=str(args.get("feed_type") or "inset"),
                 notch_gap_mm=(
-                    float(args["notch_gap_mm"])
-                    if args.get("notch_gap_mm") is not None
-                    else None
+                    float(args["notch_gap_mm"]) if args.get("notch_gap_mm") is not None else None
                 ),
             )
             steps: list[dict[str, Any]] = []
@@ -775,9 +784,7 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
                     if label in {"units", "store_parameters"}:
                         entry["note"] = f"{label} failed (non-fatal); continuing."
                         continue
-                    if label.startswith(
-                        ("brick_", "cylinder_", "material_", "boolean_")
-                    ):
+                    if label.startswith(("brick_", "cylinder_", "material_", "boolean_")):
                         fatal = True
                         break
 
@@ -786,9 +793,16 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
                 s.get("label", "").startswith("brick_") and s.get("status") == "executed"
                 for s in step_results
             )
-            status = "error" if fatal else (
-                "executed" if ok_geom or any(s.get("status") == "executed" for s in step_results)
-                else step_results[-1].get("status", "error") if step_results else "error"
+            status = (
+                "error"
+                if fatal
+                else (
+                    "executed"
+                    if ok_geom or any(s.get("status") == "executed" for s in step_results)
+                    else step_results[-1].get("status", "error")
+                    if step_results
+                    else "error"
+                )
             )
             params_now = client.list_parameters() if hasattr(client, "list_parameters") else {}
             return as_json(
@@ -858,9 +872,7 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
             report = client.design_report(
                 port=int(args.get("port") or 1),
                 frequency_ghz=(
-                    float(args["frequency_ghz"])
-                    if args.get("frequency_ghz") is not None
-                    else None
+                    float(args["frequency_ghz"]) if args.get("frequency_ghz") is not None else None
                 ),
                 include_images=bool(args.get("include_images", True)),
                 include_sparams=True,
@@ -884,7 +896,9 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
                     ),
                     monitor_name=args.get("monitor_name"),
                     try_farfield_plot=bool(
-                        True if args.get("try_farfield_plot") is None else args.get("try_farfield_plot")
+                        True
+                        if args.get("try_farfield_plot") is None
+                        else args.get("try_farfield_plot")
                     ),
                 )
             )
@@ -896,6 +910,6 @@ async def handle(name: str, args: dict[str, Any], client: Any) -> list[TextConte
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

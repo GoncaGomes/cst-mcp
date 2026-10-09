@@ -33,30 +33,31 @@ def main():
             if (
                 isinstance(node, ast.Attribute)
                 and isinstance(node.value, ast.Name)
-                and node.value.id == "client"
-            ):
-                if not hasattr(client, node.attr):
-                    missing_client.append(f"{path.relative_to(ROOT)}:{node.lineno}:{node.attr}")
+                and (node.value.id == "client")
+            ) and (not hasattr(client, node.attr)):
+                missing_client.append(f"{path.relative_to(ROOT)}:{node.lineno}:{node.attr}")
             if not isinstance(node, ast.Call):
                 continue
             current, members = node, []
             while isinstance(current, ast.Call) and isinstance(current.func, ast.Attribute):
-                if current.func.attr in {
-                    "set",
-                    "set_number",
-                    "set_double",
-                    "set_triple",
-                    "set_bool",
-                    "set_raw",
-                    "call",
-                    "call_with_args",
-                }:
-                    if (
-                        current.args
-                        and isinstance(current.args[0], ast.Constant)
-                        and isinstance(current.args[0].value, str)
-                    ):
-                        members.append(current.args[0].value)
+                if (
+                    current.func.attr
+                    in {
+                        "set",
+                        "set_number",
+                        "set_double",
+                        "set_triple",
+                        "set_bool",
+                        "set_raw",
+                        "call",
+                        "call_with_args",
+                    }
+                ) and (
+                    current.args
+                    and isinstance(current.args[0], ast.Constant)
+                    and isinstance(current.args[0].value, str)
+                ):
+                    members.append(current.args[0].value)
                 current = current.func.value
             if (
                 isinstance(current, ast.Call)

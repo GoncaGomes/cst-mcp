@@ -46,7 +46,7 @@ class FieldMonitorType(str, Enum):
     SPACE_CHARGE = "Spacecharge"
     PARTICLE_CURRENT_DENSITY = "Particlecurrentdensity"
     # Alias (same value) -> FieldMonitorType.SURFACE_CURRENT is FieldMonitorType.H_FIELD
-    SURFACE_CURRENT = "Hfield"
+    SURFACE_CURRENT = H_FIELD
 
 
 # Request spellings that do not exist as a CST FieldType but map to one.

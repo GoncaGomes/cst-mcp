@@ -2,7 +2,7 @@
 # requires-python = ">=3.12,<3.13"
 # dependencies = ["mcp>=1.29,<3", "jsonschema>=4.20"]
 # ///
-"""Deterministic primitive expression validation through a real MCP stdio session."""
+"""Deterministic extrusion expression validation through a real MCP stdio session."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import argparse
 import asyncio
 import importlib.metadata
 import json
-import math
 import os
 import shutil
 import subprocess
@@ -57,191 +56,131 @@ from run_parameter_brick import (
 # isort: split
 # The preceding import installs batch 01's import-search path.
 from run_batch import UNITS_BLOCK
+from run_parameter_primitives import parse_records
 
 ROOT = Path(__file__).resolve().parents[2]
 BATCH = Path(__file__).resolve().parent
-WORK = BATCH / "artifacts" / "02_primitives"
-OWNER = "cst-mcp-parameter-primitives-v1"
+WORK = BATCH / "artifacts" / "03_extrusions"
+OWNER = "cst-mcp-parameter-extrusions-v1"
 TOOLSETS = "connection,project,geometry,parameters,diagnostics,vba"
-PARAMETERS = ("PGeom_R", "PGeom_H", "PGeom_Shift")
-STATES = {"initial": (2, 6, 0), "updated": (3, 8, 2), "final": (2.5, 5, 1)}
-COMPONENT = "ParameterPrimitives"
-CURVE = "Curves:ParametricRectangle"
-COMMON = {"component": COMPONENT, "material": "PEC", "center_y": 0, "center_z": 0}
+PARAMETERS = ("PEx_W", "PEx_H", "PEx_Offset", "PEx_Side")
+STATES = {"initial": (8, 3, 2, 1), "updated": (10, 4, 5, -1), "final": (6, 2, 1, 1)}
+COMPONENT = "ParameterExtrusions"
+COMMON = {"component": COMPONENT, "material": "PEC", "height": "PEx_H"}
 FIXTURES = (
     (
-        "cst_create_cylinder",
+        "cst_create_extrude",
         dict(
             COMMON,
-            name="Cylinder",
+            name="PointZUp",
             axis="z",
-            outer_radius="PGeom_R",
-            inner_radius="PGeom_R/4",
-            center_x="PGeom_Shift",
-            range_min=0,
-            range_max="PGeom_H",
+            z_offset="PEx_Offset",
+            extrude_direction="up",
+            points=[[0, 0], [0, 4], ["PEx_W", 4], ["PEx_W", 0]],
+            holes=[[["PEx_W/4", 1], ["3*PEx_W/4", 1], ["3*PEx_W/4", 3], ["PEx_W/4", 3]]],
         ),
     ),
     (
-        "cst_create_cone",
+        "cst_create_extrude",
         dict(
             COMMON,
-            name="Cone",
-            axis="z",
-            bottom_radius="PGeom_R",
-            top_radius="PGeom_R/2",
-            center_x="30+PGeom_Shift",
-            range_min=0,
-            range_max="PGeom_H",
+            name="PointXDown",
+            axis="x",
+            x_offset="PEx_Offset",
+            extrude_direction="down",
+            points=[[30, 0], ["30+PEx_W", 0], ["30+PEx_W", 4], [30, 4]],
         ),
     ),
     (
-        "cst_create_sphere",
+        "cst_create_polygon_extrude",
         dict(
             COMMON,
-            name="Sphere",
-            radius="PGeom_R",
-            center_x="60+PGeom_Shift",
-            center_z="PGeom_R",
-            segments=0,
-        ),
-    ),
-    (
-        "cst_create_ecylinder",
-        dict(
-            COMMON,
-            name="ECylinder",
-            axis="z",
-            x_radius="PGeom_R",
-            y_radius="PGeom_R/2",
-            center_x="90+PGeom_Shift",
-            range_min=0,
-            range_max="PGeom_H",
-        ),
-    ),
-    (
-        "cst_create_torus",
-        dict(
-            COMMON,
-            name="Torus",
-            axis="z",
-            outer_radius="3*PGeom_R",
-            inner_radius="2*PGeom_R",
-            center_x="120+PGeom_Shift",
-        ),
-    ),
-    (
-        "cst_create_polygon3d",
-        {
-            "name": "ParametricRectangle",
-            "points": [
-                ["150+PGeom_Shift", 20, 0],
-                ["150+PGeom_Shift+2*PGeom_R", 20, 0],
-                ["150+PGeom_Shift+2*PGeom_R", "20+PGeom_H", 0],
-                ["150+PGeom_Shift", "20+PGeom_H", 0],
-                ["150+PGeom_Shift", 20, 0],
+            name="PolygonYUp",
+            axis="y",
+            y_offset="PEx_Offset",
+            extrude_direction="up",
+            points=[[60, 0], [60, 4], ["60+PEx_Side*PEx_W", 4], ["60+PEx_Side*PEx_W", 0]],
+            holes=[
+                [
+                    ["60+PEx_Side*PEx_W/4", 1],
+                    ["60+3*PEx_Side*PEx_W/4", 1],
+                    ["60+3*PEx_Side*PEx_W/4", 3],
+                    ["60+PEx_Side*PEx_W/4", 3],
+                ]
             ],
-        },
+        ),
+    ),
+    (
+        "cst_create_polygon_extrude",
+        dict(
+            COMMON,
+            name="PolygonZDown",
+            axis="z",
+            z_offset="PEx_Offset",
+            extrude_direction="down",
+            points=[[90, 0], ["90+PEx_W", 0], ["90+PEx_W", 4], [90, 4]],
+        ),
     ),
 )
-SOLIDS = {f"{COMPONENT}:{args['name']}": "PEC" for _, args in FIXTURES[:-1]}
-DIMENSIONS = {
-    "cst_create_cylinder": (
-        "outer_radius",
-        "inner_radius",
-        "center_x",
-        "center_y",
-        "center_z",
-        "range_min",
-        "range_max",
-    ),
-    "cst_create_cone": (
-        "bottom_radius",
-        "top_radius",
-        "center_x",
-        "center_y",
-        "center_z",
-        "range_min",
-        "range_max",
-    ),
-    "cst_create_sphere": ("radius", "center_x", "center_y", "center_z"),
-    "cst_create_ecylinder": (
-        "x_radius",
-        "y_radius",
-        "center_x",
-        "center_y",
-        "center_z",
-        "range_min",
-        "range_max",
-    ),
-    "cst_create_torus": ("outer_radius", "inner_radius", "center_x", "center_y", "center_z"),
-}
-SETUP = f'Component.New "{COMPONENT}"\nCurve.NewCurve "Curves"'
+SOLIDS = {f"{COMPONENT}:{args['name']}": "PEC" for _, args in FIXTURES}
+SETUP = f'Component.New "{COMPONENT}"'
 MEASURE_QUERY = (
     "\n".join(
         f'Debug.Print "{args["name"]}.{kind}" & vbTab & '
         f'CStr(Solid.Get{method}("{COMPONENT}:{args["name"]}"))'
-        for _, args in FIXTURES[:-1]
+        for _, args in FIXTURES
         for kind, method in (("VOLUME", "Volume"), ("AREA", "Area"))
     )
     + '\nDebug.Print "DONE"'
 )
-CURVE_QUERY = f'''Debug.Print "CLOSED" & vbTab & CStr(Curve.IsClosed("{CURVE}"))
-Debug.Print "MAX_POINTS" & vbTab & CStr(Curve.GetNumberOfPoints("{CURVE}"))
-Debug.Print "DONE"'''
-FIXED_VBA = frozenset({UNITS_BLOCK, SETUP, UNITS_QUERY, SHAPES_QUERY, MEASURE_QUERY, CURVE_QUERY})
-HELP_ROOT = "Online Help/mergedProjects"
+FIXED_VBA = frozenset({UNITS_BLOCK, SETUP, UNITS_QUERY, SHAPES_QUERY, MEASURE_QUERY})
+HELP_ROOT = "Online Help/mergedProjects/VBA_3D"
 REFERENCES = {
-    "solid": f"{HELP_ROOT}/VBA_3D/common_vbasolido/common_vbasolido_solid_object.htm",
-    "curve": f"{HELP_ROOT}/VBA_3D/common_vbacurves/common_vbacurves_curve_object.htm",
-    "polygon3d": f"{HELP_ROOT}/VBA_3D/common_vbacurves/common_vbacurves_polygon3d.htm",
-    "torus_vba": f"{HELP_ROOT}/VBA_3D/common_vbabasicsolids/common_vbatorus_object.htm",
-    "torus_dialog": f"{HELP_ROOT}/3D/common_struct/common_struct_torus.htm",
-    "torus_diagram": f"{HELP_ROOT}/3D/image/torus.gif",
+    "solid": f"{HELP_ROOT}/common_vbasolido/common_vbasolido_solid_object.htm",
+    "extrude": f"{HELP_ROOT}/common_vbaextrude/common_vbaextrudeextrude_object.htm",
+    "extrudecurve": f"{HELP_ROOT}/common_vbacurves/common_vbacurves_extrudecurve_object.htm",
+    "polygon3d": f"{HELP_ROOT}/common_vbacurves/common_vbacurves_polygon3d.htm",
+    "evaluate": f"{HELP_ROOT}/common_vbaapp/common_vbaappapplication_object.htm",
 }
 LIMITATIONS = [
-    "Volume and area do not independently prove every position, dimension or expression association.",
-    "Elliptical cylinder area is recorded without an exact analytic comparison; no approximate perimeter reference is used.",
-    "Curve.IsClosed verifies closure. GetNumberOfPoints returns a maximum, not a guaranteed vertex enumeration.",
-    "GetPointCoordinates requires a string point ID. Installed help does not define a complete ID enumeration, so no point IDs are invented and coordinate verification is unsupported.",
-    "No tight bounds, history-expression readback, solver or manual-validation suite is included.",
+    "Volume and surface area independently test only those aggregate quantities, including hole effects.",
+    "They do not prove offsets, direction, every coordinate, winding choice or history-expression association.",
+    "Input profile and axis ranges are predictions, not measured bounds. No loose bounding box is used as exact dimensions.",
+    "Native evaluation, reconstruction and persistence require live CST validation; native dialogs may expose evaluated values.",
+    "Inspect stored history expressions and profile/base-plane/direction in the saved project as described in README.md.",
 ]
 
 
-def analytic_expected(radius, height):
-    """Smooth solid expectations in mm, using CST outer/inner torus extents."""
-    inner = radius / 4
-    top = radius / 2
-    major = (3 * radius + 2 * radius) / 2
-    tube = (3 * radius - 2 * radius) / 2
-    return {
-        "Cylinder.VOLUME": math.pi * (radius**2 - inner**2) * height,
-        "Cylinder.AREA": 2 * math.pi * ((radius + inner) * height + radius**2 - inner**2),
-        "Cone.VOLUME": math.pi * height * (radius**2 + radius * top + top**2) / 3,
-        "Cone.AREA": math.pi
-        * ((radius + top) * math.hypot(height, radius - top) + radius**2 + top**2),
-        "Sphere.VOLUME": 4 * math.pi * radius**3 / 3,
-        "Sphere.AREA": 4 * math.pi * radius**2,
-        "ECylinder.VOLUME": math.pi * radius * top * height,
-        "Torus.VOLUME": 2 * math.pi**2 * major * tube**2,
-        "Torus.AREA": 4 * math.pi**2 * major * tube,
-    }
-
-
-def parse_records(output, keys):
-    """Require each tagged query record exactly once, then an end marker."""
+def profile_contracts(values):
+    """Known fixture geometry only, never an arbitrary expression evaluator."""
+    width, height, offset, side = values
     result = {}
-    done = False
-    for line in output.splitlines():
-        key, sep, value = line.strip().partition("\t")
-        if key == "DONE" and not sep and not done:
-            done = True
-        elif sep and key in keys and key not in result and not done:
-            result[key] = value
-        else:
-            raise StopTest(f"Unexpected/incomplete native query output: {line!r}")
-    if not done or set(result) != set(keys):
-        raise StopTest("Native query missing values or end marker")
+    for _, args in FIXTURES:
+        holed = bool(args.get("holes"))
+        result[args["name"]] = {
+            "profile_area": 3 * width if holed else 4 * width,
+            "profile_boundary_length": 3 * width + 12 if holed else 2 * width + 8,
+            "height": height,
+            "axis": args["axis"],
+            "direction": args["extrude_direction"],
+            "predicted_axis_range": [offset, offset + height]
+            if args["extrude_direction"] == "up"
+            else [offset - height, offset],
+            "prediction_source": "known fixture contract, not a native bounds measurement",
+            "signed_width": side * width if args["name"] == "PolygonYUp" else width,
+        }
+    return result
+
+
+def analytic_expected(values):
+    """Prism V=A*h and S=2*A+boundary_length*h, including internal walls."""
+    result = {}
+    for name, profile in profile_contracts(values).items():
+        area, boundary, height = (
+            profile[key] for key in ("profile_area", "profile_boundary_length", "height")
+        )
+        result[f"{name}.VOLUME"] = area * height
+        result[f"{name}.AREA"] = 2 * area + boundary * height
     return result
 
 
@@ -267,7 +206,7 @@ class WorkspaceLock:
         except OSError as exc:
             self.stream.close()
             raise StopTest(
-                "Primitive workspace is already in use; wait for that invocation"
+                "Extrusion workspace is already in use; wait for that invocation"
             ) from exc
         return self
 
@@ -275,7 +214,7 @@ class WorkspaceLock:
         self.stream.close()
 
 
-class PrimitiveTest:
+class ExtrusionTest:
     def __init__(self, options):
         self.options = options
         self.invocation = uuid.uuid4().hex
@@ -283,6 +222,7 @@ class PrimitiveTest:
         self.phase = "preparation"
         self.unknown = False
         self.connected = False
+        self.live_attempted = False
         self.exit_code = 1
         self.reason = "Not completed"
         self.checks = []
@@ -369,9 +309,9 @@ class PrimitiveTest:
         """Accept only same-stem files and the companion, all within this scope."""
         names = self.manifest.get("generated_paths")
         if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-            raise StopTest("Invalid primitive generated paths")
+            raise StopTest("Invalid extrusion generated paths")
         if not {"project.cst", "project"} <= set(names) or len(names) != len(set(names)):
-            raise StopTest("Incomplete/duplicate primitive generated paths")
+            raise StopTest("Incomplete/duplicate extrusion generated paths")
         paths = []
         for name in names:
             if (
@@ -383,7 +323,7 @@ class PrimitiveTest:
             path = WORK / name
             reject_links(path)
             if path.resolve().parent != WORK.resolve():
-                raise StopTest(f"Generated path escapes primitive workspace: {path}")
+                raise StopTest(f"Generated path escapes extrusion workspace: {path}")
             if path.exists() and ((name == "project") != path.is_dir()):
                 raise StopTest(f"Unexpected generated path type: {path}")
             paths.append(path)
@@ -402,7 +342,7 @@ class PrimitiveTest:
             or not isinstance(self.manifest.get("creation_requested"), bool)
             or self.manifest.get("created_path", str(self.project)) != str(self.project)
         ):
-            raise StopTest("Primitive ownership/state inconsistent; no automatic deletion")
+            raise StopTest("Extrusion ownership/state inconsistent; no automatic deletion")
         self.generated_paths()
         owned = set(self.manifest["generated_paths"])
         unexpected = [p.name for p in WORK.glob("project*") if p.name not in owned]
@@ -415,7 +355,7 @@ class PrimitiveTest:
         if path.exists():
             self.manifest = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(self.manifest, dict):
-                raise StopTest("Invalid primitive manifest")
+                raise StopTest("Invalid extrusion manifest")
             self.verify_manifest()
             ensure_closed(self.project)
             if self.options.reset:
@@ -441,13 +381,13 @@ class PrimitiveTest:
                     or self.project_snapshot() != self.manifest.get("saved_files")
                 ):
                     raise StopTest(
-                        "Primitive project changed or incomplete since checkpoint; inspect and "
+                        "Extrusion project changed or incomplete since checkpoint; inspect and "
                         "restore it or explicitly --reset after saving/closing. No automatic adoption."
                     )
                 self.metadata_event("workspace_reused", checkpoint=self.manifest)
                 return
         elif any(WORK.glob("project*")):
-            raise StopTest("Project paths exist without primitive ownership; refusing create/reset")
+            raise StopTest("Project paths exist without extrusion ownership; refusing create/reset")
         self.manifest = {
             "owner": OWNER,
             "version": 1,
@@ -626,7 +566,7 @@ class PrimitiveTest:
     async def owned_info(self, session):
         info = await self.request(session, "cst_project_info")
         self.check(
-            "active project is owned primitive project",
+            "active project is owned extrusion project",
             info.get("mode") == "connected"
             and info.get("project_open") is True
             and Path(info.get("project_path") or "").resolve() == self.project.resolve(),
@@ -773,25 +713,33 @@ class PrimitiveTest:
             for values in STATES.values()
             for n, v in zip(PARAMETERS, values)
         ]
-        plan += [("cst_set_parameter", {"name": PARAMETERS[-1], "value": 0, "rebuild": True})]
+        plan += [
+            ("cst_set_parameter", {"name": PARAMETERS[-1], "value": values[-1], "rebuild": True})
+            for values in STATES.values()
+        ]
         plan += [("cst_get_parameter", {"name": n}) for n in PARAMETERS]
         for name, args in plan:
             self.validate(name, args)
         for name, args in FIXTURES:
             props = self.catalog[name]["inputSchema"]["properties"]
-            coordinates = (
-                (props["points"]["items"]["items"],)
-                if "points" in args
-                else (props[field] for field in DIMENSIONS[name])
-            )
+            leaves = [
+                props["height"],
+                props["points"]["items"]["items"],
+                props["holes"]["items"]["items"]["items"],
+                *(props[f"{axis}_offset"] for axis in "xyz"),
+            ]
             self.check(
                 f"effective expression schema {name}",
-                all(spec.get("type") == ["number", "string"] for spec in coordinates),
+                all(spec.get("type") == ["number", "string"] for spec in leaves),
             )
-            if "points" not in args:
-                for field in DIMENSIONS[name]:
-                    for value in (1.25, "PGeom_R/2"):
-                        self.validate(name, {**args, field: value})
+        for name, field in (
+            ("cst_create_wire", "radius"),
+            ("cst_create_analytical_curve", "t_min"),
+        ):
+            self.check(
+                f"unchanged numeric schema {name}.{field}",
+                self.catalog[name]["inputSchema"]["properties"][field]["type"] == "number",
+            )
         self.check(
             "catalog presence and effective planned schemas",
             True,
@@ -807,39 +755,61 @@ class PrimitiveTest:
             return
         self.phase = "offline_preflight"
         for name, args in FIXTURES:
-            numeric = dict(args)
-            if "points" in args:
-                numeric["points"] = [
-                    [1.25 if isinstance(x, str) else x for x in pt] for pt in args["points"]
-                ]
-            else:
-                numeric.update(
-                    {field: 1.25 for field in DIMENSIONS[name] if isinstance(args[field], str)}
-                )
+            numeric = dict(args, height=3, points=[[0, 0], [6, 0], [6, 4], [0, 4]])
+            numeric[f"{args['axis']}_offset"] = 2
+            if args.get("holes"):
+                numeric["holes"] = [[[1, 1], [1, 3], [3, 3], [3, 1]]]
             for sample in (args, numeric):
                 payload = await self.accepted(session, name, sample, status="offline")
                 vba = payload.get("vba", "")
-                values = (
-                    [x for pt in sample["points"] for x in pt]
-                    if "points" in sample
-                    else [sample[field] for field in DIMENSIONS[name]]
-                )
-                literals = [
-                    '"' + (str(x) if isinstance(x, str) else f"{x:.10g}") + '"' for x in values
+                values = [
+                    sample["height"],
+                    sample[f"{sample['axis']}_offset"],
+                    *(x for pt in sample["points"] for x in pt),
+                    *(x for hole in sample.get("holes", []) for pt in hole for x in pt),
                 ]
+                literals = ['"' + x + '"' for x in values if isinstance(x, str)]
                 self.check(
-                    f"offline quoted primitive values {name}",
-                    all(literal in vba for literal in literals),
+                    f"offline retained extrusion values {name}",
+                    bool(vba) and ".Create" in vba and all(literal in vba for literal in literals),
                     vba=vba,
                     executed_in_cst=False,
                 )
-            for bad in (True, None, "", "a\nb", "a\x01b"):
-                invalid = dict(args)
-                if "points" in args:
-                    invalid["points"] = [[bad, 0, 0], [1, 1, 1]]
-                else:
-                    invalid[DIMENSIONS[name][0]] = bad
-                await self.request(session, name, invalid, negative=True)
+                if sample is args:
+                    self.check(
+                        "native evaluation remains in history",
+                        'Evaluate("PEx_Offset")' in vba
+                        and payload["extrusion"]["numeric_range_evaluated"] is False,
+                        numeric_range_evaluated=payload["extrusion"]["numeric_range_evaluated"],
+                    )
+                    if name == "cst_create_polygon_extrude":
+                        comparison = "<" if args["extrude_direction"] == "up" else ">"
+                        self.check(
+                            "symbolic winding is selected during reconstruction",
+                            f"If cstProfile0Area {comparison} 0 Then" in vba
+                            and "Err.Raise 5" in vba,
+                            vba=vba,
+                        )
+                    elif args["extrude_direction"] == "down":
+                        self.check(
+                            "pointlist down reverses the plane normal and remaps v",
+                            '.Vvector "0", "0", "-1"' in vba
+                            and '.LineTo Evaluate("30+PEx_W"), "-4"' in vba,
+                            vba=vba,
+                        )
+                if args.get("holes"):
+                    self.check(
+                        "hole subtraction retained",
+                        f'Solid.Subtract "{COMPONENT}:{args["name"]}"' in vba,
+                    )
+            for changes in (
+                {"height": True},
+                {"points": [[None, 0], [1, 0], [1, 1]]},
+                {"holes": [[[0, 0], [1, "bad\nline"], [1, 1]]]},
+                {f"{args['axis']}_offset": ""},
+                {f"{'x' if args['axis'] != 'x' else 'z'}_offset": "PEx_Offset"},
+            ):
+                await self.request(session, name, {**args, **changes}, negative=True)
         self.exit_code = 0
         self.reason = (
             "Real MCP catalog/schema and offline VBA checks passed; live CST validation pending"
@@ -902,30 +872,6 @@ class PrimitiveTest:
             )
         await self.messages_at(session)
 
-    async def curve(self, session):
-        payload = await self.accepted(
-            session, "cst_execute_vba", {"code": CURVE_QUERY}, status="ok"
-        )
-        actual = parse_records(payload.get("output", ""), {"CLOSED", "MAX_POINTS"})
-        maximum = number(actual["MAX_POINTS"])
-        self.check(
-            "native Curve.IsClosed readback",
-            actual["CLOSED"].lower() in {"true", "-1"},
-            actual=actual,
-            query=CURVE_QUERY,
-            query_source=self.metadata["references"]["curve"],
-            coverage="Named item closure only; no coordinate or complete point enumeration claim",
-        )
-        self.check(
-            "native Curve.GetNumberOfPoints maximum readback",
-            maximum.is_integer() and maximum >= 4,
-            actual=maximum,
-            query=CURVE_QUERY,
-            query_source=self.metadata["references"]["curve"],
-            coverage="Maximum count recorded; only a lower bound is checked, not exact vertex count",
-        )
-        return actual
-
     async def measure(self, session, values):
         await self.owned_info(session)
         await self.units(session)
@@ -936,14 +882,12 @@ class PrimitiveTest:
         payload = await self.accepted(
             session, "cst_execute_vba", {"code": MEASURE_QUERY}, status="ok"
         )
-        keys = {
-            f"{args['name']}.{kind}" for _, args in FIXTURES[:-1] for kind in ("VOLUME", "AREA")
-        }
+        keys = {f"{args['name']}.{kind}" for _, args in FIXTURES for kind in ("VOLUME", "AREA")}
         actual = {
             key: number(value)
             for key, value in parse_records(payload.get("output", ""), keys).items()
         }
-        expected = analytic_expected(values[0], values[1])
+        expected = analytic_expected(values)
         measurement = self.tag(
             {
                 "state": state,
@@ -954,11 +898,7 @@ class PrimitiveTest:
                 "absolute_tolerance": 1e-6,
                 "query": MEASURE_QUERY,
                 "query_source": self.metadata["references"]["solid"],
-                "torus_convention": "CST outer=3R, inner=2R; analytic major=2.5R, tube=0.5R",
-                "torus_sources": {
-                    k: v for k, v in self.metadata["references"].items() if k.startswith("torus")
-                },
-                "unsupported": {"ECylinder.AREA": LIMITATIONS[1]},
+                "profile_contracts": profile_contracts(values),
                 "limitations": LIMITATIONS,
             }
         )
@@ -977,14 +917,13 @@ class PrimitiveTest:
                 query=MEASURE_QUERY,
                 query_source=self.metadata["references"]["solid"],
             )
-        measurement["curve"] = await self.curve(session)
         await self.messages_at(session)
 
     async def checkpoint(self, session):
         await self.owned_info(session)
         payload = await self.accepted(session, "cst_save_project", status="saved")
         self.check(
-            "save returned owned primitive path",
+            "save returned owned extrusion path",
             Path(payload.get("path") or "").resolve() == self.project.resolve(),
             payload=payload,
         )
@@ -992,7 +931,7 @@ class PrimitiveTest:
         await self.accepted(session, "cst_close_project", status="closed")
         state = await self.request(session, "cst_connection_status")
         self.check(
-            "owned primitive project closed", state.get("project_open") is False, payload=state
+            "owned extrusion project closed", state.get("project_open") is False, payload=state
         )
         ensure_closed(self.project)
         self.check(
@@ -1015,6 +954,7 @@ class PrimitiveTest:
 
     async def live(self, session):
         self.phase = "connect_isolated"
+        self.live_attempted = True
         connected = await self.accepted(session, "cst_connect", {"mode": "new"}, status="connected")
         self.check(
             "isolated new CST instance without adopted projects",
@@ -1071,7 +1011,6 @@ class PrimitiveTest:
                 shapes=shapes,
                 parameters=params,
             )
-            await self.curve(session)
         self.phase = "establish_units_and_parameters"
         await self.accepted(session, "cst_execute_vba", {"code": UNITS_BLOCK}, status="executed")
         await self.units(session)
@@ -1112,7 +1051,7 @@ class PrimitiveTest:
         await self.accepted(session, "cst_disconnect", status="disconnected")
         self.connected = False
         self.exit_code = 0
-        self.reason = "Live primitive scenario completed within recorded verification coverage"
+        self.reason = "Live extrusion scenario completed within recorded verification coverage"
 
     def finalize(self):
         summary = {
@@ -1124,7 +1063,9 @@ class PrimitiveTest:
             "project": str(self.project),
             "catalog_presence": sorted(self.catalog),
             "preflight": self.options.preflight,
-            "real_cst_execution_attempted": any(r["tool"] == "cst_connect" for r in self.results),
+            "implementation": "Expression-preserving history VBA with native double evaluation, independent polygon winding and pointlist plane-normal direction.",
+            "offline_preflight_passed": self.exit_code == 0 if self.options.preflight else None,
+            "real_cst_execution_attempted": self.live_attempted,
             "scenario_completed": not self.options.preflight and self.exit_code == 0,
             "independently_verified_properties": [
                 c
@@ -1149,14 +1090,14 @@ class PrimitiveTest:
         }
         write_json(WORK / "summary.json", summary)
         lines = [
-            "# Latest primitive expression invocation",
+            "# Latest extrusion expression invocation",
             "",
             f"Invocation: `{self.invocation}`",
             f"Phase: `{self.phase}`; exit: {self.exit_code}",
             "",
             self.reason,
             "",
-            f"Owned project: `{self.project}`",
+            f"Project target: `{self.project}`",
             "",
             "Offline checks are not live CST validation. Full measurements, parameter states,",
             "expected values, units, tolerances and query provenance are in summary.json.",
@@ -1198,7 +1139,7 @@ def main():
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="Recreate verified owned primitive project only; retain logs and notes",
+        help="Recreate verified owned extrusion project only; retain logs and notes",
     )
     parser.add_argument("--cst-path", default=DEFAULT_CST_PATH)
     parser.add_argument("--connection-timeout", type=positive_timeout, default=120)
@@ -1208,7 +1149,7 @@ def main():
         parser.error("--reset cannot be combined with --preflight")
     try:
         with WorkspaceLock():
-            return asyncio.run(PrimitiveTest(options).run())
+            return asyncio.run(ExtrusionTest(options).run())
     except StopTest as exc:
         print(str(exc), file=sys.stderr)
         return 1

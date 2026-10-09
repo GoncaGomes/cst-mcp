@@ -12,9 +12,7 @@ import re
 from cst_mcp.validators import validate_name, validate_vba_input
 from cst_mcp.vba_safety import vba_escape
 
-_DANGEROUS_IN_STRINGS = re.compile(
-    r'"\s*[&+]\s*(Shell|CreateObject|GetObject)', re.IGNORECASE
-)
+_DANGEROUS_IN_STRINGS = re.compile(r'"\s*[&+]\s*(Shell|CreateObject|GetObject)', re.IGNORECASE)
 
 
 _FORBIDDEN_STRING_CHARS = re.compile(r"[\r\n\x00]")
@@ -28,7 +26,9 @@ def _escape_vba_string(value: str) -> str:
     literal and let the rest of the value run as a new VBA statement.
     """
     if _FORBIDDEN_STRING_CHARS.search(value):
-        raise ValueError(f"VBA string value must not contain line breaks or NUL characters: {value!r}")
+        raise ValueError(
+            f"VBA string value must not contain line breaks or NUL characters: {value!r}"
+        )
     escaped = value.replace('"', '""')
     # Block VBA string concatenation injection attempts
     if _DANGEROUS_IN_STRINGS.search(f'"{escaped}"'):
@@ -117,16 +117,14 @@ class VBABuilder:
         self._with_block.append(f'.{prop} "{_format_number(v1)}", "{_format_number(v2)}"')
         return self
 
-    def set_expression_pair(
-        self, prop: str, v1: float | str, v2: float | str
-    ) -> VBABuilder:
+    def set_expression_pair(self, prop: str, v1: float | str, v2: float | str) -> VBABuilder:
         """Set a range with quoted numbers/unevaluated CST parameter expressions."""
-        self._with_block.append(f'.{prop} {_format_expression(v1)}, {_format_expression(v2)}')
+        self._with_block.append(f".{prop} {_format_expression(v1)}, {_format_expression(v2)}")
         return self
 
     def set_expression(self, prop: str, value: float | str) -> VBABuilder:
         """Set one quoted number or unevaluated CST parameter expression."""
-        self._with_block.append(f'.{prop} {_format_expression(value)}')
+        self._with_block.append(f".{prop} {_format_expression(value)}")
         return self
 
     def set_expression_triple(
@@ -134,7 +132,7 @@ class VBABuilder:
     ) -> VBABuilder:
         """Set a point/center with quoted numbers or CST expressions."""
         self._with_block.append(
-            f'.{prop} {_format_expression(v1)}, {_format_expression(v2)}, {_format_expression(v3)}'
+            f".{prop} {_format_expression(v1)}, {_format_expression(v2)}, {_format_expression(v3)}"
         )
         return self
 
@@ -149,7 +147,9 @@ class VBABuilder:
         """Official DiscretePort/LumpedElement SetP1/SetP2 signature."""
         if prop not in {"SetP1", "SetP2"}:
             raise ValueError("Use SetP1 or SetP2")
-        self._with_block.append(f'.{prop} False, "{_format_number(x)}", "{_format_number(y)}", "{_format_number(z)}"')
+        self._with_block.append(
+            f'.{prop} False, "{_format_number(x)}", "{_format_number(y)}", "{_format_number(z)}"'
+        )
         return self
 
     def set_bool(self, prop: str, value: bool) -> VBABuilder:

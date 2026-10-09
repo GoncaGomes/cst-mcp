@@ -10,14 +10,23 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 
-
 CATEGORIES: list[dict] = [
-    {"id": "official", "title_en": "Official API and saved results", "title_tr": "Resmî API ve kayıtlı sonuçlar",
-     "blurb_en": "Read local CST Python/VBA help and complex saved results without opening CST.",
-     "blurb_tr": "CST açmadan yerel Python/VBA belgelerini ve kayıtlı kompleks sonuçları okuyun.", "module": "official"},
-    {"id": "connection", "title_en": "Explicit connection", "title_tr": "Açık bağlantı yönetimi",
-     "blurb_en": "Attach to CST explicitly; disconnect without closing user projects.",
-     "blurb_tr": "CST bağlantısını açıkça kurun; kullanıcı projelerini kapatmadan ayrılın.", "module": "connection"},
+    {
+        "id": "official",
+        "title_en": "Official API and saved results",
+        "title_tr": "Resmî API ve kayıtlı sonuçlar",
+        "blurb_en": "Read local CST Python/VBA help and complex saved results without opening CST.",
+        "blurb_tr": "CST açmadan yerel Python/VBA belgelerini ve kayıtlı kompleks sonuçları okuyun.",
+        "module": "official",
+    },
+    {
+        "id": "connection",
+        "title_en": "Explicit connection",
+        "title_tr": "Açık bağlantı yönetimi",
+        "blurb_en": "Attach to CST explicitly; disconnect without closing user projects.",
+        "blurb_tr": "CST bağlantısını açıkça kurun; kullanıcı projelerini kapatmadan ayrılın.",
+        "module": "connection",
+    },
     {
         "id": "workflows",
         "title_en": "Workflows (start here)",
@@ -217,8 +226,7 @@ def collect_tools() -> list[dict]:
     import importlib
 
     module_map = {
-        c["module"]: importlib.import_module(f"cst_mcp.tools.{c['module']}")
-        for c in CATEGORIES
+        c["module"]: importlib.import_module(f"cst_mcp.tools.{c['module']}") for c in CATEGORIES
     }
 
     tools: list[dict] = []
@@ -272,7 +280,6 @@ def build_catalog(tools: list[dict]) -> dict:
     }
 
 
-
 def render_html(catalog: dict) -> str:
     """Load HTML shell and inject catalog JSON (avoids f-string / JS brace issues)."""
     data = json.dumps(catalog, ensure_ascii=False).replace("</", "<\\/")
@@ -289,11 +296,15 @@ def render_readme_tables(catalog: dict) -> str:
     lines = [
         f"## Full tool catalog ({catalog['total_tools']} tools)",
         "",
-        "Interactive bilingual docs: open [`docs/index.html`](docs/index.html) "
-        "(EN/TR toggle, search, full-width cards). Rebuild: `python scripts/build_docs.py`.",
+        (
+            "Interactive bilingual docs: open [`docs/index.html`](docs/index.html) "
+            "(EN/TR toggle, search, full-width cards). Rebuild: `python scripts/build_docs.py`."
+        ),
         "",
-        "VBA for geometry/ports/transforms is cross-checked against the CST help dump in "
-        "[`vba_cst/`](vba_cst/).",
+        (
+            "VBA for geometry/ports/transforms is cross-checked against the CST help dump in "
+            "[`vba_cst/`](vba_cst/)."
+        ),
         "",
     ]
     for cat in catalog["categories"]:
@@ -325,7 +336,13 @@ def patch_readme(table_md: str, total: int) -> None:
         text = pre + block + post
     else:
         text = text.rstrip() + "\n\n" + block + "\n"
-    text = text.replace("~173", str(total)).replace("~178", str(total)).replace("173 tools", f"{total} tools").replace("178 tools", f"{total} tools").replace("#full-tool-catalog-178-tools", f"#full-tool-catalog-{total}-tools")
+    text = (
+        text.replace("~173", str(total))
+        .replace("~178", str(total))
+        .replace("173 tools", f"{total} tools")
+        .replace("178 tools", f"{total} tools")
+        .replace("#full-tool-catalog-178-tools", f"#full-tool-catalog-{total}-tools")
+    )
     # ensure docs mention bilingual
     if "EN/TR" not in text and "bilingual" not in text.lower():
         text = text.replace(

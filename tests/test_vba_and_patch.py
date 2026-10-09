@@ -53,14 +53,7 @@ def test_vswr_total_reflection():
 def test_parse_sparam_csv(tmp_path):
     p = tmp_path / "s.csv"
     p.write_text(
-        "\n".join(
-            [
-                "Frequency / GHz, dB, Phase",
-                "2.0, -5.0, 10",
-                "2.4, -15.0, 20",
-                "3.0, -8.0, 30",
-            ]
-        ),
+        "Frequency / GHz, dB, Phase\n2.0, -5.0, 10\n2.4, -15.0, 20\n3.0, -8.0, 30",
         encoding="utf-8",
     )
     data = parse_sparam_csv(p)
@@ -73,15 +66,7 @@ def test_parse_cst_whitespace_sparam_export(tmp_path):
     """CST often writes space-separated S-param tables, not real CSV."""
     p = tmp_path / "s_ws.csv"
     p.write_text(
-        "\n".join(
-            [
-                "        Frequency / GHz                S1,1/abs,dB",
-                "----------------------------------------------------------------------",
-                "               1.6799999                     -0.19691079",
-                "                 2.34816                      -7.8142342",
-                "               3.1200001                     -0.25000000",
-            ]
-        ),
+        "        Frequency / GHz                S1,1/abs,dB\n----------------------------------------------------------------------\n               1.6799999                     -0.19691079\n                 2.34816                      -7.8142342\n               3.1200001                     -0.25000000",
         encoding="utf-8",
     )
     data = parse_sparam_csv(p)
@@ -127,9 +112,16 @@ def test_workflow_inset_patch_cuts_notches_before_feed():
     assert 'Solid.Subtract "Antenna:Patch", "Antenna:Notch_left"' in boolean
     assert 'Solid.Subtract "Antenna:Patch", "Antenna:Notch_right"' in boolean
     # Notches cut after the patch exists and before the feed is added
-    order = [labels.index(k) for k in (
-        "brick_patch", "brick_notch_left", "brick_notch_right",
-        "boolean_inset_notches", "brick_feed")]
+    order = [
+        labels.index(k)
+        for k in (
+            "brick_patch",
+            "brick_notch_left",
+            "brick_notch_right",
+            "boolean_inset_notches",
+            "brick_feed",
+        )
+    ]
     assert order == sorted(order)
     # Feed stays inside the notch: same half-width as the notch inner edges,
     # ends at the inset point, never reaches the patch sides.
@@ -174,9 +166,11 @@ def test_workflow_stores_parameters_outside_history():
     import json
 
     client = FakeClient()
-    out = asyncio.run(workflows.handle(
-        "cst_workflow_patch_antenna",
-        {"frequency_ghz": 2.4, "create_project": False}, client))
+    out = asyncio.run(
+        workflows.handle(
+            "cst_workflow_patch_antenna", {"frequency_ghz": 2.4, "create_project": False}, client
+        )
+    )
     payload = json.loads(out[0].text)
     assert payload["status"] == "executed"
     assert "store_parameters" not in client.history
@@ -244,11 +238,22 @@ def test_workflow_probe_builds_parametric_coax_feed():
     assert steps["boolean_probe_pin_substrate"] == (
         'Solid.Insert "Antenna:Substrate", "Antenna:ProbePin"'
     )
-    order = [labels.index(k) for k in (
-        "brick_ground", "brick_substrate", "brick_patch", "material_ptfe",
-        "cylinder_ground_clearance", "boolean_ground_clearance",
-        "cylinder_probe_pin", "boolean_probe_pin_substrate",
-        "cylinder_coax_dielectric", "cylinder_coax_shield", "port_wg_1")]
+    order = [
+        labels.index(k)
+        for k in (
+            "brick_ground",
+            "brick_substrate",
+            "brick_patch",
+            "material_ptfe",
+            "cylinder_ground_clearance",
+            "boolean_ground_clearance",
+            "cylinder_probe_pin",
+            "boolean_probe_pin_substrate",
+            "cylinder_coax_dielectric",
+            "cylinder_coax_shield",
+            "port_wg_1",
+        )
+    ]
     assert order == sorted(order)
 
     port = steps["port_wg_1"]
@@ -269,8 +274,12 @@ def test_workflow_probe_builds_parametric_coax_feed():
         for val in re.findall(r'\.[XY]center "([^"]*)"', vba):
             assert _numeric_free(val), (label, val)
     # Pin centre coincides with the port aperture centre and ground clearance
-    for label in ("cylinder_probe_pin", "cylinder_coax_dielectric",
-                  "cylinder_coax_shield", "cylinder_ground_clearance"):
+    for label in (
+        "cylinder_probe_pin",
+        "cylinder_coax_dielectric",
+        "cylinder_coax_shield",
+        "cylinder_ground_clearance",
+    ):
         assert '.Xcenter "0"' in steps[label] and '.Ycenter "-probe_y"' in steps[label]
 
 
@@ -296,9 +305,13 @@ def test_workflow_microstrip_and_inset_have_no_probe_steps():
         assert 'StoreParameter "feed_w"' in steps["store_parameters"]
         assert "brick_feed" in steps
         assert steps["port_wg_1"] == microstrip_waveguide_port_vba(
-            port_number=1, y_edge=-d.ground_y_mm / 2, feed_width=d.feed_width_mm,
-            substrate_height=d.height_mm, ground_bottom=-0.035,
-            metal_thickness=0.035, x_center=0.0,
+            port_number=1,
+            y_edge=-d.ground_y_mm / 2,
+            feed_width=d.feed_width_mm,
+            substrate_height=d.height_mm,
+            ground_bottom=-0.035,
+            metal_thickness=0.035,
+            x_center=0.0,
         )
 
 
@@ -326,14 +339,22 @@ def test_workflow_probe_runs_against_fake_client():
             return {}
 
     client = FakeClient()
-    out = asyncio.run(workflows.handle(
-        "cst_workflow_patch_antenna",
-        {"frequency_ghz": 2.4, "feed_type": "probe", "create_project": False},
-        client))
+    out = asyncio.run(
+        workflows.handle(
+            "cst_workflow_patch_antenna",
+            {"frequency_ghz": 2.4, "feed_type": "probe", "create_project": False},
+            client,
+        )
+    )
     payload = json.loads(out[0].text)
     assert payload["status"] == "executed"
-    for label in ("cylinder_probe_pin", "boolean_ground_clearance",
-                  "boolean_probe_pin_substrate", "cylinder_coax_shield", "port_wg_1"):
+    for label in (
+        "cylinder_probe_pin",
+        "boolean_ground_clearance",
+        "boolean_probe_pin_substrate",
+        "cylinder_coax_shield",
+        "port_wg_1",
+    ):
         assert label in client.history
     assert "probe_y" in payload["parameter_hint"]
     assert payload["design"]["probe_offset_mm"] > 0

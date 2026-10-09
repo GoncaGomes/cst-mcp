@@ -9,14 +9,15 @@ pasted directly into CST Studio to create a simulatable model.
 from __future__ import annotations
 
 import json
+import logging
 import math
-from typing import Callable
+from collections.abc import Callable
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.vba_builder import VBABuilder, VBAScript
 from cst_mcp.validators import validate_frequency, validate_positive
+from cst_mcp.vba_builder import VBABuilder, VBAScript
 from cst_mcp.vba_safety import vba_escape as _q
 
 # ---------------------------------------------------------------------------
@@ -76,7 +77,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 2 ── Half-wave dipole
     Tool(
         name="cst_antenna_dipole",
@@ -100,7 +100,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 3 ── Quarter-wave monopole
     Tool(
         name="cst_antenna_monopole",
@@ -128,7 +127,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 4 ── Pyramidal horn
     Tool(
         name="cst_antenna_horn",
@@ -160,7 +158,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 5 ── Yagi-Uda
     Tool(
         name="cst_antenna_yagi",
@@ -185,7 +182,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 6 ── Axial-mode helix
     Tool(
         name="cst_antenna_helix",
@@ -215,7 +211,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 7 ── Vivaldi / tapered slot
     Tool(
         name="cst_antenna_vivaldi",
@@ -249,7 +244,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 8 ── Slot antenna
     Tool(
         name="cst_antenna_slot",
@@ -272,7 +266,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 9 ── Inverted-F antenna
     Tool(
         name="cst_antenna_ifa",
@@ -301,7 +294,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 10 ── Planar inverted-F antenna
     Tool(
         name="cst_antenna_pifa",
@@ -334,7 +326,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 11 ── Archimedean spiral
     Tool(
         name="cst_antenna_spiral",
@@ -362,7 +353,6 @@ TOOLS: list[Tool] = [
             "required": ["freq_low_ghz", "freq_high_ghz"],
         },
     ),
-
     # 12 ── Bowtie antenna
     Tool(
         name="cst_antenna_bowtie",
@@ -390,7 +380,6 @@ TOOLS: list[Tool] = [
             "required": ["frequency_ghz"],
         },
     ),
-
     # 13 ── List templates
     Tool(
         name="cst_list_antenna_templates",
@@ -420,23 +409,12 @@ def _wavelength_mm(freq_ghz: float) -> float:
 
 def _build_units_block() -> str:
     """Standard CST units via SetUnit (CST 2024+ help). No .Apply / .Geometry."""
-    return "\n".join(
-        [
-            "With Units",
-            '  .SetUnit "Length", "mm"',
-            '  .SetUnit "Frequency", "GHz"',
-            '  .SetUnit "Time", "ns"',
-            "End With",
-        ]
-    )
+    return 'With Units\n  .SetUnit "Length", "mm"\n  .SetUnit "Frequency", "GHz"\n  .SetUnit "Time", "ns"\nEnd With'
 
 
 def _build_frequency_range(f_min: float, f_max: float) -> VBABuilder:
     """Set solver frequency range in GHz."""
-    return (
-        VBABuilder("Solver")
-        .set_double("FrequencyRange", f_min, f_max)
-    )
+    return VBABuilder("Solver").set_double("FrequencyRange", f_min, f_max)
 
 
 def _build_open_boundaries() -> str:
@@ -525,9 +503,18 @@ def _build_substrate_material_block(name: str, eps_r: float, tan_d: float) -> st
     """Build a complete material definition block for a dielectric substrate."""
     return _build_substrate_material(name, eps_r, tan_d).build()
 
-def _build_brick(component: str, name: str, material: str,
-                 x0: float, x1: float, y0: float, y1: float,
-                 z0: float, z1: float) -> str:
+
+def _build_brick(
+    component: str,
+    name: str,
+    material: str,
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    z0: float,
+    z1: float,
+) -> str:
     """Build a Brick VBA block."""
     return (
         VBABuilder("Brick")
@@ -542,10 +529,19 @@ def _build_brick(component: str, name: str, material: str,
     ).build()
 
 
-def _build_cylinder(component: str, name: str, material: str,
-                    axis: str, cx: float, cy: float, cz: float,
-                    outer_r: float, inner_r: float,
-                    range_min: float, range_max: float) -> str:
+def _build_cylinder(
+    component: str,
+    name: str,
+    material: str,
+    axis: str,
+    cx: float,
+    cy: float,
+    cz: float,
+    outer_r: float,
+    inner_r: float,
+    range_min: float,
+    range_max: float,
+) -> str:
     """Build a Cylinder VBA block."""
     return (
         VBABuilder("Cylinder")
@@ -566,16 +562,20 @@ def _build_cylinder(component: str, name: str, material: str,
 
 def _result_json(calculated: dict, vba_script: str, notes: list[str]) -> str:
     """Format the standard return payload."""
-    return json.dumps({
-        "calculated_parameters": calculated,
-        "vba_script": vba_script,
-        "notes": notes,
-    }, indent=2)
+    return json.dumps(
+        {
+            "calculated_parameters": calculated,
+            "vba_script": vba_script,
+            "notes": notes,
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------
 # 1. Rectangular microstrip patch antenna
 # ---------------------------------------------------------------------------
+
 
 def _build_patch_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -595,11 +595,7 @@ def _build_patch_antenna(args: dict) -> str:
     eps_eff = ((eps_r + 1) / 2) + ((eps_r - 1) / 2) * (1 / math.sqrt(1 + 12 * ratio))
 
     # --- Fringing extension ---
-    delta_L = 0.412 * h * (
-        (eps_eff + 0.3) * (W / h + 0.264)
-    ) / (
-        (eps_eff - 0.258) * (W / h + 0.8)
-    )
+    delta_L = 0.412 * h * ((eps_eff + 0.3) * (W / h + 0.264)) / ((eps_eff - 0.258) * (W / h + 0.8))
 
     # --- Patch length ---
     L = (C0 / (2 * freq * 1e9 * math.sqrt(eps_eff))) * 1e3 - 2 * delta_L
@@ -612,7 +608,7 @@ def _build_patch_antenna(args: dict) -> str:
     # R_in(y0) = R_edge * cos^2(pi*y0/L)
     # For 50 ohm: y0 = (L/pi) * arccos(sqrt(50/R_edge))
     # R_edge ~ 90 * eps_r^2 / (eps_r - 1) * (L/W)^2  (approximate)
-    R_edge = 90 * (eps_r ** 2) / (eps_r - 1) * (L / W) ** 2
+    R_edge = 90 * (eps_r**2) / (eps_r - 1) * (L / W) ** 2
     if R_edge > 50:
         inset_depth = (L / math.pi) * math.acos(math.sqrt(50 / R_edge))
     else:
@@ -623,9 +619,9 @@ def _build_patch_antenna(args: dict) -> str:
     A_w = (50 / 60) * math.sqrt((eps_r + 1) / 2) + (eps_r - 1) / (eps_r + 1) * (0.23 + 0.11 / eps_r)
     feed_w = h * max(
         8 * math.exp(A_w) / (math.exp(2 * A_w) - 2),
-        (2 / math.pi) * (
-            (eps_r - 1) / (2 * eps_r) * (math.log(2 * A_w - 1) + 0.39 - 0.61 / eps_r)
-        ) if A_w > 1.52 else 1.0,
+        (2 / math.pi) * ((eps_r - 1) / (2 * eps_r) * (math.log(2 * A_w - 1) + 0.39 - 0.61 / eps_r))
+        if A_w > 1.52
+        else 1.0,
     )
     feed_w = max(feed_w, 0.5)  # minimum practical width
 
@@ -667,74 +663,120 @@ def _build_patch_antenna(args: dict) -> str:
     script.add_block(_build_frequency_range(f_min, f_max))
 
     # Store design parameters in CST for parametric sweeps/optimization
-    script.add_raw(_store_design_parameters({
-        "patch_W": round(W, 4),
-        "patch_L": round(L, 4),
-        "sub_h": round(h, 4),
-        "eps_r": eps_r,
-        "feed_w": round(feed_w, 4),
-        "inset_depth": round(inset_depth, 4),
-        "inset_gap": round(inset_gap, 4),
-        "gnd_x": round(gnd_x, 4),
-        "gnd_y": round(gnd_y, 4),
-    }))
+    script.add_raw(
+        _store_design_parameters(
+            {
+                "patch_W": round(W, 4),
+                "patch_L": round(L, 4),
+                "sub_h": round(h, 4),
+                "eps_r": eps_r,
+                "feed_w": round(feed_w, 4),
+                "inset_depth": round(inset_depth, 4),
+                "inset_gap": round(inset_gap, 4),
+                "gnd_x": round(gnd_x, 4),
+                "gnd_y": round(gnd_y, 4),
+            }
+        )
+    )
 
     # Substrate material
     script.add_raw(_build_substrate_material_block("Substrate_FR4", eps_r, tan_d))
 
     # Substrate brick
-    script.add_raw(_build_brick(
-        "Antenna", "Substrate", "Substrate_FR4",
-        -gnd_x / 2, gnd_x / 2,
-        -gnd_y / 2, gnd_y / 2,
-        0, h,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Antenna",
+            "Substrate",
+            "Substrate_FR4",
+            -gnd_x / 2,
+            gnd_x / 2,
+            -gnd_y / 2,
+            gnd_y / 2,
+            0,
+            h,
+        )
+    )
 
     # Ground plane (bottom of substrate)
-    script.add_raw(_build_brick(
-        "Antenna", "Ground", "PEC",
-        -gnd_x / 2, gnd_x / 2,
-        -gnd_y / 2, gnd_y / 2,
-        -0.035, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Antenna",
+            "Ground",
+            "PEC",
+            -gnd_x / 2,
+            gnd_x / 2,
+            -gnd_y / 2,
+            gnd_y / 2,
+            -0.035,
+            0,
+        )
+    )
 
     # Patch (top of substrate)
-    script.add_raw(_build_brick(
-        "Antenna", "Patch", "PEC",
-        -W / 2, W / 2,
-        -L / 2, L / 2,
-        h, h + 0.035,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Antenna",
+            "Patch",
+            "PEC",
+            -W / 2,
+            W / 2,
+            -L / 2,
+            L / 2,
+            h,
+            h + 0.035,
+        )
+    )
 
     # Feed
     if feed_type == "inset":
         # Inset notches are cut OUT of the patch (a Vacuum brick overlapping
         # PEC does not remove metal: PEC wins, leaving an edge-fed patch).
         # Inset notch — left slot
-        script.add_raw(_build_brick(
-            "Antenna", "InsetSlotL", "PEC",
-            -feed_w / 2 - inset_gap, -feed_w / 2,
-            -L / 2 - 0.1, -L / 2 + inset_depth,
-            h, h + 0.035,
-        ))
+        script.add_raw(
+            _build_brick(
+                "Antenna",
+                "InsetSlotL",
+                "PEC",
+                -feed_w / 2 - inset_gap,
+                -feed_w / 2,
+                -L / 2 - 0.1,
+                -L / 2 + inset_depth,
+                h,
+                h + 0.035,
+            )
+        )
         # Inset notch — right slot
-        script.add_raw(_build_brick(
-            "Antenna", "InsetSlotR", "PEC",
-            feed_w / 2, feed_w / 2 + inset_gap,
-            -L / 2 - 0.1, -L / 2 + inset_depth,
-            h, h + 0.035,
-        ))
+        script.add_raw(
+            _build_brick(
+                "Antenna",
+                "InsetSlotR",
+                "PEC",
+                feed_w / 2,
+                feed_w / 2 + inset_gap,
+                -L / 2 - 0.1,
+                -L / 2 + inset_depth,
+                h,
+                h + 0.035,
+            )
+        )
         script.add_raw(
             'Solid.Subtract "Antenna:Patch", "Antenna:InsetSlotL"\n'
             'Solid.Subtract "Antenna:Patch", "Antenna:InsetSlotR"'
         )
         # Feed line runs from the board edge into the notch, to the inset point
-        script.add_raw(_build_brick(
-            "Antenna", "FeedLine", "PEC",
-            -feed_w / 2, feed_w / 2,
-            -gnd_y / 2, -L / 2 + inset_depth,
-            h, h + 0.035,
-        ))
+        script.add_raw(
+            _build_brick(
+                "Antenna",
+                "FeedLine",
+                "PEC",
+                -feed_w / 2,
+                feed_w / 2,
+                -gnd_y / 2,
+                -L / 2 + inset_depth,
+                h,
+                h + 0.035,
+            )
+        )
         # Waveguide port flush with feed outer face (PortOnBound=False)
         from cst_mcp.execution.port_helpers import microstrip_waveguide_port_vba
 
@@ -752,12 +794,19 @@ def _build_patch_antenna(args: dict) -> str:
 
     elif feed_type == "microstrip":
         gnd_y / 2 - L / 2
-        script.add_raw(_build_brick(
-            "Antenna", "FeedLine", "PEC",
-            -feed_w / 2, feed_w / 2,
-            -gnd_y / 2, -L / 2,
-            h, h + 0.035,
-        ))
+        script.add_raw(
+            _build_brick(
+                "Antenna",
+                "FeedLine",
+                "PEC",
+                -feed_w / 2,
+                feed_w / 2,
+                -gnd_y / 2,
+                -L / 2,
+                h,
+                h + 0.035,
+            )
+        )
         from cst_mcp.execution.port_helpers import microstrip_waveguide_port_vba
 
         script.add_raw(
@@ -776,12 +825,21 @@ def _build_patch_antenna(args: dict) -> str:
         # Coaxial probe — cylinder from ground to patch
         probe_x = 0.0
         probe_y = -L / 2 + inset_depth  # same position as inset would be
-        script.add_raw(_build_cylinder(
-            "Antenna", "Probe", "PEC",
-            "z", probe_x, probe_y, 0,
-            0.65, 0,  # outer 0.65 mm radius (SMA inner)
-            0, h,
-        ))
+        script.add_raw(
+            _build_cylinder(
+                "Antenna",
+                "Probe",
+                "PEC",
+                "z",
+                probe_x,
+                probe_y,
+                0,
+                0.65,
+                0,  # outer 0.65 mm radius (SMA inner)
+                0,
+                h,
+            )
+        )
         # Discrete port
         port_vba = (
             VBABuilder("DiscretePort")
@@ -817,6 +875,7 @@ def _build_patch_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 2. Half-wave dipole antenna
 # ---------------------------------------------------------------------------
+
 
 def _build_dipole_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -913,6 +972,7 @@ def _build_dipole_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 3. Quarter-wave monopole
 # ---------------------------------------------------------------------------
+
 
 def _build_monopole_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -1014,6 +1074,7 @@ def _build_monopole_antenna(args: dict) -> str:
 # 4. Pyramidal horn antenna
 # ---------------------------------------------------------------------------
 
+
 def _build_horn_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
     gain_dbi = args.get("gain_dbi", 15)
@@ -1042,7 +1103,7 @@ def _build_horn_antenna(args: dict) -> str:
 
     # Required aperture area: G = 4*pi*A_eff / lambda^2
     # A_eff = eta_ap * A_phys
-    A_phys = G * lam0 ** 2 / (4 * math.pi * eta_ap)
+    A_phys = G * lam0**2 / (4 * math.pi * eta_ap)
 
     # For pyramidal horn, A1 * B1 = A_phys
     # Typical aspect ratio A1/B1 ~ a/b
@@ -1053,8 +1114,8 @@ def _build_horn_antenna(args: dict) -> str:
     # Horn length from Balanis — optimum horn
     # R_H (E-plane slant) = B1^2 / (2*lambda), R_E similar
     # Axial length L ~ R_H for moderate gain
-    R_H = B1 ** 2 / (2 * lam0)
-    R_E = A1 ** 2 / (3 * lam0)
+    R_H = B1**2 / (2 * lam0)
+    R_E = A1**2 / (3 * lam0)
     horn_length = max(R_H, R_E)
     horn_length = max(horn_length, 2 * lam0)  # minimum practical length
 
@@ -1089,19 +1150,33 @@ def _build_horn_antenna(args: dict) -> str:
 
     # Waveguide section: hollow brick from z = -wg_length to z = 0
     # Outer shell
-    script.add_raw(_build_brick(
-        "Horn", "WG_Outer", "PEC",
-        -a_wg / 2 - t, a_wg / 2 + t,
-        -b_wg / 2 - t, b_wg / 2 + t,
-        -wg_length, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Horn",
+            "WG_Outer",
+            "PEC",
+            -a_wg / 2 - t,
+            a_wg / 2 + t,
+            -b_wg / 2 - t,
+            b_wg / 2 + t,
+            -wg_length,
+            0,
+        )
+    )
     # Inner cavity (vacuum)
-    script.add_raw(_build_brick(
-        "Horn", "WG_Inner", "Vacuum",
-        -a_wg / 2, a_wg / 2,
-        -b_wg / 2, b_wg / 2,
-        -wg_length, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Horn",
+            "WG_Inner",
+            "Vacuum",
+            -a_wg / 2,
+            a_wg / 2,
+            -b_wg / 2,
+            b_wg / 2,
+            -wg_length,
+            0,
+        )
+    )
 
     # Horn flare: build as four trapezoidal walls using extrude
     # Top wall (y = +b side, tapers from b_wg/2 to B1/2)
@@ -1113,12 +1188,19 @@ def _build_horn_antenna(args: dict) -> str:
     # at mid-cross-section — CST actually needs loft; use brick endpoints)
     # For VBA simplicity, create outer shell as a large brick
     # then subtract inner taper.  This is simplified geometry.
-    script.add_raw(_build_brick(
-        "Horn", "Horn_Outer", "PEC",
-        -A1 / 2 - t, A1 / 2 + t,
-        -B1 / 2 - t, B1 / 2 + t,
-        0, horn_length,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Horn",
+            "Horn_Outer",
+            "PEC",
+            -A1 / 2 - t,
+            A1 / 2 + t,
+            -B1 / 2 - t,
+            B1 / 2 + t,
+            0,
+            horn_length,
+        )
+    )
 
     # Inner vacuum for horn (tapered cavity approximated via loft)
     # Use analytical VBA for loft between waveguide aperture and horn aperture
@@ -1199,6 +1281,7 @@ def _build_horn_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 5. Yagi-Uda antenna
 # ---------------------------------------------------------------------------
+
 
 def _build_yagi_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -1325,6 +1408,7 @@ def _build_yagi_antenna(args: dict) -> str:
 # 6. Axial-mode helical antenna
 # ---------------------------------------------------------------------------
 
+
 def _build_helix_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
     n_turns = max(int(args.get("num_turns", 10)), 1)
@@ -1387,12 +1471,19 @@ def _build_helix_antenna(args: dict) -> str:
         )
         script.add_block(gnd_vba)
     else:
-        script.add_raw(_build_brick(
-            "Helix", "GroundPlane", "PEC",
-            -gnd_size / 2, gnd_size / 2,
-            -gnd_size / 2, gnd_size / 2,
-            -0.5, 0,
-        ))
+        script.add_raw(
+            _build_brick(
+                "Helix",
+                "GroundPlane",
+                "PEC",
+                -gnd_size / 2,
+                gnd_size / 2,
+                -gnd_size / 2,
+                gnd_size / 2,
+                -0.5,
+                0,
+            )
+        )
 
     # Helix coil — analytical curve
     # Parametric: x = R*cos(t), y = R*sin(t), z = pitch/(2*pi) * t
@@ -1479,6 +1570,7 @@ def _build_helix_antenna(args: dict) -> str:
 # 7. Vivaldi / tapered slot antenna
 # ---------------------------------------------------------------------------
 
+
 def _build_vivaldi_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
     h = validate_positive(args.get("substrate_height_mm", 1.6), "substrate_height_mm")
@@ -1537,12 +1629,19 @@ def _build_vivaldi_antenna(args: dict) -> str:
     script.add_raw(_build_substrate_material_block("Vivaldi_Sub", eps_r, 0.001))
 
     # Substrate
-    script.add_raw(_build_brick(
-        "Vivaldi", "Substrate", "Vivaldi_Sub",
-        0, substrate_length,
-        -substrate_width / 2, substrate_width / 2,
-        0, h,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Vivaldi",
+            "Substrate",
+            "Vivaldi_Sub",
+            0,
+            substrate_length,
+            -substrate_width / 2,
+            substrate_width / 2,
+            0,
+            h,
+        )
+    )
 
     # Top metallisation (upper half above slot)
     # Build as a polygon extrusion representing the tapered edge
@@ -1638,6 +1737,7 @@ def _build_vivaldi_antenna(args: dict) -> str:
 # 8. Slot antenna
 # ---------------------------------------------------------------------------
 
+
 def _build_slot_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
 
@@ -1678,28 +1778,49 @@ def _build_slot_antenna(args: dict) -> str:
     script.add_block(_build_frequency_range(f_min, f_max))
 
     # Ground plane
-    script.add_raw(_build_brick(
-        "Slot", "GroundPlane", "PEC",
-        -gnd_size / 2, gnd_size / 2,
-        -gnd_size / 2, gnd_size / 2,
-        -0.035, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Slot",
+            "GroundPlane",
+            "PEC",
+            -gnd_size / 2,
+            gnd_size / 2,
+            -gnd_size / 2,
+            gnd_size / 2,
+            -0.035,
+            0,
+        )
+    )
 
     # Cut slot in ground plane (vacuum brick, removes from PEC via boolean)
-    script.add_raw(_build_brick(
-        "Slot", "SlotCut", "Vacuum",
-        -slot_length / 2, slot_length / 2,
-        -slot_width / 2, slot_width / 2,
-        -0.035, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Slot",
+            "SlotCut",
+            "Vacuum",
+            -slot_length / 2,
+            slot_length / 2,
+            -slot_width / 2,
+            slot_width / 2,
+            -0.035,
+            0,
+        )
+    )
 
     # Feed line crossing the slot (perpendicular, on z=-0.035 side)
-    script.add_raw(_build_brick(
-        "Slot", "FeedLine", "PEC",
-        -feed_w / 2, feed_w / 2,
-        -gnd_size / 2, feed_stub,
-        -0.07, -0.035,
-    ))
+    script.add_raw(
+        _build_brick(
+            "Slot",
+            "FeedLine",
+            "PEC",
+            -feed_w / 2,
+            feed_w / 2,
+            -gnd_size / 2,
+            feed_stub,
+            -0.07,
+            -0.035,
+        )
+    )
 
     # Discrete port at edge of feed line
     port_vba = (
@@ -1733,6 +1854,7 @@ def _build_slot_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 9. Inverted-F antenna (IFA)
 # ---------------------------------------------------------------------------
+
 
 def _build_ifa_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -1771,40 +1893,68 @@ def _build_ifa_antenna(args: dict) -> str:
     script.add_block(_build_frequency_range(f_min, f_max))
 
     # Ground plane at z=0
-    script.add_raw(_build_brick(
-        "IFA", "Ground", "PEC",
-        0, gnd_l,
-        -gnd_w / 2, gnd_w / 2,
-        -0.5, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "IFA",
+            "Ground",
+            "PEC",
+            0,
+            gnd_l,
+            -gnd_w / 2,
+            gnd_w / 2,
+            -0.5,
+            0,
+        )
+    )
 
     # IFA located at one end of the ground plane (x=0 end)
     # Feed pin (vertical wire at x = short_offset)
     feed_x = short_offset
 
     # Shorting pin (vertical wire at x = 0)
-    script.add_raw(_build_brick(
-        "IFA", "ShortingPin", "PEC",
-        -wire_r, wire_r,
-        -wire_r, wire_r,
-        0, ifa_height,
-    ))
+    script.add_raw(
+        _build_brick(
+            "IFA",
+            "ShortingPin",
+            "PEC",
+            -wire_r,
+            wire_r,
+            -wire_r,
+            wire_r,
+            0,
+            ifa_height,
+        )
+    )
 
     # Horizontal arm from shorting pin to arm end
-    script.add_raw(_build_brick(
-        "IFA", "HorizontalArm", "PEC",
-        0, arm_length,
-        -wire_r, wire_r,
-        ifa_height - wire_r, ifa_height + wire_r,
-    ))
+    script.add_raw(
+        _build_brick(
+            "IFA",
+            "HorizontalArm",
+            "PEC",
+            0,
+            arm_length,
+            -wire_r,
+            wire_r,
+            ifa_height - wire_r,
+            ifa_height + wire_r,
+        )
+    )
 
     # Feed pin (vertical, near shorting pin)
-    script.add_raw(_build_brick(
-        "IFA", "FeedPin", "PEC",
-        feed_x - wire_r, feed_x + wire_r,
-        -wire_r, wire_r,
-        0, ifa_height,
-    ))
+    script.add_raw(
+        _build_brick(
+            "IFA",
+            "FeedPin",
+            "PEC",
+            feed_x - wire_r,
+            feed_x + wire_r,
+            -wire_r,
+            wire_r,
+            0,
+            ifa_height,
+        )
+    )
 
     # Discrete port at feed pin base (between ground and arm)
     port_vba = (
@@ -1838,6 +1988,7 @@ def _build_ifa_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 10. Planar inverted-F antenna (PIFA)
 # ---------------------------------------------------------------------------
+
 
 def _build_pifa_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -1894,37 +2045,65 @@ def _build_pifa_antenna(args: dict) -> str:
     script.add_block(_build_frequency_range(f_min, f_max))
 
     # Ground plane at z=0
-    script.add_raw(_build_brick(
-        "PIFA", "Ground", "PEC",
-        0, gnd_l,
-        -gnd_w / 2, gnd_w / 2,
-        -0.5, 0,
-    ))
+    script.add_raw(
+        _build_brick(
+            "PIFA",
+            "Ground",
+            "PEC",
+            0,
+            gnd_l,
+            -gnd_w / 2,
+            gnd_w / 2,
+            -0.5,
+            0,
+        )
+    )
 
     # Top patch at z = pifa_height, located at corner of ground
-    script.add_raw(_build_brick(
-        "PIFA", "TopPatch", "PEC",
-        0, patch_l,
-        -patch_w / 2, patch_w / 2,
-        pifa_height, pifa_height + 0.1,
-    ))
+    script.add_raw(
+        _build_brick(
+            "PIFA",
+            "TopPatch",
+            "PEC",
+            0,
+            patch_l,
+            -patch_w / 2,
+            patch_w / 2,
+            pifa_height,
+            pifa_height + 0.1,
+        )
+    )
 
     # Shorting wall at x=0 (connects patch edge to ground)
-    script.add_raw(_build_brick(
-        "PIFA", "ShortingWall", "PEC",
-        -0.1, 0,
-        -short_w / 2, short_w / 2,
-        0, pifa_height,
-    ))
+    script.add_raw(
+        _build_brick(
+            "PIFA",
+            "ShortingWall",
+            "PEC",
+            -0.1,
+            0,
+            -short_w / 2,
+            short_w / 2,
+            0,
+            pifa_height,
+        )
+    )
 
     # Feed pin
     pin_r = 0.5
-    script.add_raw(_build_brick(
-        "PIFA", "FeedPin", "PEC",
-        feed_x - pin_r, feed_x + pin_r,
-        -pin_r, pin_r,
-        0, pifa_height,
-    ))
+    script.add_raw(
+        _build_brick(
+            "PIFA",
+            "FeedPin",
+            "PEC",
+            feed_x - pin_r,
+            feed_x + pin_r,
+            -pin_r,
+            pin_r,
+            0,
+            pifa_height,
+        )
+    )
 
     # Discrete port
     port_vba = (
@@ -1959,6 +2138,7 @@ def _build_pifa_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 11. Archimedean spiral antenna
 # ---------------------------------------------------------------------------
+
 
 def _build_spiral_antenna(args: dict) -> str:
     f_low = validate_frequency(args["freq_low_ghz"])
@@ -2127,6 +2307,7 @@ def _build_spiral_antenna(args: dict) -> str:
 # ---------------------------------------------------------------------------
 # 12. Bowtie antenna
 # ---------------------------------------------------------------------------
+
 
 def _build_bowtie_antenna(args: dict) -> str:
     freq = validate_frequency(args["frequency_ghz"])
@@ -2351,15 +2532,18 @@ _TEMPLATE_CATALOG = [
 
 
 def _build_list_templates(args: dict) -> str:
-    return json.dumps({
-        "antenna_templates": _TEMPLATE_CATALOG,
-        "total_count": len(_TEMPLATE_CATALOG),
-        "notes": [
-            "Use any tool name to generate a complete parametric antenna model.",
-            "All dimensions are auto-calculated from the target frequency.",
-            "VBA scripts include geometry, materials, ports, boundaries, and monitors.",
-        ],
-    }, indent=2)
+    return json.dumps(
+        {
+            "antenna_templates": _TEMPLATE_CATALOG,
+            "total_count": len(_TEMPLATE_CATALOG),
+            "notes": [
+                "Use any tool name to generate a complete parametric antenna model.",
+                "All dimensions are auto-calculated from the target frequency.",
+                "VBA scripts include geometry, materials, ports, boundaries, and monitors.",
+            ],
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2387,9 +2571,7 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
 # ---------------------------------------------------------------------------
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle an antenna template tool call.
 
     For design-template tools the VBA is generated but *not* automatically
@@ -2398,23 +2580,40 @@ async def handle(
     """
     handler_fn = _HANDLERS.get(name)
     if handler_fn is None:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Unknown antenna template tool: {name}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unknown antenna template tool: {name}",
+                    }
+                ),
+            )
+        ]
 
     try:
         result_text = handler_fn(arguments)
         return [TextContent(type="text", text=result_text)]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": str(e),
-        }))]
+        logging.getLogger(__name__).debug(
+            "Handled error in antenna_templates.handle", exc_info=True
+        )
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                    }
+                ),
+            )
+        ]
 
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)
