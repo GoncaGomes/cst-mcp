@@ -6,10 +6,10 @@ Strategy:
 3) If single-element realized gain < 5 dBi, upgrade to 2-element H-plane array
 4) Parameter sweeps for S11 band + farfield GetMax (realized gain)
 """
+
 from __future__ import annotations
 
 import json
-import math
 import sys
 import time
 from pathlib import Path
@@ -95,8 +95,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "gnd",
             brick_expr(
-                "Antenna", "Ground", "PEC",
-                "-gnd_x/2", "gnd_x/2", "-gnd_y/2", "gnd_y/2", "-metal_t", "0",
+                "Antenna",
+                "Ground",
+                "PEC",
+                "-gnd_x/2",
+                "gnd_x/2",
+                "-gnd_y/2",
+                "gnd_y/2",
+                "-metal_t",
+                "0",
             ),
         )
     )
@@ -104,8 +111,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "sub",
             brick_expr(
-                "Antenna", "Substrate", "Substrate",
-                "-gnd_x/2", "gnd_x/2", "-gnd_y/2", "gnd_y/2", "0", "sub_h",
+                "Antenna",
+                "Substrate",
+                "Substrate",
+                "-gnd_x/2",
+                "gnd_x/2",
+                "-gnd_y/2",
+                "gnd_y/2",
+                "0",
+                "sub_h",
             ),
         )
     )
@@ -115,9 +129,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "patch",
             brick_expr(
-                "Antenna", "Patch", "PEC",
-                "-patch_W/2", "patch_W/2", "-patch_L/2", "patch_L/2",
-                "sub_h", "sub_h+metal_t",
+                "Antenna",
+                "Patch",
+                "PEC",
+                "-patch_W/2",
+                "patch_W/2",
+                "-patch_L/2",
+                "patch_L/2",
+                "sub_h",
+                "sub_h+metal_t",
             ),
         )
     )
@@ -128,10 +148,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "feed",
             brick_expr(
-                "Antenna", "Feed", "PEC",
-                "-feed_w/2", "feed_w/2",
-                "-gnd_y/2", "-patch_L/2+inset",
-                "sub_h", "sub_h+metal_t",
+                "Antenna",
+                "Feed",
+                "PEC",
+                "-feed_w/2",
+                "feed_w/2",
+                "-gnd_y/2",
+                "-patch_L/2+inset",
+                "sub_h",
+                "sub_h+metal_t",
             ),
         )
     )
@@ -141,10 +166,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "slotL",
             brick_expr(
-                "Antenna", "SlotL", "PEC",
-                "-feed_w/2-inset_gap", "-feed_w/2",
-                "-patch_L/2", "-patch_L/2+inset",
-                "sub_h", "sub_h+metal_t",
+                "Antenna",
+                "SlotL",
+                "PEC",
+                "-feed_w/2-inset_gap",
+                "-feed_w/2",
+                "-patch_L/2",
+                "-patch_L/2+inset",
+                "sub_h",
+                "sub_h+metal_t",
             ),
         )
     )
@@ -152,10 +182,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
         (
             "slotR",
             brick_expr(
-                "Antenna", "SlotR", "PEC",
-                "feed_w/2", "feed_w/2+inset_gap",
-                "-patch_L/2", "-patch_L/2+inset",
-                "sub_h", "sub_h+metal_t",
+                "Antenna",
+                "SlotR",
+                "PEC",
+                "feed_w/2",
+                "feed_w/2+inset_gap",
+                "-patch_L/2",
+                "-patch_L/2+inset",
+                "sub_h",
+                "sub_h+metal_t",
             ),
         )
     )
@@ -168,9 +203,15 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
             (
                 "reflector",
                 brick_expr(
-                    "Reflector", "Plate", "PEC",
-                    "-refl_x/2", "refl_x/2", "-refl_y/2", "refl_y/2",
-                    "-metal_t-refl_gap-metal_t", "-metal_t-refl_gap",
+                    "Reflector",
+                    "Plate",
+                    "PEC",
+                    "-refl_x/2",
+                    "refl_x/2",
+                    "-refl_y/2",
+                    "refl_y/2",
+                    "-metal_t-refl_gap-metal_t",
+                    "-metal_t-refl_gap",
                 ),
             )
         )
@@ -184,16 +225,7 @@ def build_single_with_reflector(c: CSTClient, p: dict, *, use_reflector: bool) -
     steps.append(
         (
             "bc",
-            "\n".join(
-                [
-                    'Boundary.Xmin "expanded open"',
-                    'Boundary.Xmax "expanded open"',
-                    'Boundary.Ymin "expanded open"',
-                    'Boundary.Ymax "expanded open"',
-                    'Boundary.Zmin "expanded open"',
-                    'Boundary.Zmax "expanded open"',
-                ]
-            ),
+            'Boundary.Xmin "expanded open"\nBoundary.Xmax "expanded open"\nBoundary.Ymin "expanded open"\nBoundary.Ymax "expanded open"\nBoundary.Zmin "expanded open"\nBoundary.Zmax "expanded open"',
         )
     )
     # Port numeric at construction time from current p
@@ -237,7 +269,9 @@ def s11_band_metrics(project_path: str) -> dict:
     band_idx = [i for i in range(len(xs)) if BAND[0] <= xs[i] <= BAND[1]]
     if not band_idx:
         # nearest samples
-        band_idx = sorted(range(len(xs)), key=lambda i: min(abs(xs[i] - BAND[0]), abs(xs[i] - BAND[1])))[:5]
+        band_idx = sorted(
+            range(len(xs)), key=lambda i: min(abs(xs[i] - BAND[0]), abs(xs[i] - BAND[1]))
+        )[:5]
     band_ys = [ys[i] for i in band_idx]
     band_xs = [xs[i] for i in band_idx]
     i_best = min(range(len(band_ys)), key=lambda i: band_ys[i])
@@ -404,7 +438,12 @@ def main():
 
     report = {
         "project": str(PROJ),
-        "goals": {"band_mhz": [865, 868], "s11_db": -10, "gain_dbi": 5.0, "substrate": "FR-4 eps=4.4 tanD=0.02 h=1.6"},
+        "goals": {
+            "band_mhz": [865, 868],
+            "s11_db": -10,
+            "gain_dbi": 5.0,
+            "substrate": "FR-4 eps=4.4 tanD=0.02 h=1.6",
+        },
         "design": "inset rectangular patch + large ground + spaced PEC reflector",
         "n_trials": len(trials),
         "trials_summary": [
@@ -425,15 +464,21 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-    print(json.dumps({
-        "success": report["success"],
-        "success_band": ok_band,
-        "success_gain": ok_gain,
-        "final_s11": final.get("s11"),
-        "gain": final.get("gain_realized_dbi"),
-        "params": final.get("params"),
-        "project": str(PROJ),
-    }, indent=2, default=str))
+    print(
+        json.dumps(
+            {
+                "success": report["success"],
+                "success_band": ok_band,
+                "success_gain": ok_gain,
+                "final_s11": final.get("s11"),
+                "gain": final.get("gain_realized_dbi"),
+                "params": final.get("params"),
+                "project": str(PROJ),
+            },
+            indent=2,
+            default=str,
+        )
+    )
     print("wrote", OUT)
     return 0 if report["success"] else 1
 

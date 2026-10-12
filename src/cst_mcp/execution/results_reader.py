@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def parse_sparam_csv(path: str | Path) -> dict[str, Any]:
     from cst_mcp.execution.csv_curves import parse_sparam_csv as parse
+
     return parse(path)
 
 
@@ -64,8 +65,8 @@ class ResultsReader:
     def try_project_file(self, project_path: str, tree_item: str) -> dict[str, Any]:
         """Best-effort read via ``cst.results.ProjectFile`` (version-dependent)."""
         from cst_mcp.execution.curves import read_curve
-        return read_curve(project_path, tree_item)
 
+        return read_curve(project_path, tree_item)
 
 
 def vswr_from_s11_db(s11_db: float) -> float:

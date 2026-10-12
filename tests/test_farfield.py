@@ -38,7 +38,7 @@ def test_farfield_metrics_vba_official_getmax():
     assert "Sub Main" not in vba
     assert "GetMax" in vba
     assert "ASCIIExportSummary" not in vba
-    assert r'Farfields\farfield (f=2.4) [1]' in vba
+    assert r"Farfields\farfield (f=2.4) [1]" in vba
     assert "SelectTreeItem" in vba
     assert "FarfieldPlot.Plot" in vba
 
@@ -127,8 +127,10 @@ def test_farfield_vba_uses_only_documented_cst2026_farfieldplot_methods():
         "ar_angle": results._build_axial_ratio_vba(2.4, "vs_angle", 0, 45),
         "ar_point": results._build_axial_ratio_vba(2.4, "vs_frequency", 10, 20),
         "pattern_3d": results._build_radiation_pattern_3d_vba(2.4, 5, "spherical"),
-        "export_csv": _build_export_farfield(dict(file_path="C:/x/ff.txt", frequency=2.4)),
-        "export_ffs": _build_export_farfield(dict(file_path="C:/x/ff.ffs", frequency=2.4, format="ffs")),
+        "export_csv": _build_export_farfield({"file_path": "C:/x/ff.txt", "frequency": 2.4}),
+        "export_ffs": _build_export_farfield(
+            {"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs"}
+        ),
         "metrics": build_farfield_metrics_vba(r"Farfields\farfield (f=2.4) [1]", "C:/x/m.txt"),
         "fig_ascii": figures_3d_cst.build_ascii_export_vba(r"Farfields\f", "C:/x/a.txt", "gain", 5),
         "fig_list": figures_3d_cst.build_list_export_vba(r"Farfields\f", "C:/x/a.txt", "gain", 5),
@@ -143,7 +145,7 @@ def test_pattern_3d_is_a_gain_table_not_a_farfield_source():
 
     vba = results._build_radiation_pattern_3d_vba(2.4, 10, "spherical")
     assert "ASCIIExportAsSource" not in vba
-    assert "AddListEvaluationPoint(th, ph, 0, \"spherical\", \"\", 0)" in vba
+    assert 'AddListEvaluationPoint(th, ph, 0, "spherical", "", 0)' in vba
     assert 'CalculateList("")' in vba and 'GetList("spherical abs")' in vba
     assert "For ph = 0 To 350 Step 10" in vba and '.SetPlotMode ("gain")' in vba
     with pytest.raises(ValueError):
@@ -153,15 +155,15 @@ def test_pattern_3d_is_a_gain_table_not_a_farfield_source():
 def test_export_farfield_formats_and_documented_objects():
     from cst_mcp.tools.import_export import _build_export_farfield
 
-    csv = _build_export_farfield(dict(file_path="C:/x/ff.txt", frequency=2.4))
+    csv = _build_export_farfield({"file_path": "C:/x/ff.txt", "frequency": 2.4})
     assert "With ASCIIExport" in csv and ".Execute" in csv and "FarfieldPlot.Export" not in csv
     assert r'SelectTreeItem("Farfields\farfield (f=2.4)")' in csv
-    ffs = _build_export_farfield(dict(file_path="C:/x/ff.ffs", frequency=2.4, format="ffs"))
+    ffs = _build_export_farfield({"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs"})
     assert '.ASCIIExportAsSource ("C:/x/ff.ffs")' in ffs and "With ASCIIExport" not in ffs
     with pytest.raises(ValueError, match="nsf"):
-        _build_export_farfield(dict(file_path="C:/x/ff.nsf", frequency=2.4, format="nsf"))
+        _build_export_farfield({"file_path": "C:/x/ff.nsf", "frequency": 2.4, "format": "nsf"})
     with pytest.raises(ValueError):
-        _build_export_farfield(dict(file_path='C:/x/f"f.txt', frequency=2.4))
+        _build_export_farfield({"file_path": 'C:/x/f"f.txt', "frequency": 2.4})
 
 
 @pytest.mark.asyncio
@@ -174,17 +176,31 @@ async def test_export_farfield_connected_csv_uses_silent_documented_path():
     calls = []
     client = SimpleNamespace(
         connected=True,
-        export_farfield_ascii=lambda f, filepath=None, monitor_name=None: calls.append(
-            (f, filepath, monitor_name)) or {"status": "exported"},
+        export_farfield_ascii=lambda f, filepath=None, monitor_name=None: (
+            calls.append((f, filepath, monitor_name)) or {"status": "exported"}
+        ),
         execute_vba=lambda code: (_ for _ in ()).throw(AssertionError("no history VBA")),
-        execute_vba_silent=lambda code, history_fallback=True: calls.append(("silent", history_fallback))
-        or {"status": "executed"},
+        execute_vba_silent=lambda code, history_fallback=True: (
+            calls.append(("silent", history_fallback)) or {"status": "executed"}
+        ),
     )
-    out = _json.loads((await import_export.handle(
-        "cst_export_farfield", dict(file_path="C:/x/ff.txt", frequency=2.4), client))[0].text)
+    out = _json.loads(
+        (
+            await import_export.handle(
+                "cst_export_farfield", {"file_path": "C:/x/ff.txt", "frequency": 2.4}, client
+            )
+        )[0].text
+    )
     assert out["status"] == "exported" and calls[0] == (2.4, "C:/x/ff.txt", None)
-    out = _json.loads((await import_export.handle(
-        "cst_export_farfield", dict(file_path="C:/x/ff.ffs", frequency=2.4, format="ffs"), client))[0].text)
+    out = _json.loads(
+        (
+            await import_export.handle(
+                "cst_export_farfield",
+                {"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs"},
+                client,
+            )
+        )[0].text
+    )
     assert out["status"] == "executed" and calls[1] == ("silent", False)
 
 
@@ -204,8 +220,15 @@ async def test_export_farfield_ffs_tries_port_suffixed_tree_names():
         return {"status": "executed"} if ok else {"status": "error", "message": "not found"}
 
     client = SimpleNamespace(connected=True, execute_vba_silent=silent)
-    out = _json.loads((await import_export.handle(
-        "cst_export_farfield", dict(file_path="C:/x/ff.ffs", frequency=2.4, format="ffs"), client))[0].text)
+    out = _json.loads(
+        (
+            await import_export.handle(
+                "cst_export_farfield",
+                {"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs"},
+                client,
+            )
+        )[0].text
+    )
     assert out["status"] == "executed"
     assert out["tree_path"] == r"Farfields\farfield (f=2.4)[1]"
     assert out["tried_paths"][0] == r"Farfields\farfield (f=2.4) [1]" and len(codes) == 2
@@ -246,8 +269,10 @@ def test_pattern_cut_from_table_signed_theta():
 
 
 def test_metrics_kv_separates_gain_directivity_and_realized():
-    text = "select=-1\nGetMax=-6.51\nGetRadiationEfficiency=-3.215\nGetTotalEfficiency=-13.4\n" \
-           "GetPlotMode=realized gain\nGetMaxGain=3.68\nGetMaxDirectivity=6.9\nerr=\n"
+    text = (
+        "select=-1\nGetMax=-6.51\nGetRadiationEfficiency=-3.215\nGetTotalEfficiency=-13.4\n"
+        "GetPlotMode=realized gain\nGetMaxGain=3.68\nGetMaxDirectivity=6.9\nerr=\n"
+    )
     m = parse_farfield_metrics_kv(text)
     assert m["max_realized_gain_dbi"] == -6.51 and m["max_gain_dbi"] == 3.68
     assert m["max_directivity_dbi"] == 6.9

@@ -21,4 +21,4 @@ def test_port_vba_not_on_bound_and_flush_y():
     assert 'Yrange "-30", "-30"' in vba or 'Yrange "-30.0", "-30.0"' in vba
     # Z starts at ground bottom, not deep below in free space
     assert 'Zrange "-0.035"' in vba
-    assert "PortOnBound \"True\"" not in vba
+    assert 'PortOnBound "True"' not in vba

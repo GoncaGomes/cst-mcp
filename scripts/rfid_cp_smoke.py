@@ -1,4 +1,5 @@
 """Single build+solve smoke test for CP RFID antenna (no sweep)."""
+
 from __future__ import annotations
 
 import importlib.util

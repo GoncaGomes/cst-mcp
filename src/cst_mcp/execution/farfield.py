@@ -9,7 +9,6 @@ from typing import Any
 
 from cst_mcp.vba_safety import validate_file_path, vba_escape
 
-
 _FREQ_RE = re.compile(
     r"farfield\s*\(\s*f\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*\)",
     re.IGNORECASE,
@@ -22,64 +21,66 @@ _METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "max_realized_gain_dbi",
         re.compile(
             r"maximum\s+realized\s+gain(?:\s*\[dB(?:i)?\])?\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "max_gain_dbi",
         re.compile(
             r"maximum\s+gain(?:\s*\[dB(?:i)?\])?\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "directivity_dbi",
         re.compile(
             r"maximum\s+directivity(?:\s*\[dB(?:i)?\])?\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "radiation_efficiency_db",
         re.compile(
             r"radiation\s+efficiency\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)\s*dB",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "total_efficiency_db",
         re.compile(
             r"total\s+efficiency\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)\s*dB",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "radiation_efficiency_percent",
         re.compile(
             r"radiation\s+efficiency\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)\s*%",
-            re.I,
+            re.IGNORECASE,
         ),
     ),
     (
         "frequency_label",
-        re.compile(r"frequency\s*:\s*([-+]?[0-9]*\.?[0-9]+)\s*(MHz|GHz|Hz)?", re.I),
+        re.compile(r"frequency\s*:\s*([-+]?[0-9]*\.?[0-9]+)\s*(MHz|GHz|Hz)?", re.IGNORECASE),
     ),
     (
         "step_theta_deg",
-        re.compile(r"step\s+angle\s+theta\s*:\s*([-+]?[0-9]*\.?[0-9]+)", re.I),
+        re.compile(r"step\s+angle\s+theta\s*:\s*([-+]?[0-9]*\.?[0-9]+)", re.IGNORECASE),
     ),
     (
         "step_phi_deg",
-        re.compile(r"step\s+angle\s+phi\s*:\s*([-+]?[0-9]*\.?[0-9]+)", re.I),
+        re.compile(r"step\s+angle\s+phi\s*:\s*([-+]?[0-9]*\.?[0-9]+)", re.IGNORECASE),
     ),
     # Loose fallbacks (after specific ones)
     (
         "max_gain_dbi",
-        re.compile(r"(?<!realized\s)(?<!maximum\s)gain\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)", re.I),
+        re.compile(
+            r"(?<!realized\s)(?<!maximum\s)gain\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)", re.IGNORECASE
+        ),
     ),
     (
         "directivity_dbi",
-        re.compile(r"(?<!maximum\s)directivity\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)", re.I),
+        re.compile(r"(?<!maximum\s)directivity\s*[:=]\s*([-+]?[0-9]*\.?[0-9]+)", re.IGNORECASE),
     ),
 ]
 
@@ -182,8 +183,8 @@ def discover_farfield_from_project_dir(project_path: str | None) -> list[dict[st
                 if "farfield" not in name.lower():
                     continue
                 # strip extensions like _1.ffm, 2D_1.ffp
-                mon = re.sub(r"(_?\d+)?\.(ffm|fme|ffp|ffs|txt|csv)$", "", name, flags=re.I)
-                mon = re.sub(r"2D$", "", mon, flags=re.I).strip()
+                mon = re.sub(r"(_?\d+)?\.(ffm|fme|ffp|ffs|txt|csv)$", "", name, flags=re.IGNORECASE)
+                mon = re.sub(r"2D$", "", mon, flags=re.IGNORECASE).strip()
                 if mon in seen:
                     continue
                 seen.add(mon)
@@ -242,6 +243,7 @@ def parse_farfield_summary_text(text: str) -> dict[str, Any]:
 
     return metrics
 
+
 _ASCII_COL_RE = re.compile(r"([A-Za-z.]+(?:\([^)]*\))?)\s*\[([^\]]*)\]")
 
 
@@ -266,7 +268,7 @@ def parse_cst_farfield_ascii(text: str) -> dict[str, Any] | None:
         for name, unit in _ASCII_COL_RE.findall(lines[header_i])
     ]
     rows: list[list[float]] = []
-    for ln in lines[header_i + 1:]:
+    for ln in lines[header_i + 1 :]:
         parts = ln.split()
         if not parts or set(ln.strip()) <= {"-"}:
             continue
@@ -301,8 +303,11 @@ def parse_farfield_pattern_csv(path: str | Path, max_points: int = 500) -> dict[
             "columns": table["columns"],
             "value_column": table["columns"][vc] if vc < len(table["columns"]) else vc,
             "n_points": len(rows),
-            "metrics": {"peak_value": peak[vc], "theta_or_col0": peak[0],
-                        "phi_or_col1": peak[1] if len(peak) > 2 else None},
+            "metrics": {
+                "peak_value": peak[vc],
+                "theta_or_col0": peak[0],
+                "phi_or_col1": peak[1] if len(peak) > 2 else None,
+            },
             "sample": rows[::step][:max_points],
             "path": str(path),
         }
@@ -335,7 +340,9 @@ def parse_farfield_pattern_csv(path: str | Path, max_points: int = 500) -> dict[
 
     # Assume last numeric column is the quantity (dB gain-like)
     values = [r[-1] for r in rows]
-    peak_i = max(range(len(values)), key=lambda i: values[i] if math.isfinite(values[i]) else -1e300)
+    peak_i = max(
+        range(len(values)), key=lambda i: values[i] if math.isfinite(values[i]) else -1e300
+    )
     peak_row = rows[peak_i]
     metrics: dict[str, Any] = {"peak_value": values[peak_i]}
     if len(peak_row) >= 2:
@@ -349,7 +356,7 @@ def parse_farfield_pattern_csv(path: str | Path, max_points: int = 500) -> dict[
         "source": "pattern_csv",
         "n_points": len(rows),
         "metrics": metrics,
-        "sample": sample[: max_points],
+        "sample": sample[:max_points],
         "path": str(path),
     }
 
@@ -374,7 +381,7 @@ def build_farfield_metrics_vba(tree_path: str, metrics_path: str) -> str:
             '  .Plottype ("3d")',
             "  .Step (5)",
             "  .Step2 (5)",
-            '  .SetLockSteps (True)',
+            "  .SetLockSteps (True)",
             '  .SetPlotMode ("realized gain")',
             "  .SetScaleLinear (False)",
             "  .UseFarfieldApproximation (True)",

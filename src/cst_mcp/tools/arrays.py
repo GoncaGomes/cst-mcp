@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import cmath
 import json
+import logging
 import math
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from mcp.types import TextContent, Tool
 
@@ -30,7 +32,6 @@ from cst_mcp.validators import (
 from cst_mcp.vba_builder import VBABuilder, VBAScript
 
 if TYPE_CHECKING:
-
     from cst_mcp.cst_client import CSTClient
 
 # ---------------------------------------------------------------------------
@@ -84,7 +85,6 @@ TOOLS: list[Tool] = [
             "required": ["num_elements", "spacing_mm", "frequency_ghz"],
         },
     ),
-
     # 2 -- Planar array
     Tool(
         name="cst_array_planar",
@@ -135,7 +135,6 @@ TOOLS: list[Tool] = [
             "required": ["num_x", "num_y", "spacing_x_mm", "spacing_y_mm", "frequency_ghz"],
         },
     ),
-
     # 3 -- Circular array
     Tool(
         name="cst_array_circular",
@@ -169,7 +168,6 @@ TOOLS: list[Tool] = [
             "required": ["num_elements", "radius_mm", "frequency_ghz"],
         },
     ),
-
     # 4 -- Array factor computation (pure Python)
     Tool(
         name="cst_array_compute_factor",
@@ -210,7 +208,6 @@ TOOLS: list[Tool] = [
             "required": ["num_elements", "spacing_wavelengths"],
         },
     ),
-
     # 5 -- Beam steering phase computation
     Tool(
         name="cst_array_beam_steering",
@@ -248,7 +245,6 @@ TOOLS: list[Tool] = [
             "required": ["num_elements", "spacing_mm", "frequency_ghz", "scan_theta_deg"],
         },
     ),
-
     # 6 -- Amplitude taper design (pure Python)
     Tool(
         name="cst_array_taper_design",
@@ -268,8 +264,13 @@ TOOLS: list[Tool] = [
                 "taper_type": {
                     "type": "string",
                     "enum": [
-                        "uniform", "cosine", "hamming", "hanning",
-                        "blackman", "taylor", "chebyshev",
+                        "uniform",
+                        "cosine",
+                        "hamming",
+                        "hanning",
+                        "blackman",
+                        "taylor",
+                        "chebyshev",
                     ],
                     "description": "Window/taper type",
                 },
@@ -282,7 +283,6 @@ TOOLS: list[Tool] = [
             "required": ["num_elements", "taper_type"],
         },
     ),
-
     # 7 -- Grating lobe analysis (pure Python)
     Tool(
         name="cst_array_grating_lobe_analysis",
@@ -307,7 +307,6 @@ TOOLS: list[Tool] = [
             "required": ["spacing_wavelengths"],
         },
     ),
-
     # 8 -- Mutual coupling extraction setup
     Tool(
         name="cst_array_mutual_coupling",
@@ -342,11 +341,14 @@ TOOLS: list[Tool] = [
 
 def _result_json(calculated: dict, vba_script: str, notes: list[str]) -> str:
     """Format the standard return payload (matches antenna_templates pattern)."""
-    return json.dumps({
-        "calculated_parameters": calculated,
-        "vba_script": vba_script,
-        "notes": notes,
-    }, indent=2)
+    return json.dumps(
+        {
+            "calculated_parameters": calculated,
+            "vba_script": vba_script,
+            "notes": notes,
+        },
+        indent=2,
+    )
 
 
 def _wavelength_mm(freq_ghz: float) -> float:
@@ -518,8 +520,7 @@ def _build_circular_array(args: dict) -> str:
 
     script = VBAScript()
     script.add_comment(
-        f"Circular array: {num} elements, radius={radius:.2f} mm, "
-        f"angular step={angle_step:.1f} deg"
+        f"Circular array: {num} elements, radius={radius:.2f} mm, angular step={angle_step:.1f} deg"
     )
     script.add_comment(f"Frequency: {freq} GHz, wavelength: {lam:.2f} mm")
 
@@ -557,8 +558,10 @@ def _build_circular_array(args: dict) -> str:
         notes=[
             f"Element_1 must already exist in component '{component}' at radius={radius} mm on the +X axis.",
             f"Elements are rotated about the Z-axis at {angle_step:.1f} deg intervals.",
-            f"Arc spacing between adjacent elements is {arc_spacing:.2f} mm "
-            f"({arc_spacing / lam:.3f} wavelengths).",
+            (
+                f"Arc spacing between adjacent elements is {arc_spacing:.2f} mm "
+                f"({arc_spacing / lam:.3f} wavelengths)."
+            ),
         ],
     )
 
@@ -647,17 +650,20 @@ def _build_array_factor(args: dict) -> str:
         out_theta.append(round(theta_deg_list[i], 1))
         out_af.append(round(af_db[i], 2))
 
-    return json.dumps({
-        "theta_deg": out_theta,
-        "af_db": out_af,
-        "half_power_beamwidth_deg": round(hpbw, 2),
-        "first_null_beamwidth_deg": round(fnbw, 2),
-        "peak_sidelobe_level_db": round(psll, 2),
-        "directivity_db": round(directivity_db, 2),
-        "scan_angle_deg": scan_deg,
-        "num_elements": num,
-        "spacing_wavelengths": d_lam,
-    }, indent=2)
+    return json.dumps(
+        {
+            "theta_deg": out_theta,
+            "af_db": out_af,
+            "half_power_beamwidth_deg": round(hpbw, 2),
+            "first_null_beamwidth_deg": round(fnbw, 2),
+            "peak_sidelobe_level_db": round(psll, 2),
+            "directivity_db": round(directivity_db, 2),
+            "scan_angle_deg": scan_deg,
+            "num_elements": num,
+            "spacing_wavelengths": d_lam,
+        },
+        indent=2,
+    )
 
 
 def _find_beamwidth(
@@ -670,7 +676,11 @@ def _find_beamwidth(
         if af_db[i] <= level_db:
             # Linear interpolation
             if i + 1 <= peak_idx:
-                frac = (level_db - af_db[i]) / (af_db[i + 1] - af_db[i]) if af_db[i + 1] != af_db[i] else 0
+                frac = (
+                    (level_db - af_db[i]) / (af_db[i + 1] - af_db[i])
+                    if af_db[i + 1] != af_db[i]
+                    else 0
+                )
                 left_theta = theta[i] + frac * (theta[i + 1] - theta[i])
             else:
                 left_theta = theta[i]
@@ -681,7 +691,11 @@ def _find_beamwidth(
     for i in range(peak_idx, len(af_db)):
         if af_db[i] <= level_db:
             if i - 1 >= peak_idx:
-                frac = (level_db - af_db[i - 1]) / (af_db[i] - af_db[i - 1]) if af_db[i] != af_db[i - 1] else 0
+                frac = (
+                    (level_db - af_db[i - 1]) / (af_db[i] - af_db[i - 1])
+                    if af_db[i] != af_db[i - 1]
+                    else 0
+                )
                 right_theta = theta[i - 1] + frac * (theta[i] - theta[i - 1])
             else:
                 right_theta = theta[i]
@@ -690,9 +704,7 @@ def _find_beamwidth(
     return abs(right_theta - left_theta)
 
 
-def _find_null_beamwidth(
-    af_db: list[float], theta: list[float], peak_idx: int
-) -> float:
+def _find_null_beamwidth(af_db: list[float], theta: list[float], peak_idx: int) -> float:
     """Find the first-null beamwidth (angle between first nulls on each side)."""
     # A null is a local minimum that is significantly below the peak
     null_threshold = -30.0  # consider anything below -30 dB a null
@@ -719,9 +731,7 @@ def _find_null_beamwidth(
     return abs(right_null - left_null)
 
 
-def _find_peak_sidelobe(
-    af_db: list[float], theta: list[float], peak_idx: int
-) -> float:
+def _find_peak_sidelobe(af_db: list[float], theta: list[float], peak_idx: int) -> float:
     """Find the peak sidelobe level relative to the main beam.
 
     Searches outward from the main-beam peak for the first local minimum
@@ -748,21 +758,17 @@ def _find_peak_sidelobe(
     sidelobe_max = -300.0
 
     # Check left sidelobe region (everything to the left of the first null)
-    for i in range(0, null_left + 1):
-        if af_db[i] > sidelobe_max:
-            sidelobe_max = af_db[i]
+    for i in range(null_left + 1):
+        sidelobe_max = max(sidelobe_max, af_db[i])
 
     # Check right sidelobe region (everything to the right of the first null)
     for i in range(null_right, n):
-        if af_db[i] > sidelobe_max:
-            sidelobe_max = af_db[i]
+        sidelobe_max = max(sidelobe_max, af_db[i])
 
     return sidelobe_max
 
 
-def _estimate_directivity(
-    af_linear: list[float], theta_deg: list[float], step_deg: float
-) -> float:
+def _estimate_directivity(af_linear: list[float], theta_deg: list[float], step_deg: float) -> float:
     """Estimate directivity from the AF pattern using numerical integration."""
     step_rad = math.radians(step_deg)
     peak_sq = max(v * v for v in af_linear)
@@ -818,12 +824,8 @@ def _build_beam_steering(args: dict) -> str:
 
     # Generate VBA to set port phases
     script = VBAScript()
-    script.add_comment(
-        f"Beam steering: scan_theta={scan_theta} deg, scan_phi={scan_phi} deg"
-    )
-    script.add_comment(
-        f"Progressive phase shift: {math.degrees(beta):.2f} deg/element"
-    )
+    script.add_comment(f"Beam steering: scan_theta={scan_theta} deg, scan_phi={scan_phi} deg")
+    script.add_comment(f"Progressive phase shift: {math.degrees(beta):.2f} deg/element")
 
     for n in range(num):
         port_num = n + 1
@@ -834,22 +836,25 @@ def _build_beam_steering(args: dict) -> str:
         vba.call("Modify")
         script.add_block(vba)
 
-    return json.dumps({
-        "phase_weights_deg": phase_weights,
-        "progressive_phase_deg": round(math.degrees(beta), 2),
-        "scan_theta_deg": scan_theta,
-        "scan_phi_deg": scan_phi,
-        "spacing_mm": spacing,
-        "spacing_wavelengths": round(spacing / lam, 4),
-        "frequency_ghz": freq,
-        "wavelength_mm": round(lam, 3),
-        "vba_script": script.build(),
-        "notes": [
-            f"Phase weights calculated for {num}-element array.",
-            f"Progressive phase shift: {math.degrees(beta):.2f} deg per element.",
-            f"Beam steered to theta={scan_theta} deg from broadside.",
-        ],
-    }, indent=2)
+    return json.dumps(
+        {
+            "phase_weights_deg": phase_weights,
+            "progressive_phase_deg": round(math.degrees(beta), 2),
+            "scan_theta_deg": scan_theta,
+            "scan_phi_deg": scan_phi,
+            "spacing_mm": spacing,
+            "spacing_wavelengths": round(spacing / lam, 4),
+            "frequency_ghz": freq,
+            "wavelength_mm": round(lam, 3),
+            "vba_script": script.build(),
+            "notes": [
+                f"Phase weights calculated for {num}-element array.",
+                f"Progressive phase shift: {math.degrees(beta):.2f} deg per element.",
+                f"Beam steered to theta={scan_theta} deg from broadside.",
+            ],
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -877,29 +882,21 @@ def _build_taper_design(args: dict) -> str:
         expected_sll = -13.26  # uniform linear array SLL
 
     elif taper == "cosine":
-        weights = [
-            math.cos(math.pi * (n - (N - 1) / 2.0) / N)
-            for n in range(N)
-        ]
+        weights = [math.cos(math.pi * (n - (N - 1) / 2.0) / N) for n in range(N)]
         expected_sll = -23.0
 
     elif taper == "hamming":
-        weights = [
-            0.54 - 0.46 * math.cos(2.0 * math.pi * n / (N - 1))
-            for n in range(N)
-        ]
+        weights = [0.54 - 0.46 * math.cos(2.0 * math.pi * n / (N - 1)) for n in range(N)]
         expected_sll = -42.7
 
     elif taper == "hanning":
-        weights = [
-            0.5 * (1.0 - math.cos(2.0 * math.pi * n / (N - 1)))
-            for n in range(N)
-        ]
+        weights = [0.5 * (1.0 - math.cos(2.0 * math.pi * n / (N - 1))) for n in range(N)]
         expected_sll = -31.5
 
     elif taper == "blackman":
         weights = [
-            0.42 - 0.5 * math.cos(2.0 * math.pi * n / (N - 1))
+            0.42
+            - 0.5 * math.cos(2.0 * math.pi * n / (N - 1))
             + 0.08 * math.cos(4.0 * math.pi * n / (N - 1))
             for n in range(N)
         ]
@@ -927,18 +924,21 @@ def _build_taper_design(args: dict) -> str:
     sum_w2 = sum(w * w for w in weights)
     taper_eff = (sum_w * sum_w) / (N * sum_w2) if sum_w2 > 0 else 1.0
 
-    return json.dumps({
-        "amplitude_weights": [round(w, 6) for w in weights],
-        "expected_sll_db": round(expected_sll, 1),
-        "taper_efficiency": round(taper_eff, 4),
-        "taper_type": taper,
-        "num_elements": N,
-        "notes": [
-            f"{taper.capitalize()} taper for {N} elements.",
-            f"Expected peak sidelobe level: {expected_sll:.1f} dB.",
-            f"Taper efficiency: {taper_eff:.4f} ({taper_eff * 100:.1f}%).",
-        ],
-    }, indent=2)
+    return json.dumps(
+        {
+            "amplitude_weights": [round(w, 6) for w in weights],
+            "expected_sll_db": round(expected_sll, 1),
+            "taper_efficiency": round(taper_eff, 4),
+            "taper_type": taper,
+            "num_elements": N,
+            "notes": [
+                f"{taper.capitalize()} taper for {N} elements.",
+                f"Expected peak sidelobe level: {expected_sll:.1f} dB.",
+                f"Taper efficiency: {taper_eff:.4f} ({taper_eff * 100:.1f}%).",
+            ],
+        },
+        indent=2,
+    )
 
 
 def _taylor_weights(n: int, sll_db: float) -> list[float]:
@@ -992,7 +992,7 @@ def _chebyshev_weights(n: int, sll_db: float) -> list[float]:
 
     weights = [0.0] * n
     for i in range(n):
-        xi = (i - (n - 1) / 2.0)
+        xi = i - (n - 1) / 2.0
         w = 0.0
         for k in range(n):
             # Chebyshev polynomial evaluation
@@ -1055,19 +1055,24 @@ def _build_grating_lobe_analysis(args: dict) -> str:
                             grating_angles.append(angle_rounded)
         grating_angles.sort()
 
-    return json.dumps({
-        "has_grating_lobes": has_grating_lobes,
-        "max_safe_spacing_wavelengths": round(max_safe_spacing, 4),
-        "spacing_wavelengths": d_lam,
-        "max_scan_angle_deg": max_scan,
-        "grating_lobe_angles_deg": grating_angles,
-        "notes": [
-            f"Element spacing: {d_lam} wavelengths.",
-            f"Maximum scan angle: {max_scan} degrees.",
-            f"Safe spacing for no grating lobes: < {max_safe_spacing:.4f} wavelengths.",
-            "Grating lobes present!" if has_grating_lobes else "No grating lobes in visible space.",
-        ],
-    }, indent=2)
+    return json.dumps(
+        {
+            "has_grating_lobes": has_grating_lobes,
+            "max_safe_spacing_wavelengths": round(max_safe_spacing, 4),
+            "spacing_wavelengths": d_lam,
+            "max_scan_angle_deg": max_scan,
+            "grating_lobe_angles_deg": grating_angles,
+            "notes": [
+                f"Element spacing: {d_lam} wavelengths.",
+                f"Maximum scan angle: {max_scan} degrees.",
+                f"Safe spacing for no grating lobes: < {max_safe_spacing:.4f} wavelengths.",
+                "Grating lobes present!"
+                if has_grating_lobes
+                else "No grating lobes in visible space.",
+            ],
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1126,19 +1131,22 @@ def _build_mutual_coupling(args: dict) -> str:
             else:
                 coupling_pairs.append(f"S({p1},{p2}) - coupling")
 
-    return json.dumps({
-        "vba_script": script.build(),
-        "num_ports": num_ports,
-        "port_numbers": port_numbers,
-        "coupling_matrix_entries": coupling_pairs,
-        "total_s_parameters": len(coupling_pairs),
-        "notes": [
-            f"Configured {num_ports}-port S-parameter simulation.",
-            "Run frequency-domain solver to extract the coupling matrix.",
-            "S(i,j) with i!=j gives mutual coupling between ports i and j.",
-            "All ports normalised to 50 ohms.",
-        ],
-    }, indent=2)
+    return json.dumps(
+        {
+            "vba_script": script.build(),
+            "num_ports": num_ports,
+            "port_numbers": port_numbers,
+            "coupling_matrix_entries": coupling_pairs,
+            "total_s_parameters": len(coupling_pairs),
+            "notes": [
+                f"Configured {num_ports}-port S-parameter simulation.",
+                "Run frequency-domain solver to extract the coupling matrix.",
+                "S(i,j) with i!=j gives mutual coupling between ports i and j.",
+                "All ports normalised to 50 ohms.",
+            ],
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1162,29 +1170,42 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
 # ---------------------------------------------------------------------------
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle an array synthesis tool call."""
     handler_fn = _HANDLERS.get(name)
     if handler_fn is None:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Unknown array tool: {name}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unknown array tool: {name}",
+                    }
+                ),
+            )
+        ]
 
     try:
         result_text = handler_fn(arguments)
         return [TextContent(type="text", text=result_text)]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": str(e),
-        }))]
+        logging.getLogger(__name__).debug("Handled error in arrays.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                    }
+                ),
+            )
+        ]
 
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

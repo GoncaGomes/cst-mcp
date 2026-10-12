@@ -38,6 +38,7 @@ class CSTClient(CSTSession):
     def execute_vba(self, vba_code: str, history_label: str | None = None) -> dict:
         """History VBA execution (connected) or offline script return."""
         import re
+
         if self.has_project and re.search(r"(?im)^\s*(?:Debug\.Print|MsgBox)\s+", vba_code):
             return self.capture_vba_output(vba_code)
         result = self.run_history(vba_code, label=history_label)
@@ -88,8 +89,12 @@ class CSTClient(CSTSession):
                 errors[key[: -len(".error")]] = value
             else:
                 values[key] = value
-        return {"status": "ok", "values": values, "errors": errors,
-                "source": "VBA query via output capture (no model history)"}
+        return {
+            "status": "ok",
+            "values": values,
+            "errors": errors,
+            "source": "VBA query via output capture (no model history)",
+        }
 
     def execute_vba_silent(self, vba_code: str, *, history_fallback: bool = True) -> dict:
         return self.run_vba_silent(vba_code, history_fallback=history_fallback)
@@ -102,12 +107,18 @@ class CSTClient(CSTSession):
             return {"status": "error", "message": "Open and save a project before reading results"}
         running = self.is_solver_running(timeout_s=5)
         if running is not False:
-            return {"status": "busy", "running": running,
-                    "message": "Results are not read while the solver is active or its state is unknown"}
+            return {
+                "status": "busy",
+                "running": running,
+                "message": "Results are not read while the solver is active or its state is unknown",
+            }
         if not tree_path.startswith(("1D Results\\", "0D Results\\")):
-            return {"status": "error", "code": "requires_dedicated_field_export",
-                    "message": "This tree item is not a 1D curve. Use a dedicated field/farfield export; no scalar curve is fabricated.",
-                    "tree_path": tree_path}
+            return {
+                "status": "error",
+                "code": "requires_dedicated_field_export",
+                "message": "This tree item is not a 1D curve. Use a dedicated field/farfield export; no scalar curve is fabricated.",
+                "tree_path": tree_path,
+            }
         return read_curve(self.project_path, tree_path, run_id, allow_interactive=True)
 
     def read_project_messages(self) -> dict:
@@ -116,6 +127,7 @@ class CSTClient(CSTSession):
     def export_result(self, tree_path: str, filepath: str) -> dict:
         """Legacy optimization contract: frequency in GHz and reflection dB."""
         from pathlib import Path
+
         from cst_mcp.execution.curves import format_curve, frequency_scale
 
         result = self.get_result(tree_path)
@@ -126,14 +138,27 @@ class CSTClient(CSTSession):
             curve = format_curve(result, "db")
             # Optimization cannot use undefined dB points as finite measurements.
             if any(y is None for y in curve["y"]):
-                return {"status": "error", "message": "Zero-amplitude samples have undefined finite dB; inspect raw complex data"}
+                return {
+                    "status": "error",
+                    "message": "Zero-amplitude samples have undefined finite dB; inspect raw complex data",
+                }
             out = Path(filepath)
             out.parent.mkdir(parents=True, exist_ok=True)
-            text = "Frequency / GHz    S / dB\n" + "\n".join(
-                f"{x * scale:.17g} {y:.17g}" for x, y in zip(result["x"], curve["y"])) + "\n"
+            text = (
+                "Frequency / GHz    S / dB\n"
+                + "\n".join(f"{x * scale:.17g} {y:.17g}" for x, y in zip(result["x"], curve["y"]))
+                + "\n"
+            )
             out.write_text(text, encoding="utf-8")
-            return {"status": "exported", "path": str(out), "tree_path": tree_path, "source": "cst.results", "format": "db"}
+            return {
+                "status": "exported",
+                "path": str(out),
+                "tree_path": tree_path,
+                "source": "cst.results",
+                "format": "db",
+            }
         except Exception as exc:
+            logger.debug("Handled error in cst_client.export_result", exc_info=True)
             return {"status": "error", "message": str(exc)}
 
     # -- dialog management (from original package) ----------------------------

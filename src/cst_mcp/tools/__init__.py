@@ -19,8 +19,8 @@ from cst_mcp.tools import (
     matching,
     materials,
     mesh,
-    optimization,
     official,
+    optimization,
     parameters,
     pcb,
     ports,
@@ -42,7 +42,8 @@ if TYPE_CHECKING:
 # Full ported modules + our high-level workflows
 _MODULES = (
     official,
-    connection,    project,
+    connection,
+    project,
     geometry,
     boolean,
     transforms,

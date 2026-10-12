@@ -7,16 +7,16 @@ Boolean ops use direct ``Solid.<Op>`` VBA calls (no With blocks).
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from mcp.types import TextContent, Tool
 
-from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.validators import validate_component_path
 from cst_mcp.vba_builder import VBABuilder
+from cst_mcp.vba_safety import vba_escape as _q
 
 if TYPE_CHECKING:
-
     from cst_mcp.cst_client import CSTClient
 
 # ---------------------------------------------------------------------------
@@ -107,9 +107,7 @@ _TOOL_NAMES: set[str] = set(_OPERATION_MAP)
 # ---------------------------------------------------------------------------
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a boolean operation tool call."""
     try:
         operation = _OPERATION_MAP.get(name)
@@ -140,10 +138,13 @@ async def handle(
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in boolean.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +154,6 @@ async def handle(
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

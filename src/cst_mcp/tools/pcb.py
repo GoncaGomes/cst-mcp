@@ -7,21 +7,21 @@ importing Gerber files, and listing predefined stackup templates.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.vba_builder import VBABuilder, VBAScript
-from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.validators import (
     validate_file_path,
     validate_name,
     validate_positive,
     validate_range,
 )
-
+from cst_mcp.vba_builder import VBABuilder, VBAScript
+from cst_mcp.vba_safety import vba_escape as _q
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -88,7 +88,6 @@ TOOLS: list[Tool] = [
             "required": ["layers", "board_width_mm", "board_length_mm"],
         },
     ),
-
     # 2. Create PCB trace
     Tool(
         name="cst_pcb_create_trace",
@@ -175,7 +174,6 @@ TOOLS: list[Tool] = [
             "required": ["trace_type", "length_mm", "layer"],
         },
     ),
-
     # 3. Create PCB via
     Tool(
         name="cst_pcb_create_via",
@@ -241,7 +239,6 @@ TOOLS: list[Tool] = [
             "required": ["x", "y", "start_layer", "end_layer", "start_z", "end_z"],
         },
     ),
-
     # 4. Create ground/power plane
     Tool(
         name="cst_pcb_create_ground_plane",
@@ -293,7 +290,6 @@ TOOLS: list[Tool] = [
             "required": ["layer", "width_mm", "length_mm"],
         },
     ),
-
     # 5. Import Gerber files
     Tool(
         name="cst_pcb_import_gerber",
@@ -323,7 +319,6 @@ TOOLS: list[Tool] = [
             "required": ["file_path", "layer_name"],
         },
     ),
-
     # 6. List stackup templates
     Tool(
         name="cst_pcb_list_stackup_templates",
@@ -346,7 +341,6 @@ TOOLS: list[Tool] = [
             "required": [],
         },
     ),
-
     # 7. Create differential pair traces
     Tool(
         name="cst_pcb_differential_pair",
@@ -412,7 +406,6 @@ TOOLS: list[Tool] = [
             "required": ["name", "trace_width_mm", "gap_mm", "length_mm", "layer"],
         },
     ),
-
     # 8. Detailed via model with parasitics
     Tool(
         name="cst_pcb_via_model",
@@ -478,12 +471,17 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "drill_diameter_mm", "pad_diameter_mm",
-                "antipad_diameter_mm", "start_layer", "end_layer", "x", "y",
+                "name",
+                "drill_diameter_mm",
+                "pad_diameter_mm",
+                "antipad_diameter_mm",
+                "start_layer",
+                "end_layer",
+                "x",
+                "y",
             ],
         },
     ),
-
     # 9. Via fence for isolation or SIW
     Tool(
         name="cst_pcb_via_fence",
@@ -546,12 +544,17 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "x_start", "y_start", "x_end", "y_end",
-                "via_spacing_mm", "via_diameter_mm", "pad_diameter_mm",
+                "name",
+                "x_start",
+                "y_start",
+                "x_end",
+                "y_end",
+                "via_spacing_mm",
+                "via_diameter_mm",
+                "pad_diameter_mm",
             ],
         },
     ),
-
     # 10. CPW to microstrip transition
     Tool(
         name="cst_pcb_cpw_transition",
@@ -610,12 +613,16 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "cpw_width_mm", "cpw_gap_mm", "microstrip_width_mm",
-                "transition_length_mm", "layer", "height_mm",
+                "name",
+                "cpw_width_mm",
+                "cpw_gap_mm",
+                "microstrip_width_mm",
+                "transition_length_mm",
+                "layer",
+                "height_mm",
             ],
         },
     ),
-
     # 11. Calculate coupling between parallel traces (pure Python)
     Tool(
         name="cst_pcb_calculate_coupling",
@@ -654,12 +661,15 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "trace_width_mm", "separation_mm", "height_mm",
-                "epsilon_r", "coupling_length_mm", "frequency_ghz",
+                "trace_width_mm",
+                "separation_mm",
+                "height_mm",
+                "epsilon_r",
+                "coupling_length_mm",
+                "frequency_ghz",
             ],
         },
     ),
-
     # 12. Substrate Integrated Waveguide
     Tool(
         name="cst_pcb_siw_waveguide",
@@ -723,8 +733,12 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "name", "width_mm", "via_diameter_mm", "via_pitch_mm",
-                "length_mm", "layer",
+                "name",
+                "width_mm",
+                "via_diameter_mm",
+                "via_pitch_mm",
+                "length_mm",
+                "layer",
             ],
         },
     ),
@@ -745,47 +759,92 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "edge": {"type": "string", "enum": ["xmin", "xmax", "ymin", "ymax"],
-                         "description": "Board edge the connector sits on; the port orientation equals it."},
-                "edge_position": {"type": "number", "default": 0,
-                                  "description": "Coordinate of that board edge (y for ymin/ymax, x for xmin/xmax)."},
-                "feed_center": {"type": "number", "default": 0,
-                                "description": "Signal-strip centre along the edge (x for y-edges, y for x-edges)."},
-                "substrate_top_z": {"type": "number", "default": 0, "description": "z of the substrate top face."},
+                "edge": {
+                    "type": "string",
+                    "enum": ["xmin", "xmax", "ymin", "ymax"],
+                    "description": "Board edge the connector sits on; the port orientation equals it.",
+                },
+                "edge_position": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Coordinate of that board edge (y for ymin/ymax, x for xmin/xmax).",
+                },
+                "feed_center": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Signal-strip centre along the edge (x for y-edges, y for x-edges).",
+                },
+                "substrate_top_z": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "z of the substrate top face.",
+                },
                 "substrate_thickness": {"type": "number", "exclusiveMinimum": 0, "default": 1.6},
                 "copper_thickness": {"type": "number", "exclusiveMinimum": 0, "default": 0.035},
                 "copper_z_convention": {
-                    "type": "string", "enum": ["copper_below_top", "copper_above_top"],
+                    "type": "string",
+                    "enum": ["copper_below_top", "copper_above_top"],
                     "description": (
                         "'copper_below_top': copper at substrate_top_z - t .. substrate_top_z (what a raw "
                         "clockwise Polygon + ExtrudeCurve with positive thickness gives). 'copper_above_top': "
                         "substrate_top_z .. +t (cst_create_polygon_extrude, extrude_direction 'up')."
                     ),
                 },
-                "ground_type": {"type": "string", "enum": ["cpw", "microstrip"], "default": "cpw",
-                                "description": "cpw: two top legs on the coplanar grounds; microstrip: one leg "
-                                "under the board on the back-side ground."},
+                "ground_type": {
+                    "type": "string",
+                    "enum": ["cpw", "microstrip"],
+                    "default": "cpw",
+                    "description": "cpw: two top legs on the coplanar grounds; microstrip: one leg "
+                    "under the board on the back-side ground.",
+                },
                 "pin_radius": {"type": "number", "exclusiveMinimum": 0, "default": 0.635},
-                "outer_radius": {"type": "number", "exclusiveMinimum": 0, "default": 2.1,
-                                 "description": "Coax dielectric outer radius (2.1 mm -> 49.5 ohm with er 2.1)."},
-                "target_impedance": {"type": "number", "exclusiveMinimum": 0,
-                                     "description": "If set, outer_radius is computed for this Z0 (ohm)."},
+                "outer_radius": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 2.1,
+                    "description": "Coax dielectric outer radius (2.1 mm -> 49.5 ohm with er 2.1).",
+                },
+                "target_impedance": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "If set, outer_radius is computed for this Z0 (ohm).",
+                },
                 "dielectric_epsilon": {"type": "number", "exclusiveMinimum": 0, "default": 2.1},
                 "dielectric_tand": {"type": "number", "minimum": 0, "default": 0.0002},
-                "body_half": {"type": "number", "exclusiveMinimum": 0, "default": 4.75,
-                              "description": "Half of the square body cross-section."},
+                "body_half": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 4.75,
+                    "description": "Half of the square body cross-section.",
+                },
                 "body_length": {"type": "number", "exclusiveMinimum": 0, "default": 6.0},
-                "gap": {"type": "number", "minimum": 0, "default": 0.3,
-                        "description": "Air gap between board edge and body front face."},
-                "pin_overlap": {"type": "number", "minimum": 0, "default": 1.5,
-                                "description": "Pin length over the signal strip (from the board edge)."},
+                "gap": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0.3,
+                    "description": "Air gap between board edge and body front face.",
+                },
+                "pin_overlap": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1.5,
+                    "description": "Pin length over the signal strip (from the board edge).",
+                },
                 "solder_width": {"type": "number", "exclusiveMinimum": 0, "default": 1.0},
-                "leg_inner": {"type": "number", "minimum": 0, "default": 2.9,
-                              "description": "Leg inner offset from the feed centre (on the grounds)."},
+                "leg_inner": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 2.9,
+                    "description": "Leg inner offset from the feed centre (on the grounds).",
+                },
                 "leg_outer": {"type": "number", "exclusiveMinimum": 0, "default": 4.4},
                 "leg_thickness": {"type": "number", "exclusiveMinimum": 0, "default": 0.5},
-                "leg_on_board": {"type": "number", "minimum": 0, "default": 1.5,
-                                 "description": "How far the legs extend onto the board from the edge."},
+                "leg_on_board": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1.5,
+                    "description": "How far the legs extend onto the board from the edge.",
+                },
                 "component": {"type": "string", "default": "sma"},
                 "dielectric_material": {"type": "string", "default": "PTFE_er2.1"},
                 "metal_material": {"type": "string", "default": "PEC"},
@@ -826,11 +885,11 @@ def _microstrip_impedance(w: float, h: float, er: float, t: float = 0.035) -> fl
     u = we / h
 
     # Hammerstad-Jensen effective dielectric constant
-    eps_eff = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * (1.0 + 10.0 / u) ** (-0.5)  # noqa: E501
+    eps_eff = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * (1.0 + 10.0 / u) ** (-0.5)
 
     # Hammerstad-Jensen impedance
-    f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-(30.666 / u) ** 0.7528)
-    z0 = (60.0 / math.sqrt(eps_eff)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))  # noqa: E501
+    f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
+    z0 = (60.0 / math.sqrt(eps_eff)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))
 
     return z0
 
@@ -854,15 +913,18 @@ def _microstrip_width_for_impedance(
     float - trace width in mm
     """
     # Wheeler initial estimate
-    a = (z_target / 60.0) * math.sqrt((er + 1.0) / 2.0) + \
-        ((er - 1.0) / (er + 1.0)) * (0.23 + 0.11 / er)
+    a = (z_target / 60.0) * math.sqrt((er + 1.0) / 2.0) + ((er - 1.0) / (er + 1.0)) * (
+        0.23 + 0.11 / er
+    )
     b = 377.0 * math.pi / (2.0 * z_target * math.sqrt(er))
 
     if a > 1.52:
         w_h = 8.0 * math.exp(a) / (math.exp(2.0 * a) - 2.0)
     else:
         w_h = (2.0 / math.pi) * (
-            b - 1.0 - math.log(2.0 * b - 1.0)
+            b
+            - 1.0
+            - math.log(2.0 * b - 1.0)
             + ((er - 1.0) / (2.0 * er)) * (math.log(b - 1.0) + 0.39 - 0.61 / er)
         )
 
@@ -910,22 +972,17 @@ def _stripline_impedance(w: float, h: float, er: float, t: float = 0.035) -> flo
 
     # Cohn formula for centered stripline
     if we / b < 0.35:
-        z0 = (60.0 / math.sqrt(er)) * math.log(
-            4.0 * b / (math.pi * we)
-        )
+        z0 = (60.0 / math.sqrt(er)) * math.log(4.0 * b / (math.pi * we))
     else:
         cf = 2.0 * math.pi
         z0 = (94.25 / math.sqrt(er)) / (
-            we / b + cf * math.log(1.0 + 1.0 / math.tanh(cf * we / (2.0 * b)))  # noqa: E501
-            / math.pi
+            we / b + cf * math.log(1.0 + 1.0 / math.tanh(cf * we / (2.0 * b))) / math.pi
         )
 
     return z0
 
 
-def _stripline_width_for_impedance(
-    z_target: float, h: float, er: float, t: float = 0.035
-) -> float:
+def _stripline_width_for_impedance(z_target: float, h: float, er: float, t: float = 0.035) -> float:
     """Calculate stripline width for a target impedance (iterative).
 
     Parameters
@@ -990,9 +1047,11 @@ def _coupled_microstrip_impedances(
     g = s / h
 
     # Even-mode effective permittivity correction
-    ae = 1.0 + (1.0 / 49.0) * math.log(
-        (u ** 4 + (u / 52.0) ** 2) / (u ** 4 + 0.432)
-    ) + (1.0 / 18.7) * math.log(1.0 + (u / 18.1) ** 3)
+    ae = (
+        1.0
+        + (1.0 / 49.0) * math.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432))
+        + (1.0 / 18.7) * math.log(1.0 + (u / 18.1) ** 3)
+    )
     be = 0.564 * ((er - 0.9) / (er + 3.0)) ** 0.053
 
     eps_eff_single = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * (1.0 + 10.0 / u) ** (-ae * be)
@@ -1002,9 +1061,9 @@ def _coupled_microstrip_impedances(
     qe = 0.0
     if g > 0:
         qe = math.exp(-1.86 * g) * (1.0 - math.exp(-0.588 * (er - 1.0) ** 0.578))
-    eps_eff_even = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * (
-        (1.0 + 10.0 / u) ** (-ae * be)
-    ) * (1.0 - qe)
+    eps_eff_even = 0.5 * (er + 1.0) + 0.5 * (er - 1.0) * ((1.0 + 10.0 / u) ** (-ae * be)) * (
+        1.0 - qe
+    )
 
     # Odd-mode effective permittivity correction
     ao = 0.7287 * (eps_eff_single - 0.5 * (er + 1.0)) * (1.0 - math.exp(-0.179 * g))
@@ -1019,9 +1078,17 @@ def _coupled_microstrip_impedances(
         cf_odd = 1.0
 
     # Even mode: impedance increases (less coupling to ground)
-    ze = z0_single * math.sqrt(eps_eff_single / eps_eff_even) / (1.0 - z0_single * cf_even / (377.0 / math.sqrt(eps_eff_single)))
+    ze = (
+        z0_single
+        * math.sqrt(eps_eff_single / eps_eff_even)
+        / (1.0 - z0_single * cf_even / (377.0 / math.sqrt(eps_eff_single)))
+    )
     # Odd mode: impedance decreases (more coupling to ground)
-    zo = z0_single * math.sqrt(eps_eff_single / eps_eff_odd) * (1.0 - z0_single * cf_odd / (377.0 / math.sqrt(eps_eff_single)))
+    zo = (
+        z0_single
+        * math.sqrt(eps_eff_single / eps_eff_odd)
+        * (1.0 - z0_single * cf_odd / (377.0 / math.sqrt(eps_eff_single)))
+    )
 
     # Ensure physical validity
     ze = max(ze, z0_single * 0.8)
@@ -1050,7 +1117,7 @@ def _cpw_impedance(w: float, gap: float, h: float, er: float) -> float:
     a = w / 2.0
     b = w / 2.0 + gap
     k0 = a / b
-    k0p = math.sqrt(1.0 - k0 ** 2)
+    k0p = math.sqrt(1.0 - k0**2)
 
     # Complete elliptic integral ratio K(k)/K(k') approximation
     if k0 >= 1.0:
@@ -1065,7 +1132,7 @@ def _cpw_impedance(w: float, gap: float, h: float, er: float) -> float:
 
     # Substrate effect
     k1 = math.tanh(math.pi * a / (2.0 * h)) / math.tanh(math.pi * b / (2.0 * h))
-    k1p = math.sqrt(1.0 - k1 ** 2)
+    k1p = math.sqrt(1.0 - k1**2)
 
     if k1 <= 1.0 / math.sqrt(2.0):
         kk1 = math.pi / math.log(2.0 * (1.0 + math.sqrt(k1p)) / (1.0 - math.sqrt(k1p)))
@@ -1083,9 +1150,7 @@ def _cpw_impedance(w: float, gap: float, h: float, er: float) -> float:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_create_stackup(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_create_stackup(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a PCB layer stackup as stacked bricks in CST."""
     layers: list[dict] = arguments["layers"]
     board_w = validate_positive(float(arguments["board_width_mm"]), "board_width_mm")
@@ -1129,14 +1194,16 @@ async def _handle_create_stackup(
         )
         script.add_block(vba)
 
-        layer_info.append({
-            "name": name,
-            "type": layer_type,
-            "material": material,
-            "z_bottom": round(z_bottom, 6),
-            "z_top": round(z_top, 6),
-            "thickness_mm": thickness,
-        })
+        layer_info.append(
+            {
+                "name": name,
+                "type": layer_type,
+                "material": material,
+                "z_bottom": round(z_bottom, 6),
+                "z_top": round(z_top, 6),
+                "thickness_mm": thickness,
+            }
+        )
 
         z_current = z_top
 
@@ -1154,9 +1221,7 @@ async def _handle_create_stackup(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_create_trace(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_create_trace(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a PCB trace with optional impedance-based width calculation."""
     trace_type = arguments["trace_type"]
     length_mm = validate_positive(float(arguments["length_mm"]), "length_mm")
@@ -1173,9 +1238,7 @@ async def _handle_create_trace(
 
     if impedance_target is not None:
         z_target = validate_positive(float(impedance_target), "impedance_target")
-        sub_h = validate_positive(
-            float(arguments["substrate_height_mm"]), "substrate_height_mm"
-        )
+        sub_h = validate_positive(float(arguments["substrate_height_mm"]), "substrate_height_mm")
         er = validate_positive(float(arguments["epsilon_r"]), "epsilon_r")
 
         if trace_type == "microstrip":
@@ -1197,23 +1260,32 @@ async def _handle_create_trace(
             width_mm = _microstrip_width_for_impedance(z_target, sub_h, er, copper_t)
             z_actual = _microstrip_impedance(width_mm, sub_h, er, copper_t)
 
-        impedance_info.update({
-            "target_ohms": z_target,
-            "calculated_ohms": round(z_actual, 2),
-            "calculated_width_mm": round(width_mm, 4),
-            "substrate_height_mm": sub_h,
-            "epsilon_r": er,
-            "formula": "Hammerstad-Jensen" if trace_type == "microstrip" else "Cohn",
-        })
+        impedance_info.update(
+            {
+                "target_ohms": z_target,
+                "calculated_ohms": round(z_actual, 2),
+                "calculated_width_mm": round(width_mm, 4),
+                "substrate_height_mm": sub_h,
+                "epsilon_r": er,
+                "formula": "Hammerstad-Jensen" if trace_type == "microstrip" else "Cohn",
+            }
+        )
     elif width_mm is None:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": (
-                "Either width_mm or impedance_target must be specified. "
-                "Provide width_mm for a fixed-width trace, or impedance_target "
-                "with substrate_height_mm and epsilon_r for auto-calculation."
-            ),
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": (
+                            "Either width_mm or impedance_target must be specified. "
+                            "Provide width_mm for a fixed-width trace, or impedance_target "
+                            "with substrate_height_mm and epsilon_r for auto-calculation."
+                        ),
+                    }
+                ),
+            )
+        ]
 
     width_mm = validate_positive(float(width_mm), "width_mm")
 
@@ -1226,10 +1298,17 @@ async def _handle_create_trace(
         try:
             angle_rad = math.radians(float(direction))
         except ValueError:
-            return [TextContent(type="text", text=json.dumps({
-                "status": "error",
-                "message": f"Invalid direction '{direction}'. Use 'x', 'y', or angle in degrees.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "status": "error",
+                            "message": f"Invalid direction '{direction}'. Use 'x', 'y', or angle in degrees.",
+                        }
+                    ),
+                )
+            ]
 
     dx = length_mm * math.cos(angle_rad)
     dy = length_mm * math.sin(angle_rad)
@@ -1324,9 +1403,7 @@ async def _handle_create_trace(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_create_via(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_create_via(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a PCB via with barrel, pads, and antipads."""
     x = float(arguments["x"])
     y = float(arguments["y"])
@@ -1346,22 +1423,36 @@ async def _handle_create_via(
     validate_positive(antipad_d, "antipad_diameter_mm")
 
     if pad_d <= drill_d:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": (
-                f"pad_diameter_mm ({pad_d}) must be larger than "
-                f"drill_diameter_mm ({drill_d})"
-            ),
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"pad_diameter_mm ({pad_d}) must be larger than "
+                            f"drill_diameter_mm ({drill_d})"
+                        ),
+                    }
+                ),
+            )
+        ]
 
     if antipad_d <= pad_d:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": (
-                f"antipad_diameter_mm ({antipad_d}) must be larger than "
-                f"pad_diameter_mm ({pad_d})"
-            ),
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"antipad_diameter_mm ({antipad_d}) must be larger than "
+                            f"pad_diameter_mm ({pad_d})"
+                        ),
+                    }
+                ),
+            )
+        ]
 
     # Ensure start_z > end_z (top to bottom)
     z_top = max(start_z, end_z)
@@ -1411,9 +1502,7 @@ async def _handle_create_via(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_create_ground_plane(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_create_ground_plane(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a ground/power plane with optional cutouts."""
     layer = validate_name(arguments["layer"], "layer")
     width_mm = validate_positive(float(arguments["width_mm"]), "width_mm")
@@ -1474,11 +1563,13 @@ async def _handle_create_ground_plane(
         )
         script.add_block(subtract_vba)
 
-        cutout_info.append({
-            "index": i,
-            "x_range": [x_min, x_max],
-            "y_range": [y_min, y_max],
-        })
+        cutout_info.append(
+            {
+                "index": i,
+                "x_range": [x_min, x_max],
+                "y_range": [y_min, y_max],
+            }
+        )
 
     vba_code = script.build()
     result = client.execute_vba(vba_code)
@@ -1496,9 +1587,7 @@ async def _handle_create_ground_plane(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_import_gerber(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_import_gerber(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Import a Gerber file into CST Studio."""
     file_path = validate_file_path(arguments["file_path"])
     layer_name = validate_name(arguments["layer_name"], "layer_name")
@@ -1540,10 +1629,17 @@ async def _handle_import_gerber(
             .call("Read")
         )
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Unsupported file type: {file_type}. Use 'gerber', 'odb++', or 'dxf'.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unsupported file type: {file_type}. Use 'gerber', 'odb++', or 'dxf'.",
+                    }
+                ),
+            )
+        ]
 
     vba_code = vba.build()
     result = client.execute_vba(vba_code)
@@ -1565,19 +1661,24 @@ async def _handle_import_gerber(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_list_stackup_templates(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_list_stackup_templates(arguments: dict, client: CSTClient) -> list[TextContent]:
     """List predefined PCB stackup templates from the data file."""
     stackup_file = DATA_DIR / "pcb_stackups.json"
 
     try:
         data = json.loads(stackup_file.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"Stackup templates file not found: {stackup_file}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Stackup templates file not found: {stackup_file}",
+                    }
+                ),
+            )
+        ]
 
     stackups = data.get("stackups", [])
 
@@ -1586,9 +1687,9 @@ async def _handle_list_stackup_templates(
     if filter_str:
         filter_lower = filter_str.lower()
         stackups = [
-            s for s in stackups
-            if filter_lower in s["name"].lower()
-            or filter_lower in s.get("description", "").lower()
+            s
+            for s in stackups
+            if filter_lower in s["name"].lower() or filter_lower in s.get("description", "").lower()
         ]
 
     result = {
@@ -1609,9 +1710,7 @@ async def _handle_list_stackup_templates(
 # ---------------------------------------------------------------------------
 
 
-async def _handle_differential_pair(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_differential_pair(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a differential pair of traces with impedance calculation."""
     name = validate_name(arguments["name"], "name")
     component = validate_name(arguments.get("component", "PCB"), "component")
@@ -1691,9 +1790,7 @@ async def _handle_differential_pair(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_via_model(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_via_model(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a detailed via model with parasitic estimates."""
     name = validate_name(arguments["name"], "name")
     component = validate_name(arguments.get("component", "PCB"), "component")
@@ -1705,21 +1802,37 @@ async def _handle_via_model(
     end_layer = validate_name(arguments["end_layer"], "end_layer")
     x = float(arguments["x"])
     y = float(arguments["y"])
-    board_t = validate_positive(float(arguments.get("board_thickness_mm", 1.6)), "board_thickness_mm")
+    board_t = validate_positive(
+        float(arguments.get("board_thickness_mm", 1.6)), "board_thickness_mm"
+    )
     er = validate_positive(float(arguments.get("epsilon_r", 4.4)), "epsilon_r")
     copper_t = 0.035  # 1oz copper default
 
     if pad_d <= drill_d:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"pad_diameter_mm ({pad_d}) must be larger than drill_diameter_mm ({drill_d})",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"pad_diameter_mm ({pad_d}) must be larger than drill_diameter_mm ({drill_d})",
+                    }
+                ),
+            )
+        ]
 
     if antipad_d <= pad_d:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": f"antipad_diameter_mm ({antipad_d}) must be larger than pad_diameter_mm ({pad_d})",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"antipad_diameter_mm ({antipad_d}) must be larger than pad_diameter_mm ({pad_d})",
+                    }
+                ),
+            )
+        ]
 
     plating_mm = plating_um / 1000.0
     drill_r = drill_d / 2.0
@@ -1735,8 +1848,7 @@ async def _handle_via_model(
     # Via barrel (hollow cylinder with plating thickness)
     outer_r = drill_r
     inner_r = drill_r - plating_mm
-    if inner_r <= 0:
-        inner_r = 0  # Filled via
+    inner_r = max(0, inner_r)  # Filled via
 
     barrel_vba = (
         VBABuilder("Cylinder")
@@ -1820,9 +1932,7 @@ async def _handle_via_model(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_via_fence(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_via_fence(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a row of vias along a path."""
     name = validate_name(arguments["name"], "name")
     component = validate_name(arguments.get("component", "PCB"), "component")
@@ -1840,13 +1950,20 @@ async def _handle_via_fence(
     # Calculate path length and direction
     dx = x_end - x_start
     dy = y_end - y_start
-    total_length = math.sqrt(dx ** 2 + dy ** 2)
+    total_length = math.sqrt(dx**2 + dy**2)
 
     if total_length < 1e-6:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": "Start and end points are the same; fence length must be > 0.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": "Start and end points are the same; fence length must be > 0.",
+                    }
+                ),
+            )
+        ]
 
     # Unit vectors along and perpendicular to path
     ux = dx / total_length
@@ -1917,9 +2034,7 @@ async def _handle_via_fence(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_cpw_transition(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_cpw_transition(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a CPW to microstrip transition with tapered geometry."""
     name = validate_name(arguments["name"], "name")
     component = validate_name(arguments.get("component", "PCB"), "component")
@@ -2095,9 +2210,7 @@ async def _handle_cpw_transition(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_calculate_coupling(
-    arguments: dict, _client: CSTClient
-) -> list[TextContent]:
+async def _handle_calculate_coupling(arguments: dict, _client: CSTClient) -> list[TextContent]:
     """Calculate coupling between parallel traces (pure Python, no VBA)."""
     w = validate_positive(float(arguments["trace_width_mm"]), "trace_width_mm")
     s = validate_positive(float(arguments["separation_mm"]), "separation_mm")
@@ -2164,9 +2277,7 @@ async def _handle_calculate_coupling(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_siw_waveguide(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_siw_waveguide(arguments: dict, client: CSTClient) -> list[TextContent]:
     """Create a Substrate Integrated Waveguide."""
     name = validate_name(arguments["name"], "name")
     component = validate_name(arguments.get("component", "PCB"), "component")
@@ -2183,16 +2294,23 @@ async def _handle_siw_waveguide(
     copper_t = 0.035
 
     # SIW equivalent width: w_eff = w - d^2 / (0.95 * p)  [Cassivi et al.]
-    w_eff = width - (via_d ** 2) / (0.95 * via_pitch)
+    w_eff = width - (via_d**2) / (0.95 * via_pitch)
 
     if w_eff <= 0:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error",
-            "message": (
-                f"Effective SIW width is non-positive ({w_eff:.4f} mm). "
-                "Increase via spacing or reduce via diameter."
-            ),
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Effective SIW width is non-positive ({w_eff:.4f} mm). "
+                            "Increase via spacing or reduce via diameter."
+                        ),
+                    }
+                ),
+            )
+        ]
 
     # Cutoff frequency: fc = c / (2 * w_eff * sqrt(eps_r))
     c0 = 299792458.0  # m/s
@@ -2300,9 +2418,7 @@ async def _handle_siw_waveguide(
 # ---------------------------------------------------------------------------
 
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a PCB tool call."""
     try:
         if name == "cst_pcb_create_stackup":
@@ -2339,17 +2455,34 @@ async def handle(
                 result["vba_script"] = vba_code
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error", "message": f"Unknown PCB tool: {name}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Unknown PCB tool: {name}",
+                    }
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "status": "error", "message": str(e),
-        }))]
+        logging.getLogger(__name__).debug("Handled error in pcb.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                    }
+                ),
+            )
+        ]
 
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

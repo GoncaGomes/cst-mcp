@@ -49,16 +49,27 @@ def _decode(content) -> dict:
 def _curve() -> dict:
     values = (0.5 + 0.5j, 0.1 + 0.1j, 0.5 + 0.5j)
     return {
-        "status": "ok", "source": "cst.results", "tree_path": "1D Results\\S-Parameters\\S1,1",
-        "run_id": 0, "n": 3, "x": [1.0, 2.0, 3.0],
-        "real": [v.real for v in values], "imag": [v.imag for v in values],
-        "xlabel": "Frequency / GHz", "ylabel": "", "title": "S1,1", "snapshot": "saved",
+        "status": "ok",
+        "source": "cst.results",
+        "tree_path": "1D Results\\S-Parameters\\S1,1",
+        "run_id": 0,
+        "n": 3,
+        "x": [1.0, 2.0, 3.0],
+        "real": [v.real for v in values],
+        "imag": [v.imag for v in values],
+        "xlabel": "Frequency / GHz",
+        "ylabel": "",
+        "title": "S1,1",
+        "snapshot": "saved",
     }
 
 
 def _offline_session() -> CSTSession:
     cfg = SimpleNamespace(
-        cst_available=False, cst_path=None, python_lib_path=None, version="2026",
+        cst_available=False,
+        cst_path=None,
+        python_lib_path=None,
+        version="2026",
         work_dir=Path("."),
     )
     return CSTSession(config=cfg)
@@ -109,25 +120,42 @@ class FakeWorkflowClient:
 
     def get_s_parameters(self, port_out=1, port_in=1, *, max_points=200) -> dict:
         return {
-            "status": "ok", "source": "cst.results", "tree_path": "1D Results\\S-Parameters\\S1,1",
-            "port_out": port_out, "port_in": port_in, "n_points": 2, "frequency_unit": "GHz",
-            "frequency_ghz": [2.3, 2.4], "real": [0.1, 0.0], "imag": [0.0, 0.0],
-            "magnitude_db": [-20.0, None], "magnitude_linear": [0.1, 0.0],
-            "phase_deg": [0.0, None], "metrics": {"min_db": -20.0, "freq_at_min_ghz": 2.3},
+            "status": "ok",
+            "source": "cst.results",
+            "tree_path": "1D Results\\S-Parameters\\S1,1",
+            "port_out": port_out,
+            "port_in": port_in,
+            "n_points": 2,
+            "frequency_unit": "GHz",
+            "frequency_ghz": [2.3, 2.4],
+            "real": [0.1, 0.0],
+            "imag": [0.0, 0.0],
+            "magnitude_db": [-20.0, None],
+            "magnitude_linear": [0.1, 0.0],
+            "phase_deg": [0.0, None],
+            "metrics": {"min_db": -20.0, "freq_at_min_ghz": 2.3},
             "snapshot": "saved",
         }
 
-    def get_farfield_metrics(self, frequency_ghz=None, monitor_name=None, *, try_farfield_plot=True):
+    def get_farfield_metrics(
+        self, frequency_ghz=None, monitor_name=None, *, try_farfield_plot=True
+    ):
         if try_farfield_plot:
             return {
-                "status": "ok", "method": "farfield_plot_getmax+results_api",
+                "status": "ok",
+                "method": "farfield_plot_getmax+results_api",
                 "metrics": {"max_realized_gain_dbi": 6.1, "rad_efficiency": 0.8},
-                "path": None, "tree_path": "Farfields\\farfield (f=2.4) [1]",
-                "sources": {"results_api": {"status": "ok"}}, "available": True,
+                "path": None,
+                "tree_path": "Farfields\\farfield (f=2.4) [1]",
+                "sources": {"results_api": {"status": "ok"}},
+                "available": True,
             }
         return {
-            "status": "ok", "method": "results_api_1d", "metrics": {"rad_efficiency": 0.8},
-            "sources": {"results_api": {"status": "ok"}}, "note": "1D Results only",
+            "status": "ok",
+            "method": "results_api_1d",
+            "metrics": {"rad_efficiency": 0.8},
+            "sources": {"results_api": {"status": "ok"}},
+            "note": "1D Results only",
         }
 
 
@@ -145,20 +173,27 @@ async def test_run_and_s11_payloads_validate() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("plot", [True, False])
 async def test_farfield_metrics_payload_validates(plot: bool) -> None:
-    data = _decode(await workflows.handle(
-        "cst_get_farfield_metrics", {"frequency_ghz": 2.4, "try_farfield_plot": plot},
-        FakeWorkflowClient(),
-    ))
+    data = _decode(
+        await workflows.handle(
+            "cst_get_farfield_metrics",
+            {"frequency_ghz": 2.4, "try_farfield_plot": plot},
+            FakeWorkflowClient(),
+        )
+    )
     assert data["status"] == "ok"
     _validate("cst_get_farfield_metrics", data)
 
 
 @pytest.mark.asyncio
 async def test_simulation_status_payloads_validate() -> None:
-    client = SimpleNamespace(solver_status=lambda timeout_s=30.0: {
-        "status": "ok", "running": True, "active_solver": "HF Time Domain",
-        "run_info": {"progress": 25.0, "native": "run"},
-    })
+    client = SimpleNamespace(
+        solver_status=lambda timeout_s=30.0: {
+            "status": "ok",
+            "running": True,
+            "active_solver": "HF Time Domain",
+            "run_info": {"progress": 25.0, "native": "run"},
+        }
+    )
     data = _decode(await simulation.handle("cst_get_simulation_status", {}, client))
     _validate("cst_get_simulation_status", data)
 
@@ -177,9 +212,13 @@ async def test_wait_payloads_validate(monkeypatch, running: bool) -> None:
 
     monkeypatch.setattr(simulation, "_clock", lambda: now[0])
     monkeypatch.setattr(simulation, "_sleep", fake_sleep)
-    client = SimpleNamespace(solver_status=lambda timeout_s=30.0: {
-        "status": "ok", "running": running, "active_solver": "HF Time Domain",
-    })
+    client = SimpleNamespace(
+        solver_status=lambda timeout_s=30.0: {
+            "status": "ok",
+            "running": running,
+            "active_solver": "HF Time Domain",
+        }
+    )
     data = _decode(await simulation.handle("cst_wait_for_simulation", {"max_wait_s": 4}, client))
     assert data["status"] == ("running" if running else "finished")
     _validate("cst_wait_for_simulation", data)

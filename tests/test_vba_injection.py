@@ -93,6 +93,7 @@ def is_rejected(payload: dict) -> bool:
 # vba_safety helpers
 # ---------------------------------------------------------------------------
 
+
 def test_vba_string_literal_doubles_quotes():
     assert vba_safety.vba_string_literal('a"b') == '"a""b"'
     assert vba_safety.vba_string_literal("") == '""'
@@ -120,7 +121,10 @@ def test_legit_values_round_trip(legit):
 
 
 def test_validate_paths():
-    assert vba_safety.validate_tree_path('Farfields\\farfield (f=2.4) "x"') == 'Farfields\\farfield (f=2.4) ""x""'
+    assert (
+        vba_safety.validate_tree_path('Farfields\\farfield (f=2.4) "x"')
+        == 'Farfields\\farfield (f=2.4) ""x""'
+    )
     with pytest.raises(ValueError):
         vba_safety.validate_tree_path("")
     with pytest.raises(ValueError):
@@ -134,7 +138,7 @@ def test_numeric_coercion():
     assert vba_safety.vba_number(2) == "2"
     assert vba_safety.vba_number(2.5) == "2.5"
     assert vba_safety.vba_number("3") == "3"
-    for bad in ["1 : RunAndWait \"calc\"", "nan", float("inf"), True, None]:
+    for bad in ['1 : RunAndWait "calc"', "nan", float("inf"), True, None]:
         with pytest.raises(ValueError):
             vba_safety.vba_number(bad)
     assert vba_safety.vba_int(4.0) == 4
@@ -148,11 +152,16 @@ def test_numeric_coercion():
 # Tool handlers
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("fmt", ["csv", "txt", "touchstone"])
 def test_export_result_quote_payload_stays_in_literal(fmt):
     client = FakeClient()
-    res = call(results, "cst_export_result",
-               {"result_path": QUOTE_PAYLOAD, "output_file": "out.csv", "format": fmt}, client)
+    res = call(
+        results,
+        "cst_export_result",
+        {"result_path": QUOTE_PAYLOAD, "output_file": "out.csv", "format": fmt},
+        client,
+    )
     if is_rejected(res):
         return
     assert client.executed, res
@@ -163,17 +172,28 @@ def test_export_result_quote_payload_stays_in_literal(fmt):
 
 def test_export_result_newline_payload_rejected():
     client = FakeClient()
-    res = call(results, "cst_export_result",
-               {"result_path": NEWLINE_PAYLOAD, "output_file": "out.csv", "format": "csv"}, client)
+    res = call(
+        results,
+        "cst_export_result",
+        {"result_path": NEWLINE_PAYLOAD, "output_file": "out.csv", "format": "csv"},
+        client,
+    )
     assert is_rejected(res)
     assert not client.executed
 
 
 def test_export_result_output_file_quote_rejected():
     client = FakeClient()
-    res = call(results, "cst_export_result",
-               {"result_path": "1D Results\\S-Parameters\\S1,1",
-                "output_file": 'out.csv" : RunAndWait "calc.exe" : \'', "format": "csv"}, client)
+    res = call(
+        results,
+        "cst_export_result",
+        {
+            "result_path": "1D Results\\S-Parameters\\S1,1",
+            "output_file": 'out.csv" : RunAndWait "calc.exe" : \'',
+            "format": "csv",
+        },
+        client,
+    )
     if not is_rejected(res):
         for vba in client.executed:
             assert_payload_contained(vba)
@@ -182,8 +202,12 @@ def test_export_result_output_file_quote_rejected():
 def test_export_result_legit_path_works():
     client = FakeClient()
     path = "1D Results\\S-Parameters\\S1,1 (ünïcødé, run 2)"
-    res = call(results, "cst_export_result",
-               {"result_path": path, "output_file": "C:\\out dir\\s11.csv", "format": "csv"}, client)
+    res = call(
+        results,
+        "cst_export_result",
+        {"result_path": path, "output_file": "C:\\out dir\\s11.csv", "format": "csv"},
+        client,
+    )
     assert not is_rejected(res), res
     vba = client.executed[-1]
     assert f'SelectTreeItem "{path}"' in vba
@@ -210,9 +234,12 @@ def test_list_results_newline_rejected():
 
 
 def test_farfield_monitor_name_payload_offline_script():
-    res = call(results, "cst_get_farfield",
-               {"frequency": 2.4, "monitor_name": 'ff" : RunAndWait "calc.exe" : \''},
-               OfflineClient())
+    res = call(
+        results,
+        "cst_get_farfield",
+        {"frequency": 2.4, "monitor_name": 'ff" : RunAndWait "calc.exe" : \''},
+        OfflineClient(),
+    )
     if is_rejected(res):
         return
     assert_payload_contained(res["vba_script"])
@@ -220,15 +247,23 @@ def test_farfield_monitor_name_payload_offline_script():
 
 def test_farfield_monitor_name_newline_rejected():
     client = FakeClient()
-    res = call(results, "cst_get_farfield",
-               {"frequency": 2.4, "monitor_name": 'ff"\nRunAndWait "calc.exe"'}, client)
+    res = call(
+        results,
+        "cst_get_farfield",
+        {"frequency": 2.4, "monitor_name": 'ff"\nRunAndWait "calc.exe"'},
+        client,
+    )
     assert is_rejected(res)
     assert not client.executed
 
 
 def test_surface_current_component_payload():
-    res = call(results, "cst_get_surface_current",
-               {"frequency": 2.4, "component": 'c" : RunAndWait "calc.exe" : \''}, OfflineClient())
+    res = call(
+        results,
+        "cst_get_surface_current",
+        {"frequency": 2.4, "component": 'c" : RunAndWait "calc.exe" : \''},
+        OfflineClient(),
+    )
     if not is_rejected(res):
         assert_payload_contained(res.get("vba_script", ""))
 
@@ -236,11 +271,13 @@ def test_surface_current_component_payload():
 @pytest.mark.parametrize(
     ("name", "args"),
     [
-        ("cst_get_pattern_cut", {"frequency": 2.4, "plane": "custom",
-                                 "phi_cut": '0" : RunAndWait "calc.exe" : \''}),
-        ("cst_get_axial_ratio", {"frequency": 2.4, "theta_cut": "1: RunAndWait \"calc.exe\""}),
-        ("cst_get_farfield", {"frequency": "2.4\" : RunAndWait \"calc.exe\" : '"}),
-        ("cst_get_vswr", {"port": "1\" : RunAndWait \"calc.exe\" : '"}),
+        (
+            "cst_get_pattern_cut",
+            {"frequency": 2.4, "plane": "custom", "phi_cut": '0" : RunAndWait "calc.exe" : \''},
+        ),
+        ("cst_get_axial_ratio", {"frequency": 2.4, "theta_cut": '1: RunAndWait "calc.exe"'}),
+        ("cst_get_farfield", {"frequency": '2.4" : RunAndWait "calc.exe" : \''}),
+        ("cst_get_vswr", {"port": '1" : RunAndWait "calc.exe" : \''}),
     ],
 )
 def test_numeric_injection_rejected(name, args):
@@ -252,10 +289,22 @@ def test_numeric_injection_rejected(name, args):
 
 def test_geometry_newline_in_name_rejected():
     client = FakeClient()
-    res = call(geometry, "cst_create_brick", {
-        "name": 'b"\nRunAndWait "calc.exe"', "component": "c", "material": "PEC",
-        "x_min": 0, "x_max": 1, "y_min": 0, "y_max": 1, "z_min": 0, "z_max": 1,
-    }, client)
+    res = call(
+        geometry,
+        "cst_create_brick",
+        {
+            "name": 'b"\nRunAndWait "calc.exe"',
+            "component": "c",
+            "material": "PEC",
+            "x_min": 0,
+            "x_max": 1,
+            "y_min": 0,
+            "y_max": 1,
+            "z_min": 0,
+            "z_max": 1,
+        },
+        client,
+    )
     assert is_rejected(res)
     assert not client.executed
 
@@ -263,9 +312,13 @@ def test_geometry_newline_in_name_rejected():
 def test_boolean_solid_payload_rejected_or_contained():
     client = FakeClient()
     try:
-        out = asyncio.run(boolean.handle(
-            "cst_boolean_add",
-            {"solid1": 'a:b" : RunAndWait "calc.exe" : \'', "solid2": "a:c"}, client))
+        out = asyncio.run(
+            boolean.handle(
+                "cst_boolean_add",
+                {"solid1": 'a:b" : RunAndWait "calc.exe" : \'', "solid2": "a:c"},
+                client,
+            )
+        )
         text = out[0].text
     except ValueError:  # validation error raised by the handler
         return
@@ -283,15 +336,23 @@ def test_optimization_export_path_rejects_quote():
 
 
 def test_workflow_brick_expr_escaped():
-    vba = workflows._brick_expr('c" : RunAndWait "calc.exe" : \'', "n", "PEC",
-                                "0", "1", "0", "1", "0", "1")
+    vba = workflows._brick_expr(
+        'c" : RunAndWait "calc.exe" : \'', "n", "PEC", "0", "1", "0", "1", "0", "1"
+    )
     assert_payload_contained(vba)
     with pytest.raises(ValueError):
         workflows._brick_expr("c", "n\nRunAndWait", "PEC", "0", "1", "0", "1", "0", "1")
 
 
 def test_guard_allows_legit_unicode_and_spaces():
-    vba_safety.check_arguments(results.TOOLS, "cst_export_result", {
-        "result_path": "1D Results\\S-Parameters\\S1,1 ünïcødé", "output_file": "C:\\a b\\c.csv",
-    })
-    vba_safety.check_arguments(results.TOOLS, "cst_get_pattern_cut", {"frequency": 2, "phi_cut": 45.5})
+    vba_safety.check_arguments(
+        results.TOOLS,
+        "cst_export_result",
+        {
+            "result_path": "1D Results\\S-Parameters\\S1,1 ünïcødé",
+            "output_file": "C:\\a b\\c.csv",
+        },
+    )
+    vba_safety.check_arguments(
+        results.TOOLS, "cst_get_pattern_cut", {"frequency": 2, "phi_cut": 45.5}
+    )

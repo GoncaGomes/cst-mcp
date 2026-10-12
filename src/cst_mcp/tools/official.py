@@ -145,21 +145,24 @@ def _help_files(root: Path) -> list[Path]:
             rel_parts = path.relative_to(root).parts
             if _HELP_SKIP_PARTS.intersection(p.lower() for p in rel_parts):
                 continue
-            if path.name.lower() in _HELP_SKIP_NAMES or path.suffix.lower() not in {".htm", ".html"}:
+            if path.name.lower() in _HELP_SKIP_NAMES or path.suffix.lower() not in {
+                ".htm",
+                ".html",
+            }:
                 continue
             files.append(path)
     return sorted(files)
 
 
 def _help_signature(root: Path, files: list[Path]) -> str:
-    digest = hashlib.sha1(f"{_HELP_INDEX_VERSION}|{root}".encode("utf-8"))
+    digest = hashlib.sha1(f"{_HELP_INDEX_VERSION}|{root}".encode())
     for path in files:
         try:
             st = path.stat()
         except OSError:
             continue
         rel = path.relative_to(root).as_posix()
-        digest.update(f"{rel}|{st.st_size}|{int(st.st_mtime)}".encode("utf-8"))
+        digest.update(f"{rel}|{st.st_size}|{int(st.st_mtime)}".encode())
     return digest.hexdigest()
 
 
@@ -192,16 +195,20 @@ def _help_index(root: Path, work_dir=None) -> list[dict]:
         for path in files:
             try:
                 title, text = _html_to_text(path.read_text(encoding="utf-8", errors="replace"))
-            except Exception:  # noqa: BLE001 - one broken page must not kill search
+            except Exception:
                 logger.debug("could not index %s", path, exc_info=True)
                 continue
-            entries.append({"topic": path.relative_to(root).as_posix(), "title": title, "text": text})
+            entries.append(
+                {"topic": path.relative_to(root).as_posix(), "title": title, "text": text}
+            )
         _HELP_INDEX_CACHE[key] = entries
         if cache_file is not None:
             try:
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
                 tmp = cache_file.with_suffix(".tmp")
-                tmp.write_text(json.dumps({"signature": signature, "entries": entries}), encoding="utf-8")
+                tmp.write_text(
+                    json.dumps({"signature": signature, "entries": entries}), encoding="utf-8"
+                )
                 tmp.replace(cache_file)
             except OSError:
                 logger.debug("help index cache not written", exc_info=True)
@@ -302,9 +309,8 @@ async def handle(name, arguments, client):
         own_project = bool(client.project_path) and Path(client.project_path).resolve() == path
     except (OSError, TypeError, ValueError):
         own_project = False
-    if own_project:
-        if client.is_solver_running(timeout_s=5) is not False:
-            return err("Project is busy or solver state is unknown")
+    if (own_project) and (client.is_solver_running(timeout_s=5) is not False):
+        return err("Project is busy or solver state is unknown")
     if name == "cst_list_saved_results":
         try:
             import cst.results
@@ -312,15 +318,16 @@ async def handle(name, arguments, client):
             module = cst.results.ProjectFile(str(path), allow_interactive=own_project).get_3d()
             tree_items = list(module.get_tree_items())
         except Exception as exc:  # cst.results raises UserWarning/RuntimeError etc.
+            logger.debug("Handled error in official.handle", exc_info=True)
             hint = (
                 " The project is open in another CST instance; close it there or use the"
-                " session that opened it." if not own_project and "interactive" in str(exc).lower() else ""
+                " session that opened it."
+                if not own_project and "interactive" in str(exc).lower()
+                else ""
             )
             return err(f"Could not open saved results: {type(exc).__name__}: {exc}.{hint}")
         paths = [
-            str(p)
-            for p in tree_items
-            if arguments.get("contains", "").lower() in str(p).lower()
+            str(p) for p in tree_items if arguments.get("contains", "").lower() in str(p).lower()
         ]
         offset, limit = arguments.get("offset", 0), arguments.get("limit", 50)
         entries = []
@@ -328,6 +335,7 @@ async def handle(name, arguments, client):
             try:
                 entries.append({"tree_path": tree, "run_ids": list(module.get_run_ids(tree))})
             except Exception as exc:
+                logger.debug("Handled error in official.handle", exc_info=True)
                 entries.append({"tree_path": tree, "run_ids": [], "message": str(exc)})
         return as_json(
             {
@@ -350,6 +358,7 @@ async def handle(name, arguments, client):
                 arguments.get("format", "real_imag"),
             )
         except Exception as exc:
+            logger.debug("Handled error in official.handle", exc_info=True)
             return err(f"Could not read saved result: {type(exc).__name__}: {exc}")
         maximum = arguments.get("max_points", 200)
         if data.get("status") == "ok":
@@ -370,6 +379,6 @@ async def handle(name, arguments, client):
     return err(f"Unknown tool: {name}")
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

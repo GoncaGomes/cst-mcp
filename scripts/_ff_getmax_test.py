@@ -1,5 +1,7 @@
-from pathlib import Path
+import logging
 import sys
+from pathlib import Path
+
 sys.path.insert(0, r"E:\CST Studio Suite 2026\AMD64\python_cst_libraries")
 import cst.interface as ci
 
@@ -52,6 +54,7 @@ try:
     sch.execute_vba_code(vba)
     print("metrics VBA OK")
 except Exception as e:
+    logging.getLogger(__name__).debug("Handled error in _ff_getmax_test.main", exc_info=True)
     print("metrics ERR", str(e)[-600:])
 
 if metrics_path.exists():
@@ -115,6 +118,7 @@ try:
     sch.execute_vba_code(vba2)
     print("pattern VBA OK")
 except Exception as e:
+    logging.getLogger(__name__).debug("Handled error in _ff_getmax_test.main", exc_info=True)
     print("pattern ERR", str(e)[-600:])
 
 if pattern_path.exists():

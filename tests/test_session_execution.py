@@ -107,7 +107,7 @@ def test_connection_health_and_disconnect_never_close_cst() -> None:
 
 def test_connect_does_not_change_design_environment_quiet_mode(monkeypatch) -> None:
     de = FakeDesignEnvironment()
-    de.get_open_projects = lambda: []
+    de.get_open_projects = list
     de.set_quiet_mode = lambda enabled: (_ for _ in ()).throw(
         AssertionError("connect must not change the user's Design Environment mode")
     )
@@ -206,7 +206,9 @@ def test_solver_status_is_read_only_and_json_safe() -> None:
     assert result["running"] is True
     assert result["active_solver"] == "HF Time Domain"
     assert result["run_info"]["native"] == "run"
-    assert not any(name in {"run_solver", "start_solver", "abort_solver"} for name, _ in model.calls)
+    assert not any(
+        name in {"run_solver", "start_solver", "abort_solver"} for name, _ in model.calls
+    )
 
 
 def test_solver_query_failure_is_unknown_and_status_exposes_error() -> None:
@@ -256,9 +258,16 @@ def test_parameter_solve_honors_optimizer_export_path(tmp_path, monkeypatch) -> 
     session.config.work_dir = tmp_path
     output = tmp_path / "optimizer_s11.csv"
 
-    monkeypatch.setattr(session, "get_s_parameters", lambda *a, **kw: {
-        "status": "ok", "frequency_ghz": [2.4], "magnitude_db": [-12.0],
-        "metrics": {"min_db": -12.0}})
+    monkeypatch.setattr(
+        session,
+        "get_s_parameters",
+        lambda *a, **kw: {
+            "status": "ok",
+            "frequency_ghz": [2.4],
+            "magnitude_db": [-12.0],
+            "metrics": {"min_db": -12.0},
+        },
+    )
     result = session.set_params_rebuild_solve(
         {"gap": 0.3}, export_path=str(output), export_s11=True, timeout_s=20
     )
@@ -305,8 +314,12 @@ def test_simulation_adapter_uses_session_api_without_modal_vba() -> None:
     assert asynchronous["mode"] == "async"
     assert ("start_solver", 13) in model.calls
 
-    paused = decode_text(simulation._handle_simple_solver_command("pause", {"timeout_s": 3}, session))
-    stopped = decode_text(simulation._handle_simple_solver_command("abort", {"timeout_s": 4}, session))
+    paused = decode_text(
+        simulation._handle_simple_solver_command("pause", {"timeout_s": 3}, session)
+    )
+    stopped = decode_text(
+        simulation._handle_simple_solver_command("abort", {"timeout_s": 4}, session)
+    )
     assert paused["command"] == "pause"
     assert stopped["command"] == "stop"
     assert ("pause_solver", 3) in model.calls
@@ -356,7 +369,9 @@ def test_execute_vba_does_not_start_implicit_dialog_watcher(monkeypatch) -> None
             raise AssertionError("dialog watcher must be explicit")
 
     monkeypatch.setattr("cst_mcp.cst_client.DialogWatcher", ExplodingWatcher)
-    model = SimpleNamespace(add_to_history=lambda label, vba, **kw: None, is_solver_running=lambda **kw: False)
+    model = SimpleNamespace(
+        add_to_history=lambda label, vba, **kw: None, is_solver_running=lambda **kw: False
+    )
     session, _ = make_session(model)
     client = CSTClient(config=session.config)
     client._de = session._de
@@ -380,7 +395,7 @@ def test_mesh_density_uses_cst_2026_meshsettings() -> None:
             {"cells_per_wavelength": 24, "min_cells": 12, "ratio_limit": 18}, client
         )
     )
-    assert 'MeshSettings' in client.vba
+    assert "MeshSettings" in client.vba
     assert '.Set "StepsPerWaveNear", "24"' in client.vba
     assert '.Set "StepsPerWaveFar", "24"' in client.vba
     assert '.Set "StepsPerBoxNear", "12"' in client.vba
@@ -487,7 +502,7 @@ def test_connect_any_reports_preexisting_de_and_open_projects(monkeypatch) -> No
 def test_connect_any_detects_newly_started_de(monkeypatch) -> None:
     de = FakeDesignEnvironment()
     de.pid = lambda: 555
-    de.get_open_projects = lambda: []
+    de.get_open_projects = list
 
     class Factory:
         @staticmethod
@@ -503,8 +518,8 @@ def test_connect_any_detects_newly_started_de(monkeypatch) -> None:
 def test_connect_new_always_starts_fresh_de(monkeypatch) -> None:
     de = FakeDesignEnvironment()
     de.pid = lambda: 777
-    de.get_open_projects = lambda: []
-    de.list_open_projects = lambda: []
+    de.get_open_projects = list
+    de.list_open_projects = list
 
     class Factory:
         @staticmethod

@@ -1,4 +1,5 @@
 """Explicit CST attachment; ordinary MCP initialization stays side-effect free."""
+
 from __future__ import annotations
 
 from mcp.types import Tool
@@ -42,7 +43,9 @@ TOOLS = [
 async def handle(name, arguments, client):
     if name == "cst_connect":
         if client.config.connect_mode == "disabled":
-            return err("CST connection is disabled. Set CST_CONNECT_MODE=manual and restart the MCP server.")
+            return err(
+                "CST connection is disabled. Set CST_CONNECT_MODE=manual and restart the MCP server."
+            )
         mode = (arguments or {}).get("mode", "any")
         if mode not in ("any", "new"):
             return err(f"Unknown mode {mode!r}; use 'any' or 'new'.")
@@ -72,6 +75,6 @@ async def handle(name, arguments, client):
     return err(f"Unknown connection tool: {name}")
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

@@ -116,8 +116,11 @@ def test_select_runs_policy():
 
 
 def test_reflection_path_prefers_s11():
-    items = ["1D Results\\S-Parameters\\S2,1", "1D Results\\S-Parameters\\S2,2",
-             "1D Results\\S-Parameters\\S1,1"]
+    items = [
+        "1D Results\\S-Parameters\\S2,1",
+        "1D Results\\S-Parameters\\S2,2",
+        "1D Results\\S-Parameters\\S1,1",
+    ]
     assert source.reflection_path(items) == "1D Results\\S-Parameters\\S1,1"
     assert source.reflection_path(["1D Results\\S-Parameters\\S2,1"]) is None
 
@@ -170,8 +173,14 @@ class FakeReader:
 
     def read(self, tree, run_id):
         f, v, z0 = self.curves[(tree, run_id)]
-        return {"x": f, "values": v, "xlabel": "Frequency / GHz", "ylabel": "", "title": "",
-                "z0": z0}
+        return {
+            "x": f,
+            "values": v,
+            "xlabel": "Frequency / GHz",
+            "ylabel": "",
+            "title": "",
+            "z0": z0,
+        }
 
 
 S11 = "1D Results\\S-Parameters\\S1,1"
@@ -179,8 +188,9 @@ EFF = "1D Results\\Efficiencies\\Tot. Efficiency [1]"
 
 
 def _client():
-    return SimpleNamespace(connected=False, project_path=None,
-                           config=SimpleNamespace(connect_mode="auto"))
+    return SimpleNamespace(
+        connected=False, project_path=None, config=SimpleNamespace(connect_mode="auto")
+    )
 
 
 def _project(tmp_path) -> Path:
@@ -199,22 +209,30 @@ async def test_all_figures_from_synthetic_sweep(tmp_path, monkeypatch):
     f = grid(1.5, 3.5, 801)
     curves = {}
     for r, f0 in ((0, 2.45), (1, 2.35), (2, 2.45)):
-        curves[(S11, r)] = (f, lorentz_gamma(f, [(f0, 0.05, 0.97), (3.2, 0.04, 0.9)]),
-                            [50 + 0j] * len(f))
+        curves[(S11, r)] = (
+            f,
+            lorentz_gamma(f, [(f0, 0.05, 0.97), (3.2, 0.04, 0.9)]),
+            [50 + 0j] * len(f),
+        )
         curves[(EFF, r)] = ([2.4], [0.8 + 0j], None)
     fake = FakeReader([S11, EFF], curves, {1: {"L": 29.0}, 2: {"L": 30.0}})
     monkeypatch.setattr(source, "open_reader", lambda *a, **k: fake)
     meas = tmp_path / "meas.csv"
-    meas.write_text("f_GHz,dB\n" + "\n".join(f"{x},{-2 - 15 * (abs(x - 2.4) < 0.05)}"
-                                              for x in grid(1.5, 3.5, 81)), encoding="utf-8")
-    data = await _call({
-        "project_path": str(_project(tmp_path)),
-        "quantities": list(figures_1d.QUANTITIES),
-        "formats": ["pdf", "png", "svg"],
-        "out_dir": str(tmp_path / "fig"),
-        "csv_overlays": [str(meas)],
-        "title": "Patch",
-    })
+    meas.write_text(
+        "f_GHz,dB\n"
+        + "\n".join(f"{x},{-2 - 15 * (abs(x - 2.4) < 0.05)}" for x in grid(1.5, 3.5, 81)),
+        encoding="utf-8",
+    )
+    data = await _call(
+        {
+            "project_path": str(_project(tmp_path)),
+            "quantities": list(figures_1d.QUANTITIES),
+            "formats": ["pdf", "png", "svg"],
+            "out_dir": str(tmp_path / "fig"),
+            "csv_overlays": [str(meas)],
+            "title": "Patch",
+        }
+    )
     assert data["status"] == "ok", data
     assert len(data["files"]) == 7 * 3
     for path in data["files"]:
@@ -234,9 +252,16 @@ async def test_freq_range_and_default_z0(tmp_path, monkeypatch):
     f = grid(1.5, 3.5, 401)
     fake = FakeReader([S11], {(S11, 0): (f, lorentz_gamma(f, [(2.4, 0.05, 0.97)]), None)})
     monkeypatch.setattr(source, "open_reader", lambda *a, **k: fake)
-    data = await _call({"project_path": str(_project(tmp_path)), "quantities": ["s11_db", "impedance"],
-                        "formats": ["png"], "out_dir": str(tmp_path), "freq_range_ghz": [2.0, 2.8],
-                        "width": "double"})
+    data = await _call(
+        {
+            "project_path": str(_project(tmp_path)),
+            "quantities": ["s11_db", "impedance"],
+            "formats": ["png"],
+            "out_dir": str(tmp_path),
+            "freq_range_ghz": [2.0, 2.8],
+            "width": "double",
+        }
+    )
     assert data["status"] == "ok"
     assert data["metrics"]["z0_ohm_source"] == ["assumed 50 ohm"]
     assert len(data["metrics"]["bands"]) == 1
@@ -249,7 +274,9 @@ async def test_no_results_lists_items_and_next_steps(tmp_path, monkeypatch):
     out = await figures_1d.handle(
         "cst_plot_1d_results",
         {"project_path": str(_project(tmp_path)), "simulate_if_missing": True},
-        SimpleNamespace(connected=True, project_path=None, config=SimpleNamespace(connect_mode="auto")),
+        SimpleNamespace(
+            connected=True, project_path=None, config=SimpleNamespace(connect_mode="auto")
+        ),
     )
     data = json.loads(out[0].text)
     assert data["status"] == "no_results"

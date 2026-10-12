@@ -1,5 +1,7 @@
+import logging
+import sys
 from pathlib import Path
-import sys, time
+
 sys.path.insert(0, r"E:\CST Studio Suite 2026\AMD64\python_cst_libraries")
 import cst.interface as ci
 
@@ -15,6 +17,7 @@ if p is not None:
         try:
             p.save()
         except Exception as e:
+            logging.getLogger(__name__).debug("Handled error in _reopen_tree.main", exc_info=True)
             print("save", e)
         # Project may have close method
         for meth in ["close", "close_project", "Close"]:
@@ -26,6 +29,7 @@ if p is not None:
         # try p._connection close?
         print([a for a in dir(p) if "close" in a.lower() or "save" in a.lower()])
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in _reopen_tree.main", exc_info=True)
         print(e)
 
 # reopen
@@ -34,6 +38,7 @@ try:
     p2 = de.open_project(proj_path)
     print("reopened", p2)
 except Exception as e:
+    logging.getLogger(__name__).debug("Handled error in _reopen_tree.main", exc_info=True)
     print("open err", e)
     p2 = de.get_open_project(proj_path) or de.active_project
 
@@ -48,12 +53,14 @@ for tree in [
     try:
         print("select", tree, "->", m3d.SelectTreeItem(tree))
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in _reopen_tree.main", exc_info=True)
         print("select fail", tree, e)
 
 # list tree via simpler VBA
 sch = p2.schematic
 out = Path(r"E:/cstprojects/exports/tree_dump2.txt")
-if out.exists(): out.unlink()
+if out.exists():
+    out.unlink()
 vba = r"""
 Sub Main()
 Open "E:/cstprojects/exports/tree_dump2.txt" For Output As #1
@@ -82,6 +89,7 @@ try:
     sch.execute_vba_code(vba)
     print("vba ok")
 except Exception as e:
+    logging.getLogger(__name__).debug("Handled error in _reopen_tree.main", exc_info=True)
     print("vba", str(e)[-300:])
 if out.exists():
     print(out.read_text(encoding="utf-8", errors="replace"))

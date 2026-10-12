@@ -914,56 +914,77 @@
             },
             {
               "name": "outer_radius",
-              "type": "number",
-              "description": "Outer radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Outer radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "inner_radius",
-              "type": "number",
-              "description": "Inner radius (0 for solid)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Inner radius (0 for solid): finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1021,56 +1042,77 @@
             },
             {
               "name": "bottom_radius",
-              "type": "number",
-              "description": "Bottom radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Bottom radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "top_radius",
-              "type": "number",
-              "description": "Top radius (0 for pointed cone)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Top radius (0 for pointed cone): finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1117,32 +1159,44 @@
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "radius",
-              "type": "number",
-              "description": "Sphere radius",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Sphere radius: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1205,40 +1259,55 @@
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "outer_radius",
-              "type": "number",
-              "description": "Major radius (center to tube center)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "CST outer (large) radius, from axis to outer surface: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "inner_radius",
-              "type": "number",
-              "description": "Minor radius (tube radius)",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "CST inner (small) radius, from axis to inner surface: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1254,7 +1323,7 @@
         },
         {
           "name": "cst_create_extrude",
-          "description": "Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode 'pointlist'). The profile lies in the plane normal to 'axis' (default z) at the given x/y/z_offset; optional 'holes' are extruded the same way and subtracted (Solid.Subtract).",
+          "description": "Extrude a 2D polygon profile into a 3D solid in CST Studio (Extrude object, Mode 'pointlist'). The profile lies in the plane normal to 'axis' (default z) at the given x/y/z_offset. Height, profile coordinates and the active offset accept numbers or single-line CST expressions preserved in history. Double arguments use native Evaluate. Only the selected-axis offset applies. Optional 'holes' are extruded the same way and subtracted (Solid.Subtract). Live CST validation is pending.",
           "category_id": "geometry",
           "params": [
             {
@@ -1291,8 +1360,11 @@
             },
             {
               "name": "height",
-              "type": "number",
-              "description": "Extrusion height",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Extrusion height: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1311,24 +1383,33 @@
             },
             {
               "name": "x_offset",
-              "type": "number",
-              "description": "Base-plane position on the x axis (only valid with axis='x').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on x; expressions allowed only with axis='x': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "y_offset",
-              "type": "number",
-              "description": "Base-plane position on the y axis (only valid with axis='y').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on y; expressions allowed only with axis='y': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "z_offset",
-              "type": "number",
-              "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on z; expressions allowed only with axis='z': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
@@ -1344,7 +1425,7 @@
             {
               "name": "extrude_direction",
               "type": "string",
-              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset (e.g. copper under a board). Implemented by the profile winding, which sets the ExtrudeCurve direction in CST 2026.",
+              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset. Pointlist down reverses the plane normal and remaps local coordinates, correcting the previously ignored option.",
               "default": "up",
               "enum": [
                 "up",
@@ -1362,7 +1443,7 @@
         },
         {
           "name": "cst_create_loft",
-          "description": "Create a lofted solid between two or more 2D profiles in CST Studio.",
+          "description": "Create a capped solid with LoftCurves between two or more explicit 3D polygon profiles. Coordinates accept finite JSON numbers or nonempty single-line CST expressions, preserved for parameter rebuilds. Legacy [x, y] points are rejected; supply [x, y, z] without inferred spacing. CST validates expressions and geometry.",
           "category_id": "geometry",
           "params": [
             {
@@ -1392,7 +1473,7 @@
             {
               "name": "profiles",
               "type": "array",
-              "description": "List of profiles, each a list of [x, y] coordinate pairs",
+              "description": "At least two profiles of explicit [x, y, z] vertices, each coordinate a finite JSON number or nonempty single-line CST expression. Vertex order is preserved; an optional repeated endpoint is removed before closing exactly once. At least three vertices must remain. Separate auxiliary curve groups are created; existing groups are not adopted or deleted. No path or inferred z coordinates.",
               "default": null,
               "enum": null,
               "required": true
@@ -1510,7 +1591,7 @@
             {
               "name": "points",
               "type": "array",
-              "description": "List of [x, y, z] coordinate triples",
+              "description": "List of [x, y, z] triples; each coordinate accepts a finite number or nonempty single-line CST expression, preserved in model history",
               "default": null,
               "enum": null,
               "required": true
@@ -1523,7 +1604,7 @@
         },
         {
           "name": "cst_create_analytical_curve",
-          "description": "Create a parametric analytical curve in CST Studio using expressions of parameter t.",
+          "description": "Create a parametric analytical curve in CST Studio using expressions of parameter t. t_min and t_max accept finite numbers or CST expressions preserved in model history.",
           "category_id": "geometry",
           "params": [
             {
@@ -1560,16 +1641,22 @@
             },
             {
               "name": "t_min",
-              "type": "number",
-              "description": "Parameter t minimum value",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Parameter t minimum value: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "t_max",
-              "type": "number",
-              "description": "Parameter t maximum value",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Parameter t maximum value: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1586,7 +1673,7 @@
         },
         {
           "name": "cst_create_face_from_curves",
-          "description": "Create a planar face from one or more closed curves in CST Studio.",
+          "description": "Create a planar sheet consisting of one face from exactly one qualified closed planar curve reference (curvegroup:curveitem) in CST Studio. CST reports native geometric errors. Connected curve items may be included by CST.",
           "category_id": "geometry",
           "params": [
             {
@@ -1600,7 +1687,7 @@
             {
               "name": "name",
               "type": "string",
-              "description": "Face/solid name",
+              "description": "Sheet/face name",
               "default": null,
               "enum": null,
               "required": true
@@ -1608,7 +1695,7 @@
             {
               "name": "curve_names",
               "type": "array",
-              "description": "List of curve names to form the face boundary",
+              "description": "Exactly one qualified curve reference, e.g. 'Curves:Rectangle'. Independent profile lists are unsupported; the curve must be closed and planar.",
               "default": null,
               "enum": null,
               "required": true
@@ -1663,56 +1750,77 @@
             },
             {
               "name": "x_radius",
-              "type": "number",
-              "description": "Radius in local X direction",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Radius in local X direction: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "y_radius",
-              "type": "number",
-              "description": "Radius in local Y direction",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Radius in local Y direction: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "center_x",
-              "type": "number",
-              "description": "Center X coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center X coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_y",
-              "type": "number",
-              "description": "Center Y coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Y coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "center_z",
-              "type": "number",
-              "description": "Center Z coordinate",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Center Z coordinate: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "range_min",
-              "type": "number",
-              "description": "Axis range minimum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range minimum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
             },
             {
               "name": "range_max",
-              "type": "number",
-              "description": "Axis range maximum",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Axis range maximum: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1730,7 +1838,7 @@
         },
         {
           "name": "cst_create_polygon_extrude",
-          "description": "Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and extrusion (ExtrudeCurve). The profile lies at the base plane given by x/y/z_offset for the chosen axis; optional 'holes' (lists of [x, y]) are extruded the same way and removed with Solid.Subtract, e.g. for slotted/fractal patches. Z placement: CST's ExtrudeCurve extrudes along the closed curve's normal, which follows the point winding (a clockwise profile at z=0 with positive thickness lands at z=-t..0, e.g. copper embedded in the substrate). This tool normalises the winding, so extrude_direction='up' (default) gives offset..offset+height along +axis and 'down' gives offset-height..offset; the response reports the expected range.",
+          "description": "Create a polygon and extrude it along an axis in CST Studio. Convenience tool combining polygon profile creation (Polygon3D curve) and extrusion (ExtrudeCurve). The profile lies at the base plane given by x/y/z_offset for the chosen axis; optional 'holes' (lists of [x, y]) are extruded the same way and removed with Solid.Subtract, e.g. for slotted/fractal patches. Z placement: CST's ExtrudeCurve extrudes along the closed curve's normal, which follows the point winding (a clockwise profile at z=0 with positive thickness lands at z=-t..0, e.g. copper embedded in the substrate). This tool normalises the winding, so extrude_direction='up' (default) gives offset..offset+height along +axis and 'down' gives offset-height..offset; the response reports input-contract endpoints, not measured bounds. Height, all profile coordinates and the active offset accept numbers or single-line CST expressions. Native Evaluate and winding selection remain in history for reconstruction. Live CST validation is pending; native dialogs may show evaluated values.",
           "category_id": "geometry",
           "params": [
             {
@@ -1767,8 +1875,11 @@
             },
             {
               "name": "height",
-              "type": "number",
-              "description": "Extrusion height",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Extrusion height: finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": null,
               "enum": null,
               "required": true
@@ -1787,24 +1898,33 @@
             },
             {
               "name": "x_offset",
-              "type": "number",
-              "description": "Base-plane position on the x axis (only valid with axis='x').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on x; expressions allowed only with axis='x': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "y_offset",
-              "type": "number",
-              "description": "Base-plane position on the y axis (only valid with axis='y').",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on y; expressions allowed only with axis='y': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
             },
             {
               "name": "z_offset",
-              "type": "number",
-              "description": "Base-plane position on the z axis (only valid with axis='z', the default).",
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Base-plane position on z; expressions allowed only with axis='z': finite JSON number or nonempty single-line CST expression; preserved in model history. CST reports semantic expression errors.",
               "default": 0,
               "enum": null,
               "required": false
@@ -1820,7 +1940,7 @@
             {
               "name": "extrude_direction",
               "type": "string",
-              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset (e.g. copper under a board). Implemented by the profile winding, which sets the ExtrudeCurve direction in CST 2026.",
+              "description": "'up' (default, unchanged behaviour): solid spans offset..offset+height along +axis (e.g. copper on top of a substrate whose top face is z=offset). 'down': offset-height..offset. Numeric winding is normalized before generation; symbolic winding is evaluated independently for each profile on every rebuild.",
               "default": "up",
               "enum": [
                 "up",

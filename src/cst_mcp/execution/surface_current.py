@@ -17,6 +17,7 @@ current), and |J| = sqrt(|Jx|^2 + |Jy|^2) (+ |Jz|^2 if requested).
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -42,7 +43,9 @@ def _header_columns(line: str) -> list[str]:
     return [n.lower() for n in names]
 
 
-def parse_surface_current_ascii(path: str | Path | None = None, *, text: str | None = None) -> SurfaceCurrentSamples:
+def parse_surface_current_ascii(
+    path: str | Path | None = None, *, text: str | None = None
+) -> SurfaceCurrentSamples:
     """Parse a CST surface-current ASCIIExport (FixedWidth/ascii) file."""
     import numpy as np
 
@@ -63,7 +66,7 @@ def parse_surface_current_ascii(path: str | Path | None = None, *, text: str | N
         except ValueError:
             if not cols:
                 cols = _header_columns(s)
-                m = re.search(r"x\s*\[([^\]]+)\]", s, re.I)
+                m = re.search(r"x\s*\[([^\]]+)\]", s, re.IGNORECASE)
                 if m:
                     unit = m.group(1).strip()
             continue
@@ -83,13 +86,17 @@ def parse_surface_current_ascii(path: str | Path | None = None, *, text: str | N
             idx = {c: found[c] for c in _COLS}
         elif not {"x", "y", "z"} <= set(found):
             raise ValueError(f"unexpected surface-current header columns: {cols}")
-    k = np.stack([
-        arr[:, idx["kxre"]] + 1j * arr[:, idx["kxim"]],
-        arr[:, idx["kyre"]] + 1j * arr[:, idx["kyim"]],
-        arr[:, idx["kzre"]] + 1j * arr[:, idx["kzim"]],
-    ], axis=1)
-    return SurfaceCurrentSamples(arr[:, idx["x"]], arr[:, idx["y"]], arr[:, idx["z"]], k,
-                                 arr[:, idx["area"]], unit)
+    k = np.stack(
+        [
+            arr[:, idx["kxre"]] + 1j * arr[:, idx["kxim"]],
+            arr[:, idx["kyre"]] + 1j * arr[:, idx["kyim"]],
+            arr[:, idx["kzre"]] + 1j * arr[:, idx["kzim"]],
+        ],
+        axis=1,
+    )
+    return SurfaceCurrentSamples(
+        arr[:, idx["x"]], arr[:, idx["y"]], arr[:, idx["z"]], k, arr[:, idx["area"]], unit
+    )
 
 
 def grid_top_view(
@@ -132,22 +139,30 @@ def grid_top_view(
     x, y, z, k, a = s.x[m], s.y[m], s.z[m], s.k[m], s.area[m]
     if extent is None:
         # Snap the data bounds outwards to whole cells (grid anchored at multiples of ``cell``).
-        extent = (math.floor(float(x.min()) / cell + 1e-9) * cell, math.ceil(float(x.max()) / cell - 1e-9) * cell,
-                  math.floor(float(y.min()) / cell + 1e-9) * cell, math.ceil(float(y.max()) / cell - 1e-9) * cell)
+        extent = (
+            math.floor(float(x.min()) / cell + 1e-9) * cell,
+            math.ceil(float(x.max()) / cell - 1e-9) * cell,
+            math.floor(float(y.min()) / cell + 1e-9) * cell,
+            math.ceil(float(y.max()) / cell - 1e-9) * cell,
+        )
         if extent[1] <= extent[0]:
             extent = (extent[0], extent[0] + cell, extent[2], extent[3])
         if extent[3] <= extent[2]:
             extent = (extent[0], extent[1], extent[2], extent[2] + cell)
     x0, x1, y0, y1 = extent
-    nx = max(1, int(math.ceil((x1 - x0) / cell)))
-    ny = max(1, int(math.ceil((y1 - y0) / cell)))
+    nx = max(1, math.ceil((x1 - x0) / cell))
+    ny = max(1, math.ceil((y1 - y0) / cell))
     inside = (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
     x, y, z, k, a = x[inside], y[inside], z[inside], k[inside], a[inside]
     ix = np.clip(((x - x0) / cell).astype(int), 0, nx - 1)
     iy = np.clip(((y - y0) / cell).astype(int), 0, ny - 1)
     if layer_split_z is None and z.size and float(z.max() - z.min()) > 1e-6:
         layer_split_z = float(z.min() + z.max()) / 2
-    layers = [np.ones_like(z, dtype=bool)] if layer_split_z is None else [z > layer_split_z, z <= layer_split_z]
+    layers = (
+        [np.ones_like(z, dtype=bool)]
+        if layer_split_z is None
+        else [z > layer_split_z, z <= layer_split_z]
+    )
     ncomp = 3 if include_kz else 2
     J = np.zeros((ny, nx, ncomp), complex)
     filled = np.zeros((ny, nx), bool)
@@ -174,9 +189,16 @@ def grid_top_view(
         jmax, at = 0.0, [None, None]
     total = float(np.nansum(mag) * cell * cell)
     return {
-        "J": mag, "xs": xs, "ys": ys, "extent": (x0, x0 + nx * cell, y0, y0 + ny * cell),
-        "max_A_per_m": jmax, "max_at": at, "integral_A_mm": total,
-        "layers": len(layers), "layer_split_z": layer_split_z, "n_samples": int(x.size),
+        "J": mag,
+        "xs": xs,
+        "ys": ys,
+        "extent": (x0, x0 + nx * cell, y0, y0 + ny * cell),
+        "max_A_per_m": jmax,
+        "max_at": at,
+        "integral_A_mm": total,
+        "layers": len(layers),
+        "layer_split_z": layer_split_z,
+        "n_samples": int(x.size),
     }
 
 
@@ -208,8 +230,15 @@ def render_maps(
         with np.errstate(divide="ignore", invalid="ignore"):
             db = 20 * np.log10(np.maximum(g["J"], 1e-30) / ref)
         db[~np.isfinite(g["J"])] = np.nan
-        im = ax.imshow(db, origin="lower", extent=g["extent"], cmap=cmap, vmin=-dynamic_range_db, vmax=0,
-                       interpolation="nearest")
+        im = ax.imshow(
+            db,
+            origin="lower",
+            extent=g["extent"],
+            cmap=cmap,
+            vmin=-dynamic_range_db,
+            vmax=0,
+            interpolation="nearest",
+        )
         mx, my = g["max_at"]
         if mx is not None:
             ax.plot(mx, my, marker="x", color="c", ms=7, mew=1.5)
@@ -220,9 +249,16 @@ def render_maps(
         if not shared_scale:
             cb = fig.colorbar(im, ax=ax, shrink=0.8)
             cb.set_label(f"|J_s| (dB re {ref:.3g} A/m)")
-        panels.append({"label": label, "max_A_per_m": round(g["max_A_per_m"], 6), "max_at": g["max_at"],
-                       "integral_A_mm": round(g["integral_A_mm"], 6), "n_samples": g["n_samples"],
-                       "scale_ref_A_per_m": round(ref, 6)})
+        panels.append(
+            {
+                "label": label,
+                "max_A_per_m": round(g["max_A_per_m"], 6),
+                "max_at": g["max_at"],
+                "integral_A_mm": round(g["integral_A_mm"], 6),
+                "n_samples": g["n_samples"],
+                "scale_ref_A_per_m": round(ref, 6),
+            }
+        )
     if shared_scale and im is not None:
         cb = fig.colorbar(im, ax=axs[0].tolist(), shrink=0.8)
         cb.set_label(f"|J_s| (dB re {vmax_all:.3g} A/m, common scale)")
@@ -234,15 +270,25 @@ def render_maps(
         fig.savefig(p, dpi=200, bbox_inches="tight")
         files.append(str(p))
     plt.close(fig)
-    return {"files": files, "panels": panels, "shared_scale": shared_scale,
-            "dynamic_range_db": dynamic_range_db, "scale_ref_A_per_m": round(vmax_all, 6)}
+    return {
+        "files": files,
+        "panels": panels,
+        "shared_scale": shared_scale,
+        "dynamic_range_db": dynamic_range_db,
+        "scale_ref_A_per_m": round(vmax_all, 6),
+    }
 
 
-def surface_current_tree_candidates(frequency_ghz: float | None, tree_path: str | None) -> list[str]:
+def surface_current_tree_candidates(
+    frequency_ghz: float | None, tree_path: str | None
+) -> list[str]:
     out = []
     if tree_path:
-        out.append(tree_path if tree_path.startswith("2D/3D Results") else
-                   f"2D/3D Results\\Surface Current\\{tree_path}")
+        out.append(
+            tree_path
+            if tree_path.startswith("2D/3D Results")
+            else f"2D/3D Results\\Surface Current\\{tree_path}"
+        )
     if frequency_ghz is not None:
         f = f"{float(frequency_ghz):g}"
         for excitation in ("[1]", "[pw]", ""):
@@ -251,8 +297,13 @@ def surface_current_tree_candidates(frequency_ghz: float | None, tree_path: str 
     return out
 
 
-def build_export_vba(tree_path: str, out_file: str, *, step: float = 0.25,
-                     subvolume: tuple[float, float, float, float, float, float] | None = None) -> str:
+def build_export_vba(
+    tree_path: str,
+    out_file: str,
+    *,
+    step: float = 0.25,
+    subvolume: tuple[float, float, float, float, float, float] | None = None,
+) -> str:
     """ASCIIExport of a surface-current item (official ASCIIExport object methods)."""
     from cst_mcp.vba_safety import vba_escape, vba_number
 
@@ -296,7 +347,10 @@ def acquire(client: Any, args: dict[str, Any], work_dir: Path) -> dict[str, Any]
             if client.model3d.SelectTreeItem(c):
                 tree = c
                 break
-        except Exception:  # noqa: BLE001
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "Handled error in surface_current.acquire", exc_info=True
+            )
             continue
     if tree is None:
         return {
@@ -315,10 +369,19 @@ def acquire(client: Any, args: dict[str, Any], work_dir: Path) -> dict[str, Any]
     except OSError:
         pass
     sub = args.get("subvolume")
-    vba = build_export_vba(tree, str(out), step=float(args.get("export_step", 0.25)),
-                           subvolume=tuple(sub) if sub else None)
+    vba = build_export_vba(
+        tree,
+        str(out),
+        step=float(args.get("export_step", 0.25)),
+        subvolume=tuple(sub) if sub else None,
+    )
     run = fc._run(client, vba)
     if out.is_file() and out.stat().st_size > 0:
         return {"status": "ok", "path": str(out), "tree_path": tree, "run": run.get("status")}
-    return {"status": "error", "message": f"ASCIIExport produced no data for {tree}", "tree_path": tree,
-            "run": run.get("status"), "run_message": str(run.get("message") or "")[:300]}
+    return {
+        "status": "error",
+        "message": f"ASCIIExport produced no data for {tree}",
+        "tree_path": tree,
+        "run": run.get("status"),
+        "run_message": str(run.get("message") or "")[:300],
+    }

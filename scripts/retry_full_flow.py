@@ -42,7 +42,12 @@ async def main() -> int:
         c,
     )
     build = json.loads(r[0].text)
-    print("build", build.get("status"), "params", (build.get("parameters_in_project") or {}).get("count"))
+    print(
+        "build",
+        build.get("status"),
+        "params",
+        (build.get("parameters_in_project") or {}).get("count"),
+    )
     for s in build.get("steps") or []:
         if not isinstance(s, dict):
             continue
@@ -53,14 +58,19 @@ async def main() -> int:
                 continue
             msg = s.get("message") or ""
             print("  ERR", s.get("label"), msg[:250])
-            if s.get("label") not in {"units", "store_parameters"}:
-                if "non-fatal" not in (s.get("note") or ""):
-                    errors.append(f"{s.get('label')}: {msg[:200]}")
+            if (s.get("label") not in {"units", "store_parameters"}) and (
+                "non-fatal" not in (s.get("note") or "")
+            ):
+                errors.append(f"{s.get('label')}: {msg[:200]}")
 
     if build.get("status") not in {"executed", "ok"}:
         errors.append("build status " + str(build.get("status")))
 
-    print("3 PARAMS", c.list_parameters().get("count"), list((c.list_parameters().get("parameters") or {}).keys()))
+    print(
+        "3 PARAMS",
+        c.list_parameters().get("count"),
+        list((c.list_parameters().get("parameters") or {}).keys()),
+    )
 
     print("4 SOLVE")
     t0 = time.time()

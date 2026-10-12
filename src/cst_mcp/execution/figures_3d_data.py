@@ -23,21 +23,35 @@ _NUM = re.compile(r"^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$")
 
 # Component name patterns -> canonical key.
 _COMPONENTS: list[tuple[str, re.Pattern[str]]] = [
-    ("theta", re.compile(r"^abs\s*\(\s*theta\s*\)$", re.I)),
-    ("phi", re.compile(r"^abs\s*\(\s*phi\s*\)$", re.I)),
-    ("horizontal", re.compile(r"^abs\s*\(\s*(hor|horiz|horizontal|comp1|azimuth|alpha)\s*\)$", re.I)),
-    ("vertical", re.compile(r"^abs\s*\(\s*(ver|vert|verti|vertical|comp2|elevation|epsilon)\s*\)$", re.I)),
-    ("copolar", re.compile(r"^abs\s*\(\s*(co|copol|copolar|co-pol)\s*\)$", re.I)),
-    ("crosspolar", re.compile(r"^abs\s*\(\s*(cross|crosspol|crosspolar|cx|x-pol)\s*\)$", re.I)),
-    ("left", re.compile(r"^abs\s*\(\s*left\s*\)$", re.I)),
-    ("right", re.compile(r"^abs\s*\(\s*right\s*\)$", re.I)),
+    ("theta", re.compile(r"^abs\s*\(\s*theta\s*\)$", re.IGNORECASE)),
+    ("phi", re.compile(r"^abs\s*\(\s*phi\s*\)$", re.IGNORECASE)),
+    (
+        "horizontal",
+        re.compile(r"^abs\s*\(\s*(hor|horiz|horizontal|comp1|azimuth|alpha)\s*\)$", re.IGNORECASE),
+    ),
+    (
+        "vertical",
+        re.compile(
+            r"^abs\s*\(\s*(ver|vert|verti|vertical|comp2|elevation|epsilon)\s*\)$", re.IGNORECASE
+        ),
+    ),
+    ("copolar", re.compile(r"^abs\s*\(\s*(co|copol|copolar|co-pol)\s*\)$", re.IGNORECASE)),
+    (
+        "crosspolar",
+        re.compile(r"^abs\s*\(\s*(cross|crosspol|crosspolar|cx|x-pol)\s*\)$", re.IGNORECASE),
+    ),
+    ("left", re.compile(r"^abs\s*\(\s*left\s*\)$", re.IGNORECASE)),
+    ("right", re.compile(r"^abs\s*\(\s*right\s*\)$", re.IGNORECASE)),
 ]
 
 _QUANTITY_HINTS = [
-    ("realized_gain", re.compile(r"realized\s*gain|realised\s*gain|r\.?\s*gain|grlz|g_?rlz", re.I)),
-    ("gain", re.compile(r"gain", re.I)),
-    ("directivity", re.compile(r"dir", re.I)),
-    ("efield", re.compile(r"\be\b|e-?field|abs\s*\(\s*e\s*\)", re.I)),
+    (
+        "realized_gain",
+        re.compile(r"realized\s*gain|realised\s*gain|r\.?\s*gain|grlz|g_?rlz", re.IGNORECASE),
+    ),
+    ("gain", re.compile(r"gain", re.IGNORECASE)),
+    ("directivity", re.compile(r"dir", re.IGNORECASE)),
+    ("efield", re.compile(r"\be\b|e-?field|abs\s*\(\s*e\s*\)", re.IGNORECASE)),
 ]
 
 QUANTITY_LABEL = {
@@ -87,7 +101,10 @@ def _is_numeric_row(parts: list[str]) -> bool:
 
 def _parse_header(line: str) -> list[tuple[str, str]]:
     stripped = line.strip().lstrip("#!%").strip()
-    tokens = [(m.group(1).strip().strip('"').strip(), m.group(2).strip()) for m in _HEADER_TOKEN.finditer(stripped)]
+    tokens = [
+        (m.group(1).strip().strip('"').strip(), m.group(2).strip())
+        for m in _HEADER_TOKEN.finditer(stripped)
+    ]
     if len(tokens) >= 3:
         return tokens
     # Unit-less header: "theta phi gain" / "Theta,Phi,Abs(Gain) dBi"
@@ -95,9 +112,9 @@ def _parse_header(line: str) -> list[tuple[str, str]]:
     if len(parts) >= 3 and not _is_numeric_row(parts) and re.match(r"(?i)^theta", parts[0]):
         out = []
         for p in parts:
-            m = re.match(r"^(.*?)\s*[\(\[]\s*(dBi|dBV/m|dB|V/m|W/sr)\s*[\)\]]$", p, re.I) or re.match(
-                r"^(.*?)[\s_]+(dBi|dBV/m|dB|V/m|W/sr)$", p, re.I
-            )
+            m = re.match(
+                r"^(.*?)\s*[\(\[]\s*(dBi|dBV/m|dB|V/m|W/sr)\s*[\)\]]$", p, re.IGNORECASE
+            ) or re.match(r"^(.*?)[\s_]+(dBi|dBV/m|dB|V/m|W/sr)$", p, re.IGNORECASE)
             out.append((m.group(1).strip(), m.group(2)) if m else (p, ""))
         return out
     return []
@@ -156,7 +173,11 @@ def parse_farfield_ascii(
         if not p.is_file():
             raise ValueError(f"Farfield data file not found: {p}")
         raw = p.read_bytes()
-        text = raw.decode("utf-8", errors="replace") if not raw.startswith(b"\xff\xfe") else raw.decode("utf-16")
+        text = (
+            raw.decode("utf-8", errors="replace")
+            if not raw.startswith(b"\xff\xfe")
+            else raw.decode("utf-16")
+        )
     header: list[tuple[str, str]] = []
     rows: list[list[float]] = []
     frequency_ghz: float | None = None
@@ -260,7 +281,9 @@ def parse_farfield_ascii(
             u = ""
         comps[key] = _grid(i, u if (u or not _unit_is_db(unit_main)) else unit_main)
 
-    unit_label = unit_main if _unit_is_db(unit_main) else ("dBV/m" if _is_field_unit(unit_main) else "dBi")
+    unit_label = (
+        unit_main if _unit_is_db(unit_main) else ("dBV/m" if _is_field_unit(unit_main) else "dBi")
+    )
     if quantity == "efield" and not _unit_is_db(unit_main):
         unit_label = "dBV/m"
     return FarfieldGrid(
@@ -317,7 +340,9 @@ def parse_cut_spec(spec: Any) -> tuple[str, float]:
     if isinstance(spec, (int, float)) and not isinstance(spec, bool):
         return "phi", float(spec)
     if isinstance(spec, str):
-        m = re.fullmatch(r"\s*(phi|theta)?\s*=?\s*([-+]?\d*\.?\d+)\s*(?:deg|°)?\s*", spec, re.I)
+        m = re.fullmatch(
+            r"\s*(phi|theta)?\s*=?\s*([-+]?\d*\.?\d+)\s*(?:deg|°)?\s*", spec, re.IGNORECASE
+        )
         if m:
             return (m.group(1) or "phi").lower(), float(m.group(2))
         low = spec.strip().lower()
@@ -353,15 +378,24 @@ def extract_cut(grid: FarfieldGrid, kind: str, value: float) -> Cut:
         else:
             angle = th.copy()
             out = {k: a[i0, :].copy() for k, a in arrays.items()}
-        return Cut("phi", float(grid.phi[i0]), angle, out.pop("total"), out,
-                   label=f"φ = {grid.phi[i0]:g}°")
+        return Cut(
+            "phi", float(grid.phi[i0]), angle, out.pop("total"), out, label=f"φ = {grid.phi[i0]:g}°"
+        )
     j = _nearest(grid.theta, value)
     out = {k: a[:, j].copy() for k, a in arrays.items()}
-    return Cut("theta", float(grid.theta[j]), grid.phi.copy(), out.pop("total"), out,
-               label=f"θ = {grid.theta[j]:g}°")
+    return Cut(
+        "theta",
+        float(grid.theta[j]),
+        grid.phi.copy(),
+        out.pop("total"),
+        out,
+        label=f"θ = {grid.theta[j]:g}°",
+    )
 
 
-def _crossing(angle: np.ndarray, vals: np.ndarray, i_peak: int, level: float, step: int, circular: bool):
+def _crossing(
+    angle: np.ndarray, vals: np.ndarray, i_peak: int, level: float, step: int, circular: bool
+):
     n = len(vals)
     i = i_peak
     for _ in range(n - 1):
@@ -386,8 +420,11 @@ def _crossing(angle: np.ndarray, vals: np.ndarray, i_peak: int, level: float, st
 def beam_metrics(cut: Cut, threshold_db: float = 3.0) -> dict[str, Any]:
     vals = np.where(np.isfinite(cut.total), cut.total, -300.0)
     angle = cut.angle
-    circular = cut.kind == "theta" or (len(angle) > 2 and angle[0] <= -180 + 1e-6 + (angle[1] - angle[0])
-                                       and angle[-1] >= 180 - (angle[1] - angle[0]) - 1e-6)
+    circular = cut.kind == "theta" or (
+        len(angle) > 2
+        and angle[0] <= -180 + 1e-6 + (angle[1] - angle[0])
+        and angle[-1] >= 180 - (angle[1] - angle[0]) - 1e-6
+    )
     ip = int(np.argmax(vals))
     peak = float(vals[ip])
     level = peak - threshold_db
@@ -448,8 +485,8 @@ def pattern_metrics(grid: FarfieldGrid, cuts: list[Cut]) -> dict[str, Any]:
         "max_direction_deg": {"theta": th0, "phi": ph0},
         "front_to_back_db": round(gmax - back, 2) if math.isfinite(back) else None,
         "grid": {
-            "n_theta": int(len(grid.theta)),
-            "n_phi": int(len(grid.phi)),
+            "n_theta": len(grid.theta),
+            "n_phi": len(grid.phi),
             "theta_step_deg": float(np.min(np.diff(grid.theta))) if len(grid.theta) > 1 else None,
             "phi_step_deg": float(np.min(np.diff(grid.phi))) if len(grid.phi) > 1 else None,
         },
@@ -490,9 +527,10 @@ def co_cross_keys(grid: FarfieldGrid) -> tuple[str | None, str | None]:
 def cut_co_cross(grid: FarfieldGrid, cut: Cut) -> tuple[str | None, str | None]:
     """Per-cut co/cross for spherical components (Eθ/Eφ swap between planes)."""
     co, cx = co_cross_keys(grid)
-    if co in ("theta", "phi") and co in cut.components and cx in cut.components:
-        if np.nanmax(cut.components[cx]) > np.nanmax(cut.components[co]):
-            co, cx = cx, co
+    if (co in ("theta", "phi") and co in cut.components and (cx in cut.components)) and (
+        np.nanmax(cut.components[cx]) > np.nanmax(cut.components[co])
+    ):
+        co, cx = cx, co
     return co, cx
 
 
@@ -503,7 +541,7 @@ def plane_label(grid: FarfieldGrid, cut: Cut) -> str:
     base = cut.value % 180
     if not (np.isclose(base, 0) or np.isclose(base, 90)):
         return ""
-    ip, it = np.unravel_index(int(np.nanargmax(grid.total_db)), grid.total_db.shape)
+    _ip, it = np.unravel_index(int(np.nanargmax(grid.total_db)), grid.total_db.shape)
     th0 = float(grid.theta[it])
     et = value_at(grid, th0, cut.value, grid.components_db["theta"])
     ep = value_at(grid, th0, cut.value, grid.components_db["phi"])

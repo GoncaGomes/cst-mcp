@@ -173,16 +173,26 @@ def test_toolsets_default_is_all(tmp_path, monkeypatch):
 def test_core_toolset_subset():
     toolsets = parse_toolsets("core")
     assert toolsets == {
-        "connection", "official", "project", "workflows", "simulation", "results",
-        "parameters", "diagnostics",
+        "connection",
+        "official",
+        "project",
+        "workflows",
+        "simulation",
+        "results",
+        "parameters",
+        "diagnostics",
     }
     assert not {"drawing", "figures"} & toolsets
     registry = _registry(toolsets)
     active = set(registry.active_tool_names)
     assert ALWAYS_ENABLED_TOOLS <= active
     assert {
-        "cst_get_s_parameters", "cst_run_simulation", "cst_search_help",
-        "cst_set_parameter", "cst_list_parameters", "cst_dismiss_dialogs",
+        "cst_get_s_parameters",
+        "cst_run_simulation",
+        "cst_search_help",
+        "cst_set_parameter",
+        "cst_list_parameters",
+        "cst_dismiss_dialogs",
     } <= active
     assert "cst_create_brick" not in active
     assert "cst_pcb_create_trace" not in active

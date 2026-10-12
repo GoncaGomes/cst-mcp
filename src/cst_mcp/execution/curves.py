@@ -5,7 +5,9 @@ Raw complex samples are always retained. No GUI selection or History write.
 
 from __future__ import annotations
 
+import logging
 import math
+from itertools import pairwise
 from typing import Any
 
 
@@ -42,6 +44,7 @@ def read_curve(
             "snapshot": "Last saved project results; unsaved GUI changes are not included",
         }
     except Exception as exc:
+        logging.getLogger(__name__).debug("Handled error in curves.read_curve", exc_info=True)
         return {
             "status": "error",
             "tree_path": tree_path,
@@ -106,7 +109,11 @@ def sample_curve(data: dict, maximum: int = 200) -> dict:
     out = dict(data)
     n = data["n"]
     if maximum and maximum < n:
-        indices = sorted({round(j*(n-1)/(maximum-1)) for j in range(maximum)}) if maximum > 1 else [0]
+        indices = (
+            sorted({round(j * (n - 1) / (maximum - 1)) for j in range(maximum)})
+            if maximum > 1
+            else [0]
+        )
         for key in ["x", "y", "real", "imag", "impedance_real", "impedance_imag"]:
             if key in data:
                 out[key] = [data[key][j] for j in indices]
@@ -143,7 +150,7 @@ def derived_s(data: dict, kind: str, arguments: dict) -> dict:
     else:
         scale = frequency_scale(data["xlabel"])
         x = [v * scale for v in data["x"]]
-        if len(x) < 2 or any(b <= a for a, b in zip(x, x[1:])):
+        if len(x) < 2 or any(b <= a for a, b in pairwise(x)):
             raise ValueError("Requires at least two strictly increasing frequency samples")
         if kind == "cst_get_group_delay":
             if any(v == 0 for v in values):

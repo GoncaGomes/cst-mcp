@@ -10,18 +10,18 @@ import pytest
 
 from cst_mcp.cst_client import CSTClient
 from cst_mcp.execution.curves import derived_s, format_curve, read_curve
-from cst_mcp.tools import results, optimization
+from cst_mcp.tools import optimization, results
 
 
 def curve(values=(0.5 + 0.5j, 0.1 + 0.1j, 0.5 + 0.5j), x=(1.0, 2.0, 3.0)):
-    return dict(
-        status="ok",
-        real=[v.real for v in values],
-        imag=[v.imag for v in values],
-        x=list(x),
-        xlabel="Frequency / GHz",
-        n=len(values),
-    )
+    return {
+        "status": "ok",
+        "real": [v.real for v in values],
+        "imag": [v.imag for v in values],
+        "x": list(x),
+        "xlabel": "Frequency / GHz",
+        "n": len(values),
+    }
 
 
 def test_all_tool_client_members_exist():
@@ -32,10 +32,9 @@ def test_all_tool_client_members_exist():
             if (
                 isinstance(node, ast.Attribute)
                 and isinstance(node.value, ast.Name)
-                and node.value.id == "client"
-            ):
-                if not hasattr(client, node.attr):
-                    missing.append(f"{path}:{node.lineno} {node.attr}")
+                and (node.value.id == "client")
+            ) and (not hasattr(client, node.attr)):
+                missing.append(f"{path}:{node.lineno} {node.attr}")
     assert not missing
 
 
@@ -164,12 +163,12 @@ def test_native_optimizer_uses_documented_goal_lifecycle():
     from cst_mcp.execution.native_optimizer import build_optimizer
 
     code = build_optimizer(
-        dict(
-            method="Nelder Mead",
-            parameters=[dict(name="w", min=1, max=2)],
-            goal_type="minimize",
-            result_path="1D Results\\S-Parameters\\S1,1",
-        )
+        {
+            "method": "Nelder Mead",
+            "parameters": [{"name": "w", "min": 1, "max": 2}],
+            "goal_type": "minimize",
+            "result_path": "1D Results\\S-Parameters\\S1,1",
+        }
     )
     assert '.SetOptimizerType "Nelder_Mead_Simplex"' in code
     assert '.AddGoal "1DC Primary Result"' in code
@@ -177,7 +176,7 @@ def test_native_optimizer_uses_documented_goal_lifecycle():
     assert '.SelectParameter "w", "True"' in code
     assert ".SetMaxEval " in code and "InitGoal" not in code and "\n  .Start\n" not in code
     with pytest.raises(ValueError, match="Evaluation-capped"):
-        build_optimizer(dict(method="Genetic Algorithm"))
+        build_optimizer({"method": "Genetic Algorithm"})
 
 
 def test_native_vba_timeout_is_not_replayed(monkeypatch):
@@ -220,18 +219,23 @@ def test_history_timeout_returns_without_followup_native_calls(monkeypatch):
     def timeout(label, code, *, timeout):
         assert timeout == 30
         raise TimeoutError("native command timed out")
+
     client = CSTClient()
     client._de = object()
-    client._project = SimpleNamespace(model3d=SimpleNamespace(
-        is_solver_running=lambda **kw: False, add_to_history=timeout))
-    monkeypatch.setattr(client, "get_cst_messages", lambda **kw: pytest.fail("follow-up native call"))
+    client._project = SimpleNamespace(
+        model3d=SimpleNamespace(is_solver_running=lambda **kw: False, add_to_history=timeout)
+    )
+    monkeypatch.setattr(
+        client, "get_cst_messages", lambda **kw: pytest.fail("follow-up native call")
+    )
     result = client.run_history("x")
     assert result["status"] == "timeout" and result["execution_state"] == "unknown"
 
 
 def test_preview_cap_preserves_finite_minimum_and_endpoints():
     from cst_mcp.execution.results_reader import downsample_series
-    data = dict(n_points=100, frequency_ghz=list(range(100)), magnitude_db=[0]*100)
+
+    data = {"n_points": 100, "frequency_ghz": list(range(100)), "magnitude_db": [0] * 100}
     data["magnitude_db"][37] = -20
     data["magnitude_db"][25] = None
     result = downsample_series(data, 10)
@@ -242,10 +246,22 @@ def test_preview_cap_preserves_finite_minimum_and_endpoints():
 
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 def test_cylinder_and_cone_centers_are_world_coordinates(axis):
-    from cst_mcp.tools.geometry import _build_cylinder, _build_cone
-    args = dict(component="test", name="solid", axis=axis, center_x=11, center_y=22,
-                center_z=33, outer_radius=2, bottom_radius=2, top_radius=1, range_min=0, range_max=5)
+    from cst_mcp.tools.geometry import _build_cone, _build_cylinder
+
+    args = {
+        "component": "test",
+        "name": "solid",
+        "axis": axis,
+        "center_x": 11,
+        "center_y": 22,
+        "center_z": 33,
+        "outer_radius": 2,
+        "bottom_radius": 2,
+        "top_radius": 1,
+        "range_min": 0,
+        "range_max": 5,
+    }
     for builder in [_build_cylinder, _build_cone]:
         code = builder(args)
-        for coordinate, value in zip("XYZ", [11,22,33]):
+        for coordinate, value in zip("XYZ", [11, 22, 33]):
             assert f'.{coordinate}center "{value}"' in code

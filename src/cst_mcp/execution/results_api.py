@@ -98,7 +98,9 @@ def read_1d_item(project_path: str, tree_path: str) -> dict[str, Any]:
         return {"status": "error", "message": str(exc), "tree_path": tree_path}
 
 
-def antenna_metrics_from_results(project_path: str, frequency_ghz: float | None = None) -> dict[str, Any]:
+def antenna_metrics_from_results(
+    project_path: str, frequency_ghz: float | None = None
+) -> dict[str, Any]:
     """Collect S11 + efficiency metrics without FarfieldPlot (avoids HEX mesh issues)."""
     items = list_tree_items(project_path)
     out: dict[str, Any] = {"status": "ok", "metrics": {}, "sources": {}, "tree_items": items}

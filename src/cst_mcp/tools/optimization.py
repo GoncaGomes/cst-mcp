@@ -18,7 +18,8 @@ import math
 import os
 import tempfile
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.types import TextContent, Tool
 
@@ -26,7 +27,6 @@ from cst_mcp.cst_client import CSTClient
 from cst_mcp.vba_builder import VBAScript
 from cst_mcp.vba_safety import validate_file_path as _qf
 from cst_mcp.vba_safety import vba_int as _int
-
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +266,7 @@ def _parse_s11_data(filepath: str) -> tuple[list[float], list[float]]:
     # Skip header lines (non-numeric or separator lines)
     for line in lines:
         stripped = line.strip()
-        if not stripped or stripped.startswith("-") or stripped.startswith("F"):
+        if not stripped or stripped.startswith(("-", "F")):
             continue
         parts = stripped.split()
         if len(parts) >= 2:
@@ -337,12 +337,14 @@ def _evaluate_bands(
             if interpolated is not None:
                 results.append(interpolated)
                 continue
-            results.append({
-                "name": band["name"],
-                "status": "NO_DATA",
-                "message": f"No data points in {f_low}-{f_high} GHz",
-                "target_vswr": target,
-            })
+            results.append(
+                {
+                    "name": band["name"],
+                    "status": "NO_DATA",
+                    "message": f"No data points in {f_low}-{f_high} GHz",
+                    "target_vswr": target,
+                }
+            )
             continue
 
         worst_vswr = max(band_vswr)
@@ -359,19 +361,21 @@ def _evaluate_bands(
         target_s11 = vswr_to_s11(target)
         margin_db = target_s11 - worst_s11  # Positive = pass (dB below target), negative = fail
 
-        results.append({
-            "name": band["name"],
-            "status": "PASS" if passed else "FAIL",
-            "worst_vswr": round(worst_vswr, 3),
-            "worst_s11_db": round(worst_s11, 2),
-            "best_vswr": round(best_vswr, 3),
-            "best_s11_db": round(best_s11, 2),
-            "best_freq_ghz": round(best_freq, 4) if best_freq else None,
-            "target_vswr": target,
-            "target_s11_db": round(target_s11, 2),
-            "margin_db": round(margin_db, 2),
-            "num_points": len(band_vswr),
-        })
+        results.append(
+            {
+                "name": band["name"],
+                "status": "PASS" if passed else "FAIL",
+                "worst_vswr": round(worst_vswr, 3),
+                "worst_s11_db": round(worst_s11, 2),
+                "best_vswr": round(best_vswr, 3),
+                "best_s11_db": round(best_s11, 2),
+                "best_freq_ghz": round(best_freq, 4) if best_freq else None,
+                "target_vswr": target,
+                "target_s11_db": round(target_s11, 2),
+                "margin_db": round(margin_db, 2),
+                "num_points": len(band_vswr),
+            }
+        )
 
     return results
 
@@ -435,13 +439,16 @@ def _find_resonances(
         return resonances
 
     for i in range(1, n - 1):
-        if s11_db[i] < threshold_db:
-            if s11_db[i] <= s11_db[i - 1] and s11_db[i] <= s11_db[i + 1]:
-                resonances.append({
+        if (s11_db[i] < threshold_db) and (
+            s11_db[i] <= s11_db[i - 1] and s11_db[i] <= s11_db[i + 1]
+        ):
+            resonances.append(
+                {
                     "freq_ghz": round(freqs[i], 4),
                     "s11_db": round(s11_db[i], 2),
                     "vswr": round(s11_to_vswr(s11_db[i]), 3),
-                })
+                }
+            )
 
     return resonances
 
@@ -542,16 +549,12 @@ def _generate_recommendations(
     recs: list[str] = []
 
     if worst_vswr <= target_vswr:
-        recs.append(
-            f"✓ {band_name} meets VSWR target "
-            f"({worst_vswr:.2f} ≤ {target_vswr:.1f})"
-        )
+        recs.append(f"✓ {band_name} meets VSWR target ({worst_vswr:.2f} ≤ {target_vswr:.1f})")
         return recs
 
     gap = worst_vswr - target_vswr
     recs.append(
-        f"✗ {band_name} VSWR={worst_vswr:.2f} exceeds target {target_vswr:.1f} "
-        f"(gap: {gap:.2f})"
+        f"✗ {band_name} VSWR={worst_vswr:.2f} exceeds target {target_vswr:.1f} (gap: {gap:.2f})"
     )
 
     (f_low + f_high) / 2.0
@@ -649,13 +652,15 @@ def _analyze_impedance_band(
                 g_m = 10.0 ** (s / 20.0)
             vswr = gamma_to_vswr(g_m)
             rl = gamma_to_return_loss(g_m) if g_m > 0 else float("inf")
-            band_data.append({
-                "freq_ghz": f,
-                "s11_db": s,
-                "gamma_mag": g_m,
-                "vswr": vswr,
-                "return_loss_db": rl,
-            })
+            band_data.append(
+                {
+                    "freq_ghz": f,
+                    "s11_db": s,
+                    "gamma_mag": g_m,
+                    "vswr": vswr,
+                    "return_loss_db": rl,
+                }
+            )
 
     if not band_data:
         return {
@@ -676,14 +681,17 @@ def _analyze_impedance_band(
     nearest_res = None
     if resonances:
         band_center = (f_low + f_high) / 2.0
-        nearest_res = min(
-            resonances, key=lambda r: abs(r["freq_ghz"] - band_center)
-        )
+        nearest_res = min(resonances, key=lambda r: abs(r["freq_ghz"] - band_center))
 
     # Recommendations
     recommendations = _generate_recommendations(
-        band["name"], worst_pt["vswr"], target_vswr,
-        avg_s11, nearest_res, f_low, f_high,
+        band["name"],
+        worst_pt["vswr"],
+        target_vswr,
+        avg_s11,
+        nearest_res,
+        f_low,
+        f_high,
     )
 
     # Sample points for detailed report
@@ -692,19 +700,13 @@ def _analyze_impedance_band(
         targets = sample_freqs
     else:
         # Default: band edges + center + worst + best
-        targets = sorted(set([
-            f_low,
-            (f_low + f_high) / 2,
-            f_high,
-            worst_pt["freq_ghz"],
-            best_pt["freq_ghz"],
-        ]))
+        targets = sorted(
+            {f_low, (f_low + f_high) / 2, f_high, worst_pt["freq_ghz"], best_pt["freq_ghz"]}
+        )
 
     for f_target in targets:
         if f_low <= f_target <= f_high:
-            closest = min(
-                band_data, key=lambda d: abs(d["freq_ghz"] - f_target)
-            )
+            closest = min(band_data, key=lambda d: abs(d["freq_ghz"] - f_target))
             # Classify match quality by return loss
             rl = closest["return_loss_db"]
             if rl > 15:
@@ -718,13 +720,15 @@ def _analyze_impedance_band(
             else:
                 match_quality = "very_poor"
 
-            detail_points.append({
-                "freq_ghz": round(closest["freq_ghz"], 4),
-                "s11_db": round(closest["s11_db"], 2),
-                "vswr": round(closest["vswr"], 3),
-                "return_loss_db": round(rl, 2),
-                "match_quality": match_quality,
-            })
+            detail_points.append(
+                {
+                    "freq_ghz": round(closest["freq_ghz"], 4),
+                    "s11_db": round(closest["s11_db"], 2),
+                    "vswr": round(closest["vswr"], 3),
+                    "return_loss_db": round(rl, 2),
+                    "match_quality": match_quality,
+                }
+            )
 
     return {
         "name": band["name"],
@@ -847,10 +851,9 @@ def _shrink(simplex: list[list[float]], best_idx: int, sigma: float = 0.5) -> li
         if i == best_idx:
             new_simplex.append(list(vertex))
         else:
-            new_simplex.append([
-                best[j] + sigma * (vertex[j] - best[j])
-                for j in range(len(vertex))
-            ])
+            new_simplex.append(
+                [best[j] + sigma * (vertex[j] - best[j]) for j in range(len(vertex))]
+            )
     return new_simplex
 
 
@@ -931,8 +934,13 @@ async def _optimization_loop(
             cost, bands_out = await _evaluate_once(x)
         finally:
             last_eval_s = clock() - t_eval
-        evaluations.append({"params": dict(zip(param_names, _clamp_to_bounds(x, bounds))),
-                            "cost": cost, "bands": bands_out})
+        evaluations.append(
+            {
+                "params": dict(zip(param_names, _clamp_to_bounds(x, bounds))),
+                "cost": cost,
+                "bands": bands_out,
+            }
+        )
         return cost, bands_out
 
     async def _evaluate_once(x: list[float]) -> tuple[float, list[dict]]:
@@ -954,6 +962,7 @@ async def _optimization_loop(
             cost, band_results = _compute_cost(freqs, s11_db, bands)
             return cost, band_results
         except Exception as e:
+            logger.debug("Handled error in optimization._evaluate_once", exc_info=True)
             logger.error("Parse/eval error: %s", e)
             return 100.0, []
 
@@ -971,12 +980,14 @@ async def _optimization_loop(
         best_cost = costs[best_idx]
         best_params = dict(zip(param_names, simplex[best_idx]))
 
-        history.append({
-            "iteration": 0,
-            "eval_count": eval_count,
-            "best_cost": round(best_cost, 4),
-            "best_params": {k: round(v, 4) for k, v in best_params.items()},
-        })
+        history.append(
+            {
+                "iteration": 0,
+                "eval_count": eval_count,
+                "best_cost": round(best_cost, 4),
+                "best_params": {k: round(v, 4) for k, v in best_params.items()},
+            }
+        )
 
         logger.info("Optimization start: cost=%.4f params=%s", best_cost, best_params)
 
@@ -1043,16 +1054,21 @@ async def _optimization_loop(
                 best_cost = current_best_cost
                 best_params = dict(zip(param_names, simplex[current_best_idx]))
 
-            history.append({
-                "iteration": iteration,
-                "eval_count": eval_count,
-                "best_cost": round(best_cost, 4),
-                "best_params": {k: round(v, 4) for k, v in best_params.items()},
-            })
+            history.append(
+                {
+                    "iteration": iteration,
+                    "eval_count": eval_count,
+                    "best_cost": round(best_cost, 4),
+                    "best_params": {k: round(v, 4) for k, v in best_params.items()},
+                }
+            )
 
             logger.info(
                 "Iter %d: cost=%.4f evals=%d params=%s",
-                iteration, best_cost, eval_count, best_params,
+                iteration,
+                best_cost,
+                eval_count,
+                best_params,
             )
 
             # Convergence check: cost is 0 (all bands pass)
@@ -1074,8 +1090,13 @@ async def _optimization_loop(
     def resume_block() -> dict:
         return {
             "parameters": [
-                {"name": p["name"], "initial": round(best_params[p["name"]], 6),
-                 "min": p["min"], "max": p["max"]} for p in params_spec
+                {
+                    "name": p["name"],
+                    "initial": round(best_params[p["name"]], 6),
+                    "min": p["min"],
+                    "max": p["max"],
+                }
+                for p in params_spec
             ],
             "bands": bands,
             "port": port,
@@ -1087,8 +1108,9 @@ async def _optimization_loop(
         return {
             "status": "partial",
             "stop_reason": stop_reason,
-            "overall": ("PASS" if best_bands and all(b["status"] == "PASS" for b in best_bands)
-                        else "FAIL"),
+            "overall": (
+                "PASS" if best_bands and all(b["status"] == "PASS" for b in best_bands) else "FAIL"
+            ),
             "best_cost": round(best_cost, 4) if math.isfinite(best_cost) else None,
             "best_params": {k: round(v, 4) for k, v in best_params.items()},
             "bands": best_bands,
@@ -1097,11 +1119,15 @@ async def _optimization_loop(
             "iterations": max(0, len(history) - 1),
             "elapsed_s": round(elapsed(), 1),
             "history": history,
-            "model_state": ("The model holds the LAST evaluated parameters and their results, "
-                            "not necessarily the best ones."),
+            "model_state": (
+                "The model holds the LAST evaluated parameters and their results, "
+                "not necessarily the best ones."
+            ),
             "resume_from": resume_block(),
-            "next_steps": ("Call cst_refine_antenna again with the resume_from arguments (plus "
-                           "max_seconds / max_iterations) to continue from the best point."),
+            "next_steps": (
+                "Call cst_refine_antenna again with the resume_from arguments (plus "
+                "max_seconds / max_iterations) to continue from the best point."
+            ),
         }
 
     # Apply the best parameters, rebuild, solve, and export through the guarded
@@ -1117,6 +1143,7 @@ async def _optimization_loop(
         final_cost, final_bands = _compute_cost(freqs, s11_db, bands)
         resonances = _find_resonances(freqs, s11_db)
     except Exception:
+        logger.debug("Handled error in optimization._optimization_loop", exc_info=True)
         final_cost = best_cost
         final_bands = []
         resonances = []
@@ -1194,6 +1221,7 @@ async def _handle_evaluate(args: dict, client: CSTClient) -> dict:
     try:
         freqs, s11_db = _parse_s11_data(s11_file)
     except Exception as e:
+        logger.debug("Handled error in optimization._handle_evaluate", exc_info=True)
         return {"status": "error", "message": f"Failed to parse S11 data: {e}"}
 
     # Evaluate
@@ -1254,16 +1282,32 @@ async def _handle_refine(args: dict, client: CSTClient) -> dict:
 
     if not client.connected or not client.has_project:
         from cst_mcp.execution.native_optimizer import build_optimizer
-        code = build_optimizer({"method": "Nelder Mead", "max_evaluations": max(2, max_iterations * (len(params_spec) + 1)),
-                                "parameters": params_spec, "goal_type": "minimize",
-                                "result_path": f"1D Results\\S-Parameters\\S{_int(port, 'port')},{_int(port, 'port')}"})
-        return {"status": "offline", "vba": code,
-                "message": "Native optimizer configuration only; Optimizer.Start must be explicit. Connected mode uses the Python loop with per-band VSWR costs."}
+
+        code = build_optimizer(
+            {
+                "method": "Nelder Mead",
+                "max_evaluations": max(2, max_iterations * (len(params_spec) + 1)),
+                "parameters": params_spec,
+                "goal_type": "minimize",
+                "result_path": f"1D Results\\S-Parameters\\S{_int(port, 'port')},{_int(port, 'port')}",
+            }
+        )
+        return {
+            "status": "offline",
+            "vba": code,
+            "message": "Native optimizer configuration only; Optimizer.Start must be explicit. Connected mode uses the Python loop with per-band VSWR costs.",
+        }
 
     # Connected mode: run optimization loop
-    return await _optimization_loop(client, params_spec, bands, max_iterations, port,
-                                    max_seconds=max_seconds or None,
-                                    max_evaluations=max_evaluations)
+    return await _optimization_loop(
+        client,
+        params_spec,
+        bands,
+        max_iterations,
+        port,
+        max_seconds=max_seconds or None,
+        max_evaluations=max_evaluations,
+    )
 
 
 async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
@@ -1293,14 +1337,13 @@ async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
             "z0_ohm": z0,
             "message": (
                 "Run this VBA in CST to export S11 data from "
-                "'1D Results\\S-Parameters\\S{p},{p}'. After export, "
+                f"'1D Results\\S-Parameters\\S{port},{port}'. After export, "
                 "compute |Γ| = 10^(S11_dB/20), VSWR = (1+|Γ|)/(1-|Γ|). "
                 "VSWR should be ≤ target across each band."
-            ).format(p=port),
+            ),
             "analysis_guidance": {
                 "resonance_below": (
-                    "Resonance below band: shorten the resonant path, "
-                    "reduce patch/slot dimensions."
+                    "Resonance below band: shorten the resonant path, reduce patch/slot dimensions."
                 ),
                 "resonance_above": (
                     "Resonance above band: lengthen the resonant path, "
@@ -1321,9 +1364,7 @@ async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
                     "f_low_ghz": b["f_low_ghz"],
                     "f_high_ghz": b["f_high_ghz"],
                     "vswr_target": b.get("vswr_target", 2.5),
-                    "s11_threshold_db": round(
-                        vswr_to_s11(b.get("vswr_target", 2.5)), 2
-                    ),
+                    "s11_threshold_db": round(vswr_to_s11(b.get("vswr_target", 2.5)), 2),
                 }
                 for b in bands
             ],
@@ -1331,9 +1372,7 @@ async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
 
     # Connected mode: export S11 via Python API
     work_dir = client._config.work_dir or tempfile.gettempdir()
-    s11_file = os.path.join(work_dir, "_impedance_s11_temp.csv").replace(
-        "\\", "/"
-    )
+    s11_file = os.path.join(work_dir, "_impedance_s11_temp.csv").replace("\\", "/")
 
     tree_path = f"1D Results\\S-Parameters\\S{_int(port, 'port')},{_int(port, 'port')}"
     result = client.export_result(tree_path, s11_file)
@@ -1350,6 +1389,7 @@ async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
     try:
         freqs, s11_db = _parse_s11_data(s11_file)
     except Exception as e:
+        logger.debug("Handled error in optimization._handle_analyze_impedance", exc_info=True)
         return {"status": "error", "message": f"Failed to parse S11 data: {e}"}
     finally:
         try:
@@ -1364,16 +1404,12 @@ async def _handle_analyze_impedance(args: dict, client: CSTClient) -> dict:
     band_results = []
     all_recommendations = []
     for band in bands:
-        br = _analyze_impedance_band(
-            freqs, s11_db, band, z0, sample_freqs, resonances
-        )
+        br = _analyze_impedance_band(freqs, s11_db, band, z0, sample_freqs, resonances)
         band_results.append(br)
         if "recommendations" in br:
             all_recommendations.extend(br["recommendations"])
 
-    overall = "PASS" if all(
-        b.get("status") == "PASS" for b in band_results
-    ) else "FAIL"
+    overall = "PASS" if all(b.get("status") == "PASS" for b in band_results) else "FAIL"
 
     return {
         "status": "analyzed",
@@ -1447,6 +1483,7 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         result = await handler(arguments, client)
         return _text(result)
     except Exception as e:
+        logger.debug("Handled error in optimization.handle", exc_info=True)
         return _text({"status": "error", "message": str(e)})
 
 
@@ -1457,6 +1494,6 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

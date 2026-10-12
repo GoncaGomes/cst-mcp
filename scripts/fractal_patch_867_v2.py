@@ -1,4 +1,5 @@
 """867 MHz Minkowski fractal v2 — retuned size + solid feed to south bump."""
+
 from __future__ import annotations
 
 import json
@@ -107,7 +108,12 @@ def main():
     }
 
     steps = []
-    steps.append(("units", "With Units\n  .SetUnit \"Length\", \"mm\"\n  .SetUnit \"Frequency\", \"GHz\"\n  .SetUnit \"Time\", \"ns\"\nEnd With"))
+    steps.append(
+        (
+            "units",
+            'With Units\n  .SetUnit "Length", "mm"\n  .SetUnit "Frequency", "GHz"\n  .SetUnit "Time", "ns"\nEnd With',
+        )
+    )
     steps.append(("store_parameters", store_params_vba(params)))
     steps.append(
         (
@@ -128,8 +134,15 @@ def main():
             .build(),
         )
     )
-    steps.append(("ground", brick("Antenna", "Ground", "PEC", -gx/2, gx/2, -gy/2, gy/2, -metal_t, 0)))
-    steps.append(("substrate", brick("Antenna", "Substrate", "Substrate", -gx/2, gx/2, -gy/2, gy/2, 0, h)))
+    steps.append(
+        ("ground", brick("Antenna", "Ground", "PEC", -gx / 2, gx / 2, -gy / 2, gy / 2, -metal_t, 0))
+    )
+    steps.append(
+        (
+            "substrate",
+            brick("Antenna", "Substrate", "Substrate", -gx / 2, gx / 2, -gy / 2, gy / 2, 0, h),
+        )
+    )
     z0, z1 = h, h + metal_t
     # Core + 4 primary bumps + 8 nubs
     steps.append(("core", brick("Antenna", "FracCore", "PEC", -half, half, -half, half, z0, z1)))
@@ -159,22 +172,17 @@ def main():
 
     steps.append(("rename", 'Solid.Rename "Antenna:FracCore", "Patch"'))
     # Feed to primary south bump
-    steps.append(("feed", brick("Antenna", "Feed", "PEC", -fw/2, fw/2, y_feed0, y_feed1, z0, z1)))
+    steps.append(
+        ("feed", brick("Antenna", "Feed", "PEC", -fw / 2, fw / 2, y_feed0, y_feed1, z0, z1))
+    )
     steps.append(("add_feed", solid_add("Antenna:Patch", "Antenna:Feed")))
-    steps.append(("freq", f'With Solver\n  .FrequencyRange "{fmt_num(fmin)}", "{fmt_num(fmax)}"\nEnd With'))
+    steps.append(
+        ("freq", f'With Solver\n  .FrequencyRange "{fmt_num(fmin)}", "{fmt_num(fmax)}"\nEnd With')
+    )
     steps.append(
         (
             "bc",
-            "\n".join(
-                [
-                    'Boundary.Xmin "expanded open"',
-                    'Boundary.Xmax "expanded open"',
-                    'Boundary.Ymin "expanded open"',
-                    'Boundary.Ymax "expanded open"',
-                    'Boundary.Zmin "expanded open"',
-                    'Boundary.Zmax "expanded open"',
-                ]
-            ),
+            'Boundary.Xmin "expanded open"\nBoundary.Xmax "expanded open"\nBoundary.Ymin "expanded open"\nBoundary.Ymax "expanded open"\nBoundary.Zmin "expanded open"\nBoundary.Zmax "expanded open"',
         )
     )
     steps.append(

@@ -55,8 +55,15 @@ def _v2_available() -> bool:
     return True
 
 
-SERVERS = [V1Server, pytest.param(V2Server, marks=pytest.mark.skipif(
-    not _v2_available(), reason="mcp.types lacks v2 request param types"))]
+SERVERS = [
+    V1Server,
+    pytest.param(
+        V2Server,
+        marks=pytest.mark.skipif(
+            not _v2_available(), reason="mcp.types lacks v2 request param types"
+        ),
+    ),
+]
 
 
 def _tool(name: str) -> Tool:

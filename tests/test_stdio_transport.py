@@ -12,8 +12,8 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from cst_mcp import server as server_module
 from cst_mcp import __version__
+from cst_mcp import server as server_module
 
 
 @pytest.mark.asyncio

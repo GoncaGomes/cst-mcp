@@ -62,6 +62,7 @@ def _client(tmp_path, model: FakeModel) -> CSTClient:
 
 # 1. MeshSettings needs a setting map before .Set --------------------------------
 
+
 @pytest.mark.parametrize("mesh_type", ["Hex", "Tet"])
 def test_mesh_density_selects_setting_map_first(mesh_type) -> None:
     captured = {}
@@ -71,7 +72,9 @@ def test_mesh_density_selects_setting_map_first(mesh_type) -> None:
             captured["vba"] = vba
             return {"status": "offline", "vba": vba}
 
-    result = _decode(mesh._set_mesh_density({"cells_per_wavelength": 12, "mesh_type": mesh_type}, Capture()))
+    result = _decode(
+        mesh._set_mesh_density({"cells_per_wavelength": 12, "mesh_type": mesh_type}, Capture())
+    )
     vba = captured["vba"]
     assert f'.SetMeshType "{mesh_type}"' in vba
     assert vba.index(".SetMeshType") < vba.index('.Set "StepsPerWaveNear"')
@@ -80,6 +83,7 @@ def test_mesh_density_selects_setting_map_first(mesh_type) -> None:
 
 
 # 2. Sub Main stripping and project tree enumeration -----------------------------
+
 
 def test_strip_sub_main_tolerates_leading_comments_and_option_lines() -> None:
     code = "\n' header comment\nRem another\nOption Explicit\n\nSub Main()\n  x = 1\nEnd Sub\n"
@@ -100,7 +104,11 @@ def test_project_tree_walks_children_without_history(tmp_path) -> None:
     data = _decode(_run(project.handle("cst_project_tree", {}, client)))
     assert data["status"] == "ok"
     assert [i["path"] for i in data["items"]] == [
-        "Components", "Components\\component1", "Components\\component1\\patch", "Ports", "Ports\\port1",
+        "Components",
+        "Components\\component1",
+        "Components\\component1\\patch",
+        "Ports",
+        "Ports\\port1",
     ]
     code = model.codes[0]
     # Everything is inside exactly one Sub Main (the old wrapper put code outside it).
@@ -112,7 +120,11 @@ def test_project_tree_walks_children_without_history(tmp_path) -> None:
 def test_project_tree_subfolder_strips_root(tmp_path) -> None:
     model = FakeModel("0\tComponents\n1\tComponents\\component1\nTRUNCATED\t4\n")
     client = _client(tmp_path, model)
-    data = _decode(_run(project.handle("cst_project_tree", {"tree_path": "Components", "max_depth": 1}, client)))
+    data = _decode(
+        _run(
+            project.handle("cst_project_tree", {"tree_path": "Components", "max_depth": 1}, client)
+        )
+    )
     assert data["items"] == [{"path": "Components\\component1", "name": "component1", "depth": 0}]
     assert data["truncated"] is True
     assert "Const maxDepth = 1" in model.codes[0]
@@ -120,8 +132,11 @@ def test_project_tree_subfolder_strips_root(tmp_path) -> None:
 
 # 3. Read-only info tools use output capture, never history ----------------------
 
+
 def test_solver_info_reports_values_without_history(tmp_path) -> None:
-    model = FakeModel("solver_type\tHF Time Domain\nfmin\t1.5\nfmax\t3\nn_frequency_samples.error\tno ports\n")
+    model = FakeModel(
+        "solver_type\tHF Time Domain\nfmin\t1.5\nfmax\t3\nn_frequency_samples.error\tno ports\n"
+    )
     data = _decode(solvers._get_solver_info({}, _client(tmp_path, model)))
     assert data["status"] == "ok"
     assert data["solver_type"] == "HF Time Domain" and data["fmin"] == 1.5 and data["fmax"] == 3
@@ -139,15 +154,18 @@ def test_mesh_info_reports_counts_without_update_or_history(tmp_path) -> None:
 
 def test_capture_never_falls_back_to_history(tmp_path) -> None:
     client = _client(tmp_path, FakeModel())
-    client._project = SimpleNamespace(model3d=SimpleNamespace(
-        is_solver_running=lambda **kw: False,
-        add_to_history=lambda *a, **kw: pytest.fail("history fallback used"),
-    ))
+    client._project = SimpleNamespace(
+        model3d=SimpleNamespace(
+            is_solver_running=lambda **kw: False,
+            add_to_history=lambda *a, **kw: pytest.fail("history fallback used"),
+        )
+    )
     result = client.capture_vba_output('Debug.Print "x"')
     assert result["status"] == "error"
 
 
 # 4. Structure views reselect the 3D model first ---------------------------------
+
 
 def test_structure_views_select_components_before_export(tmp_path) -> None:
     model = FakeModel()
@@ -161,6 +179,7 @@ def test_structure_views_select_components_before_export(tmp_path) -> None:
 
 
 # 5. Saved results for the session's own open project ----------------------------
+
 
 def _fake_cst_results(monkeypatch, project_file):
     results = types.ModuleType("cst.results")
@@ -189,12 +208,16 @@ async def test_list_saved_results_allows_own_idle_project(tmp_path, monkeypatch)
             seen["allow_interactive"] = allow_interactive
 
         def get_3d(self):
-            return SimpleNamespace(get_tree_items=lambda: ["1D Results\\S-Parameters\\S1,1"],
-                                   get_run_ids=lambda tree: [0])
+            return SimpleNamespace(
+                get_tree_items=lambda: ["1D Results\\S-Parameters\\S1,1"],
+                get_run_ids=lambda tree: [0],
+            )
 
     _fake_cst_results(monkeypatch, ProjectFile)
     client, path = _own_project_client(tmp_path, monkeypatch)
-    data = _decode(await official.handle("cst_list_saved_results", {"project_path": str(path)}, client))
+    data = _decode(
+        await official.handle("cst_list_saved_results", {"project_path": str(path)}, client)
+    )
     assert data["status"] == "ok" and seen["allow_interactive"] is True
     assert data["entries"][0]["run_ids"] == [0]
 
@@ -208,12 +231,18 @@ async def test_list_saved_results_failure_is_clean_error(tmp_path, monkeypatch) 
     _fake_cst_results(monkeypatch, ProjectFile)
     path = tmp_path / "other.cst"
     path.touch()
-    data = _decode(await official.handle("cst_list_saved_results", {"project_path": str(path)}, CSTClient(CSTConfig())))
+    data = _decode(
+        await official.handle(
+            "cst_list_saved_results", {"project_path": str(path)}, CSTClient(CSTConfig())
+        )
+    )
     assert data["status"] == "error" and "opened in CST" in data["message"]
 
 
 @pytest.mark.asyncio
-async def test_read_saved_result_passes_allow_interactive_for_own_project(tmp_path, monkeypatch) -> None:
+async def test_read_saved_result_passes_allow_interactive_for_own_project(
+    tmp_path, monkeypatch
+) -> None:
     seen = {}
 
     def fake_read(path, tree, run_id, allow_interactive=False):
@@ -222,12 +251,18 @@ async def test_read_saved_result_passes_allow_interactive_for_own_project(tmp_pa
 
     monkeypatch.setattr(official, "read_curve", fake_read)
     client, path = _own_project_client(tmp_path, monkeypatch)
-    data = _decode(await official.handle(
-        "cst_read_saved_result", {"project_path": str(path), "tree_path": "1D Results\\x"}, client))
+    data = _decode(
+        await official.handle(
+            "cst_read_saved_result",
+            {"project_path": str(path), "tree_path": "1D Results\\x"},
+            client,
+        )
+    )
     assert data["status"] == "ok" and seen["allow_interactive"] is True
 
 
 # 6. Stale run-info state is labelled -------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_simulation_status_labels_stale_run_state(tmp_path) -> None:
@@ -257,12 +292,14 @@ def test_mesh_query_marks_stale_zero_cell_count():
 
     from cst_mcp.tools import mesh
 
-    client = SimpleNamespace(query_values=lambda fields: {
-        "status": "ok",
-        "values": {"mesh_type": "PBA", "total_cells": "0", "mesh_points": "27540"},
-        "errors": {},
-        "source": "test",
-    })
+    client = SimpleNamespace(
+        query_values=lambda fields: {
+            "status": "ok",
+            "values": {"mesh_type": "PBA", "total_cells": "0", "mesh_points": "27540"},
+            "errors": {},
+            "source": "test",
+        }
+    )
     out = mesh._query_mesh(client)
     assert "total_cells" not in out
     assert "total_cells" in out["unavailable"]
@@ -288,8 +325,16 @@ def test_export_result_never_writes_history():
             calls.append(("silent", kw))
             return {"status": "executed"}
 
-    res = asyncio.run(results.handle("cst_export_result", {
-        "result_path": "1D Results\S-Parameters\S1,1", "output_file": "s11.csv", "format": "csv",
-    }, Client()))
+    res = asyncio.run(
+        results.handle(
+            "cst_export_result",
+            {
+                "result_path": r"1D Results\S-Parameters\S1,1",
+                "output_file": "s11.csv",
+                "format": "csv",
+            },
+            Client(),
+        )
+    )
     assert json.loads(res[0].text)["status"] == "executed"
     assert calls == [("silent", {"history_fallback": False})]

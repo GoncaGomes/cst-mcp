@@ -42,14 +42,30 @@ TOOLS: list[Tool] = [
                     "description": "Farfield result/monitor name, e.g. 'farfield (f=2.4)' or "
                     "'Farfields\\farfield (f=2.4) [1]'.",
                 },
-                "frequency_ghz": {"type": "number", "exclusiveMinimum": 0,
-                                  "description": "Selects farfield (f=X) when farfield_name is omitted."},
-                "quantity": {"type": "string", "enum": list(_QUANTITIES), "default": "realized_gain",
-                             "description": "Plotted quantity for CST export (dBi)."},
-                "polarization_basis": {"type": "string", "enum": ["ludwig3", "spherical"], "default": "ludwig3",
-                                       "description": "Component basis requested from CST for co/cross-pol."},
-                "step_deg": {"type": "number", "exclusiveMinimum": 0, "maximum": 30, "default": 5,
-                             "description": "Spherical grid step for CST export (divisor of 180)."},
+                "frequency_ghz": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Selects farfield (f=X) when farfield_name is omitted.",
+                },
+                "quantity": {
+                    "type": "string",
+                    "enum": list(_QUANTITIES),
+                    "default": "realized_gain",
+                    "description": "Plotted quantity for CST export (dBi).",
+                },
+                "polarization_basis": {
+                    "type": "string",
+                    "enum": ["ludwig3", "spherical"],
+                    "default": "ludwig3",
+                    "description": "Component basis requested from CST for co/cross-pol.",
+                },
+                "step_deg": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 30,
+                    "default": 5,
+                    "description": "Spherical grid step for CST export (divisor of 180).",
+                },
                 "cuts": {
                     "type": "array",
                     "items": {"type": ["number", "string"]},
@@ -64,9 +80,18 @@ TOOLS: list[Tool] = [
                     "uniqueItems": True,
                     "default": ["polar", "rect", "heatmap"],
                 },
-                "heatmap_projection": {"type": "string", "enum": ["theta_phi", "uv"], "default": "theta_phi"},
-                "dynamic_range_db": {"type": "number", "minimum": 5, "maximum": 120, "default": 30,
-                                     "description": "Plot range below the maximum (dB)."},
+                "heatmap_projection": {
+                    "type": "string",
+                    "enum": ["theta_phi", "uv"],
+                    "default": "theta_phi",
+                },
+                "dynamic_range_db": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 120,
+                    "default": 30,
+                    "description": "Plot range below the maximum (dB).",
+                },
                 "formats": {
                     "type": "array",
                     "items": {"type": "string", "enum": ["pdf", "svg", "png", "eps"]},
@@ -77,7 +102,10 @@ TOOLS: list[Tool] = [
                     "type": ["string", "number"],
                     "description": "'single' (3.5 in, default), 'double' (7.16 in) or inches.",
                 },
-                "out_dir": {"type": "string", "description": "Output folder (default <CST_WORK_DIR>/figures/farfield)."},
+                "out_dir": {
+                    "type": "string",
+                    "description": "Output folder (default <CST_WORK_DIR>/figures/farfield).",
+                },
                 "file_stem": {"type": "string", "description": "Base name for output files."},
             },
             "required": [],
@@ -120,7 +148,10 @@ TOOLS: list[Tool] = [
                     "exclusiveMinimum": 0,
                     "description": "Connected mode: selects 'surface current (f=X) [1]'.",
                 },
-                "tree_path": {"type": "string", "description": "Connected mode: exact surface-current tree item."},
+                "tree_path": {
+                    "type": "string",
+                    "description": "Connected mode: exact surface-current tree item.",
+                },
                 "export_step": {
                     "type": "number",
                     "exclusiveMinimum": 0,
@@ -187,7 +218,7 @@ TOOLS: list[Tool] = [
 
 
 def _schema(tool: Tool) -> dict[str, Any]:
-    return getattr(tool, "input_schema", None) or getattr(tool, "inputSchema")
+    return getattr(tool, "input_schema", None) or tool.inputSchema
 
 
 def _stem(text: str) -> str:
@@ -209,7 +240,12 @@ def render(
 ) -> dict[str, Any]:
     """Parse a farfield ASCII file and write figures; returns files + metrics."""
     from cst_mcp.execution import figures_3d_plot as fp
-    from cst_mcp.execution.figures_3d_data import extract_cut, parse_cut_spec, parse_farfield_ascii, pattern_metrics
+    from cst_mcp.execution.figures_3d_data import (
+        extract_cut,
+        parse_cut_spec,
+        parse_farfield_ascii,
+        pattern_metrics,
+    )
 
     grid = parse_farfield_ascii(data_path, quantity_hint=quantity_hint)
     specs = [parse_cut_spec(c) for c in (cuts if cuts else [0, 90])]
@@ -222,17 +258,39 @@ def render(
     files: list[str] = []
     for plot in plots or ["polar", "rect", "heatmap"]:
         if plot == "polar":
-            files += fp.plot_polar(grid, cut_objs, out_dir, stem, dynamic_range_db=dynamic_range_db,
-                                   width=fp.figure_width("double") if width is None and len(cut_objs) > 1 else w,
-                                   formats=fmts)
+            files += fp.plot_polar(
+                grid,
+                cut_objs,
+                out_dir,
+                stem,
+                dynamic_range_db=dynamic_range_db,
+                width=fp.figure_width("double") if width is None and len(cut_objs) > 1 else w,
+                formats=fmts,
+            )
         elif plot == "rect":
-            files += fp.plot_rect(grid, cut_objs, out_dir, stem, dynamic_range_db=dynamic_range_db, width=w,
-                                  formats=fmts)
+            files += fp.plot_rect(
+                grid,
+                cut_objs,
+                out_dir,
+                stem,
+                dynamic_range_db=dynamic_range_db,
+                width=w,
+                formats=fmts,
+            )
         elif plot == "heatmap":
-            files += fp.plot_heatmap(grid, out_dir, stem, dynamic_range_db=dynamic_range_db, width=w,
-                                     formats=fmts, projection=heatmap_projection)
+            files += fp.plot_heatmap(
+                grid,
+                out_dir,
+                stem,
+                dynamic_range_db=dynamic_range_db,
+                width=w,
+                formats=fmts,
+                projection=heatmap_projection,
+            )
         elif plot == "3d":
-            files += fp.plot_3d(grid, out_dir, stem, dynamic_range_db=dynamic_range_db, width=w, formats=fmts)
+            files += fp.plot_3d(
+                grid, out_dir, stem, dynamic_range_db=dynamic_range_db, width=w, formats=fmts
+            )
         else:
             raise ValueError(f"Unknown plot type {plot!r}; use {list(_PLOTS)}")
     parse_info = {
@@ -283,11 +341,18 @@ async def _handle_surface_current(args: dict[str, Any], client: Any):
         require_matplotlib()
     except ImportError as exc:
         return err(str(exc))
-    from cst_mcp.execution.surface_current import grid_top_view, parse_surface_current_ascii, render_maps
+    from cst_mcp.execution.surface_current import (
+        grid_top_view,
+        parse_surface_current_ascii,
+        render_maps,
+    )
 
     work_dir = Path(getattr(getattr(client, "config", None), "work_dir", None) or Path.cwd())
-    out_dir = (Path(args["out_dir"]).expanduser() if args.get("out_dir")
-               else work_dir / "figures" / "surface_current")
+    out_dir = (
+        Path(args["out_dir"]).expanduser()
+        if args.get("out_dir")
+        else work_dir / "figures" / "surface_current"
+    )
     sources: list[dict[str, Any]] = []
     files = [Path(f).expanduser() for f in args.get("data_files") or []]
     if files:
@@ -297,8 +362,10 @@ async def _handle_surface_current(args: dict[str, Any], client: Any):
         sources = [{"kind": "data_file", "path": str(f)} for f in files]
     else:
         if not getattr(client, "is_connected", False):
-            return err("Not connected to CST. Pass data_files (surface-current ASCIIExport files) to render "
-                       "offline, or connect (cst_connect) and open the solved project.")
+            return err(
+                "Not connected to CST. Pass data_files (surface-current ASCIIExport files) to render "
+                "offline, or connect (cst_connect) and open the solved project."
+            )
         project_path = args.get("project_path")
         if project_path:
             current = getattr(client, "project_path", None)
@@ -306,7 +373,9 @@ async def _handle_surface_current(args: dict[str, Any], client: Any):
             if not same or not client.has_project:
                 opened = client.open_project(project_path)
                 if opened.get("status") not in ("opened", "ok"):
-                    return err(f"Could not open project: {opened.get('message')}", open_result=opened)
+                    return err(
+                        f"Could not open project: {opened.get('message')}", open_result=opened
+                    )
         if not client.has_project:
             return err("No project open. Pass project_path or data_files.")
         from cst_mcp.execution.surface_current import acquire as _sc_acquire
@@ -314,12 +383,20 @@ async def _handle_surface_current(args: dict[str, Any], client: Any):
         acq = _sc_acquire(client, args, work_dir)
         if acq.get("status") != "ok":
             if acq.get("status") == "error":
-                return err(acq.get("message", "export failed"),
-                           **{k: v for k, v in acq.items() if k not in ("status", "message")})
+                return err(
+                    acq.get("message", "export failed"),
+                    **{k: v for k, v in acq.items() if k not in ("status", "message")},
+                )
             return as_json(acq)
         files = [Path(acq["path"])]
-        sources = [{"kind": "cst_export", "path": acq["path"], "tree_path": acq["tree_path"],
-                    "method": "ASCIIExport"}]
+        sources = [
+            {
+                "kind": "cst_export",
+                "path": acq["path"],
+                "tree_path": acq["tree_path"],
+                "method": "ASCIIExport",
+            }
+        ]
     labels = list(args.get("labels") or [])
     grids = []
     unit = "mm"
@@ -334,16 +411,33 @@ async def _handle_surface_current(args: dict[str, Any], client: Any):
             layer_split_z=args.get("layer_split_z"),
             include_kz=bool(args.get("include_kz", False)),
         )
-        label = labels[i] if i < len(labels) else (
-            sources[i].get("tree_path", "").split(chr(92))[-1] or f.stem)
+        label = (
+            labels[i]
+            if i < len(labels)
+            else (sources[i].get("tree_path", "").split(chr(92))[-1] or f.stem)
+        )
         grids.append((label, g))
-    stem = _stem(args.get("file_stem") or ("surface_current_" + "_".join(_stem(lb) for lb, _ in grids))[:80])
-    out = render_maps(grids, out_dir, stem=stem, shared_scale=bool(args.get("shared_scale", True)),
-                      dynamic_range_db=float(args.get("dynamic_range_db", 40)), formats=args.get("formats"),
-                      title=args.get("title"), length_unit=unit)
-    return ok(**out, sources=sources, note=(
-        "|J| per cell = |sum over face layers of the area-weighted mean K phasor| (peak phasor A/m for the "
-        "solver's excitation). 0 dB = scale_ref_A_per_m."))
+    stem = _stem(
+        args.get("file_stem") or ("surface_current_" + "_".join(_stem(lb) for lb, _ in grids))[:80]
+    )
+    out = render_maps(
+        grids,
+        out_dir,
+        stem=stem,
+        shared_scale=bool(args.get("shared_scale", True)),
+        dynamic_range_db=float(args.get("dynamic_range_db", 40)),
+        formats=args.get("formats"),
+        title=args.get("title"),
+        length_unit=unit,
+    )
+    return ok(
+        **out,
+        sources=sources,
+        note=(
+            "|J| per cell = |sum over face layers of the area-weighted mean K phasor| (peak phasor A/m for the "
+            "solver's excitation). 0 dB = scale_ref_A_per_m."
+        ),
+    )
 
 
 async def handle(name, arguments, client):
@@ -369,17 +463,21 @@ async def handle(name, arguments, client):
 
     quantity = args.get("quantity", "realized_gain")
     work_dir = Path(getattr(getattr(client, "config", None), "work_dir", None) or Path.cwd())
-    out_dir = Path(args["out_dir"]).expanduser() if args.get("out_dir") else work_dir / "figures" / "farfield"
-    render_kw = dict(
-        out_dir=out_dir,
-        cuts=args.get("cuts"),
-        plots=args.get("plots"),
-        dynamic_range_db=float(args.get("dynamic_range_db", 30)),
-        formats=args.get("formats"),
-        width=args.get("width"),
-        heatmap_projection=args.get("heatmap_projection", "theta_phi"),
-        stem=args.get("file_stem"),
+    out_dir = (
+        Path(args["out_dir"]).expanduser()
+        if args.get("out_dir")
+        else work_dir / "figures" / "farfield"
     )
+    render_kw = {
+        "out_dir": out_dir,
+        "cuts": args.get("cuts"),
+        "plots": args.get("plots"),
+        "dynamic_range_db": float(args.get("dynamic_range_db", 30)),
+        "formats": args.get("formats"),
+        "width": args.get("width"),
+        "heatmap_projection": args.get("heatmap_projection", "theta_phi"),
+        "stem": args.get("file_stem"),
+    }
 
     try:
         if args.get("data_file"):
@@ -398,13 +496,15 @@ async def handle(name, arguments, client):
 
             disk = discover_farfield_from_project_dir(project_path) if project_path else []
             if project_path and not disk:
-                return as_json({
-                    "status": "no_results",
-                    "message": "No farfield results on disk for this project. Add a farfield monitor "
-                    "(cst_add_farfield_monitor), run cst_run_simulation_async + cst_wait_for_simulation, then "
-                    "retry connected; or pass data_file.",
-                    "disk_results": [],
-                })
+                return as_json(
+                    {
+                        "status": "no_results",
+                        "message": "No farfield results on disk for this project. Add a farfield monitor "
+                        "(cst_add_farfield_monitor), run cst_run_simulation_async + cst_wait_for_simulation, then "
+                        "retry connected; or pass data_file.",
+                        "disk_results": [],
+                    }
+                )
             return err(
                 "Not connected to CST. Pass data_file (a CST farfield ASCII export) to render offline, "
                 "or connect (cst_connect) and open the project.",
@@ -416,7 +516,9 @@ async def handle(name, arguments, client):
             if not same or not client.has_project:
                 opened = client.open_project(project_path)
                 if opened.get("status") not in ("opened", "ok"):
-                    return err(f"Could not open project: {opened.get('message')}", open_result=opened)
+                    return err(
+                        f"Could not open project: {opened.get('message')}", open_result=opened
+                    )
         if not client.has_project:
             return err("No project open. Pass project_path or data_file.")
 
@@ -432,25 +534,30 @@ async def handle(name, arguments, client):
         )
         if acq.get("status") != "ok":
             if acq.get("status") == "error":
-                return err(acq.get("message", "farfield export failed"), **{k: v for k, v in acq.items()
-                                                                             if k not in ("status", "message")})
+                return err(
+                    acq.get("message", "farfield export failed"),
+                    **{k: v for k, v in acq.items() if k not in ("status", "message")},
+                )
             return as_json(acq)
         if not render_kw["stem"]:
             render_kw["stem"] = _stem(f"{acq['tree_path'].split(chr(92))[-1]}_{quantity}")
         out = render(acq["path"], quantity_hint=quantity, **render_kw)
-        return ok(**out, source={
-            "kind": "cst_export",
-            "path": acq["path"],
-            "tree_path": acq["tree_path"],
-            "method": acq["method"],
-            "project_path": getattr(client, "project_path", None),
-        })
+        return ok(
+            **out,
+            source={
+                "kind": "cst_export",
+                "path": acq["path"],
+                "tree_path": acq["tree_path"],
+                "method": acq["method"],
+                "project_path": getattr(client, "project_path", None),
+            },
+        )
     except ValueError as exc:
         return err(str(exc))
     except Exception as exc:  # noqa: BLE001
         return err(f"cst_plot_farfield failed: {exc}")
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

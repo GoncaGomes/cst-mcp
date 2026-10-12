@@ -47,7 +47,6 @@ def main() -> None:
     # Tools — preserve workflows.py (ours)
     tools_src = REF / "tools"
     tools_dst = DST / "tools"
-    keep_local = {"workflows.py", "registry.py"}  # rewritten separately
     for src in sorted(tools_src.glob("*.py")):
         if src.name in {"__init__.py"}:
             continue

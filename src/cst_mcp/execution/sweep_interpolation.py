@@ -54,18 +54,24 @@ def interpolate_runs(
         if value is not None and value not in samples:
             samples[value] = (run_id, combo)
     if len(samples) < 1:
-        return {"status": "error", "code": "no_sweep_runs",
-                "message": f"No saved runs of {tree_path!r} carry parameter {parameter!r}; "
-                           "run cst_parameter_sweep (run=true) first.",
-                "run_ids": run_ids}
+        return {
+            "status": "error",
+            "code": "no_sweep_runs",
+            "message": f"No saved runs of {tree_path!r} carry parameter {parameter!r}; "
+            "run cst_parameter_sweep (run=true) first.",
+            "run_ids": run_ids,
+        }
     values = sorted(samples)
     tolerance = 1e-9 * max(1.0, abs(target))
     exact = next((v for v in values if abs(v - target) <= tolerance), None)
     if exact is None and not values[0] < target < values[-1]:
-        return {"status": "error", "code": "out_of_range",
-                "message": f"target_value {target} is outside the swept range "
-                           f"[{values[0]}, {values[-1]}]; no extrapolation is performed.",
-                "swept_values": values}
+        return {
+            "status": "error",
+            "code": "out_of_range",
+            "message": f"target_value {target} is outside the swept range "
+            f"[{values[0]}, {values[-1]}]; no extrapolation is performed.",
+            "swept_values": values,
+        }
     if exact is not None:
         low = high = exact
         weight = 0.0
@@ -82,15 +88,20 @@ def interpolate_runs(
         y = y_low
     else:
         raw_high = reader.read(tree_path, run_high)
-        y_high = _resample([float(v) for v in raw_high["x"]], [complex(v) for v in raw_high["values"]], x)
+        y_high = _resample(
+            [float(v) for v in raw_high["x"]], [complex(v) for v in raw_high["values"]], x
+        )
         y = [a + weight * (b - a) for a, b in zip(y_low, y_high)]
     warnings = []
     others_low = {k: v for k, v in combo_low.items() if k != parameter}
     others_high = {k: v for k, v in combo_high.items() if k != parameter}
     if others_low != others_high:
-        changed = sorted(k for k in set(others_low) | set(others_high)
-                         if others_low.get(k) != others_high.get(k))
-        warnings.append(f"Bracketing runs also differ in {changed}; the interpolation mixes those changes.")
+        changed = sorted(
+            k for k in set(others_low) | set(others_high) if others_low.get(k) != others_high.get(k)
+        )
+        warnings.append(
+            f"Bracketing runs also differ in {changed}; the interpolation mixes those changes."
+        )
     try:
         scale = frequency_scale(raw_low.get("xlabel", "")) / 1e9
         x_out, x_unit = [v * scale for v in x], "GHz"
@@ -110,7 +121,11 @@ def interpolate_runs(
         metrics = {"min": y_min, "x_at_min": x_min}
     n = len(x_out)
     if max_points and max_points < n:
-        idx = sorted({round(j * (n - 1) / (max_points - 1)) for j in range(max_points)}) if max_points > 1 else [0]
+        idx = (
+            sorted({round(j * (n - 1) / (max_points - 1)) for j in range(max_points)})
+            if max_points > 1
+            else [0]
+        )
         x_out = [x_out[j] for j in idx]
         y_out = [y_out[j] for j in idx]
     return {
@@ -118,8 +133,11 @@ def interpolate_runs(
         "source": "cst.results (saved sweep runs)",
         "tree_path": tree_path,
         "method": "exact run" if exact is not None else "linear in parameter (complex samples)",
-        "bracket": {"low": {"value": low, "run_id": run_low},
-                    "high": {"value": high, "run_id": run_high}, "weight": round(weight, 6)},
+        "bracket": {
+            "low": {"value": low, "run_id": run_low},
+            "high": {"value": high, "run_id": run_high},
+            "weight": round(weight, 6),
+        },
         "swept_values": values,
         "x_unit": x_unit,
         "y_kind": y_kind,

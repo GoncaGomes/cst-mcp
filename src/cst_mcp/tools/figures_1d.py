@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from pathlib import Path
@@ -200,7 +201,11 @@ def _resolve_project(arguments: dict, client) -> tuple[Path | None, bool, str | 
         if connected and current:
             raw = current
         else:
-            return None, False, "project_path is required unless a project is open in connected mode"
+            return (
+                None,
+                False,
+                "project_path is required unless a project is open in connected mode",
+            )
     path = Path(raw).expanduser().resolve()
     if path.suffix.lower() != ".cst":
         return None, False, f"project_path must be a .cst file: {path}"
@@ -255,11 +260,13 @@ def _plot(arguments: dict, client):
     if same_as_open:
         running = client.is_solver_running(timeout_s=5)
         if running is not False:
-            return as_json({
-                "status": "busy",
-                "message": "Solver is running or its state is unknown; wait with cst_wait_for_simulation",
-                "running": running,
-            })
+            return as_json(
+                {
+                    "status": "busy",
+                    "message": "Solver is running or its state is unknown; wait with cst_wait_for_simulation",
+                    "running": running,
+                }
+            )
 
     quantities = list(dict.fromkeys(arguments.get("quantities") or ["s11_db"]))
     bad = [q for q in quantities if q not in QUANTITIES]
@@ -276,9 +283,10 @@ def _plot(arguments: dict, client):
     if not math.isfinite(threshold) or threshold >= 0:
         return err("threshold_db must be finite and negative")
     freq_range = arguments.get("freq_range_ghz")
-    if freq_range is not None:
-        if len(freq_range) != 2 or not float(freq_range[1]) > float(freq_range[0]):
-            return err("freq_range_ghz must be [fmin, fmax] with fmax > fmin")
+    if (freq_range is not None) and (
+        len(freq_range) != 2 or not float(freq_range[1]) > float(freq_range[0])
+    ):
+        return err("freq_range_ghz must be [fmin, fmax] with fmax > fmin")
     mark = bool(arguments.get("mark_resonance", True))
     title = arguments.get("title") or None
     max_runs = int(arguments.get("max_runs", 6))
@@ -290,8 +298,11 @@ def _plot(arguments: dict, client):
             ov = parse_overlay_csv(spec["path"], spec.get("freq_unit"))
         except (OSError, ValueError) as exc:
             return err(f"csv_overlays: {exc}")
-        ov["label"] = spec.get("label") or ("Measured" if len(arguments["csv_overlays"]) == 1
-                                             else f"Measured ({Path(spec['path']).stem})")
+        ov["label"] = spec.get("label") or (
+            "Measured"
+            if len(arguments["csv_overlays"]) == 1
+            else f"Measured ({Path(spec['path']).stem})"
+        )
         if freq_range:
             ov["f_ghz"], ov["db"] = crop(ov["f_ghz"], ov["db"], freq_range=freq_range)
         overlays.append(ov)
@@ -300,6 +311,7 @@ def _plot(arguments: dict, client):
         reader = source.open_reader(str(path), allow_interactive=same_as_open)
         items = reader.tree_items()
     except Exception as exc:
+        logging.getLogger(__name__).debug("Handled error in figures_1d._plot", exc_info=True)
         return err(
             f"Cannot read saved results from {path}: {exc}",
             hint="Use a saved, unpacked project (.cst plus its same-name folder) that is not being solved.",
@@ -335,9 +347,17 @@ def _plot(arguments: dict, client):
             available_tree_items=one_d[:200],
         )
     if not needed and not custom:
-        msg = ("Project has no saved 1D results for the requested quantities; it has not been "
-               "simulated (or results were deleted/not saved).") if not one_d else (
-               "Saved results exist but none match the requested quantities: " + "; ".join(warnings))
+        msg = (
+            (
+                "Project has no saved 1D results for the requested quantities; it has not been "
+                "simulated (or results were deleted/not saved)."
+            )
+            if not one_d
+            else (
+                "Saved results exist but none match the requested quantities: "
+                + "; ".join(warnings)
+            )
+        )
         return _no_results(path, items, msg, arguments, client)
 
     # Run selection is driven by the primary curve (reflection if present).
@@ -347,11 +367,15 @@ def _plot(arguments: dict, client):
     except ValueError as exc:
         return err(str(exc))
     if not runs:
-        return _no_results(path, items, f"No result runs stored for {primary_path}", arguments, client)
+        return _no_results(
+            path, items, f"No result runs stored for {primary_path}", arguments, client
+        )
     labels = run_labels({r: reader.parameter_combination(r) for r in runs}) if len(runs) > 1 else {}
     custom_labels = arguments.get("legend_labels") or []
     if custom_labels and len(custom_labels) != len(runs):
-        return err(f"legend_labels has {len(custom_labels)} entries but {len(runs)} runs are plotted: {runs}")
+        return err(
+            f"legend_labels has {len(custom_labels)} entries but {len(runs)} runs are plotted: {runs}"
+        )
     for j, r in enumerate(runs):
         if custom_labels:
             labels[r] = custom_labels[j]
@@ -376,7 +400,9 @@ def _plot(arguments: dict, client):
                                 s["z0"] = list(zr["values"])
                                 z0_sources.add(zpath)
                         except Exception:
-                            pass
+                            logging.getLogger(__name__).debug(
+                                "Handled error in figures_1d.series", exc_info=True
+                            )
                 else:
                     z0_sources.add("port reference impedance (get_ref_imp_data)")
                 if s["z0"] is None:
@@ -416,9 +442,14 @@ def _plot(arguments: dict, client):
                 "primary_run_id": primary["run_id"],
                 "fbw_definition": primary["fbw_definition"],
                 "per_run": [
-                    {k: m[k] for k in ("run_id", "label", "f_res_ghz", "s11_min_db", "bands", "matched")}
+                    {
+                        k: m[k]
+                        for k in ("run_id", "label", "f_res_ghz", "s11_min_db", "bands", "matched")
+                    }
                     for m in per_run
-                ] if len(per_run) > 1 else [],
+                ]
+                if len(per_run) > 1
+                else [],
                 "z0_ohm_source": sorted(z0_sources),
             }
             z0 = refl_series[-1]["z0"]
@@ -430,22 +461,32 @@ def _plot(arguments: dict, client):
                 continue
             if q == "s11_db":
                 fig = fp.plot_s11_db(
-                    refl_series, overlays=overlays, metrics=metrics, threshold_db=threshold,
-                    mark_resonance=mark, width=width, title=title,
+                    refl_series,
+                    overlays=overlays,
+                    metrics=metrics,
+                    threshold_db=threshold,
+                    mark_resonance=mark,
+                    width=width,
+                    title=title,
                     ylabel=f"{refl_label} (dB)",
                 )
             elif q == "vswr":
                 fig = fp.plot_vswr(refl_series, threshold_db=threshold, width=width, title=title)
             elif q == "smith":
-                fig = fp.plot_smith(refl_series, width=width, title=title, metrics=metrics,
-                                    mark_resonance=mark)
+                fig = fp.plot_smith(
+                    refl_series, width=width, title=title, metrics=metrics, mark_resonance=mark
+                )
             elif q == "impedance":
-                fig = fp.plot_impedance(refl_series, width=width, title=title, metrics=metrics,
-                                        mark_resonance=mark)
+                fig = fp.plot_impedance(
+                    refl_series, width=width, title=title, metrics=metrics, mark_resonance=mark
+                )
             elif q == "phase":
-                fig = fp.plot_phase(refl_series, width=width, title=title,
-                                    ylabel=refl_label.replace("|", "").replace("$S", r"$\angle S")
-                                    + " (deg)")
+                fig = fp.plot_phase(
+                    refl_series,
+                    width=width,
+                    title=title,
+                    ylabel=refl_label.replace("|", "").replace("$S", r"$\angle S") + " (deg)",
+                )
             elif q == "s_params_db":
                 curves = []
                 for tree in needed[q]:
@@ -455,10 +496,17 @@ def _plot(arguments: dict, client):
                             lab = f"{lab}, {labels.get(r, f'Run {r}')}"
                         curves.append(series(tree, r, lab))
                 if len(curves) > MAX_CURVES:
-                    warnings.append(f"s_params_db: plotted first {MAX_CURVES} of {len(curves)} curves")
+                    warnings.append(
+                        f"s_params_db: plotted first {MAX_CURVES} of {len(curves)} curves"
+                    )
                     curves = curves[:MAX_CURVES]
-                fig = fp.plot_db_family(curves, width=width, title=title,
-                                        ylabel="S-parameters (dB)", threshold_db=threshold)
+                fig = fp.plot_db_family(
+                    curves,
+                    width=width,
+                    title=title,
+                    ylabel="S-parameters (dB)",
+                    threshold_db=threshold,
+                )
             elif q == "efficiency":
                 curves = []
                 for tree in needed[q]:
@@ -471,23 +519,32 @@ def _plot(arguments: dict, client):
                 fig = fp.plot_efficiency(curves[:MAX_CURVES], width=width, title=title)
                 metrics = metrics if metrics is not None else {}
                 metrics["efficiency"] = [
-                    {"tree_path": c["tree_path"], "run_id": c["run_id"],
-                     "f_ghz": c["f"], "pct": [100 * complex(v).real for v in c["values"]]}
-                    for c in curves if len(c["f"]) <= 5
+                    {
+                        "tree_path": c["tree_path"],
+                        "run_id": c["run_id"],
+                        "f_ghz": c["f"],
+                        "pct": [100 * complex(v).real for v in c["values"]],
+                    }
+                    for c in curves
+                    if len(c["f"]) <= 5
                 ]
             else:  # pragma: no cover - guarded above
                 continue
             emit(q, fig, needed[q])
         for tree in custom:
-            curves = [series(tree, r, labels.get(r, f"Run {r}")) for r in runs
-                      if r in reader.run_ids(tree)]
+            curves = [
+                series(tree, r, labels.get(r, f"Run {r}"))
+                for r in runs
+                if r in reader.run_ids(tree)
+            ]
             if not curves:
                 warnings.append(f"{tree}: none of runs {runs} stored")
                 continue
             name = tree.rsplit("\\", 1)[-1]
             if tree.startswith(source.S_PARAM_PREFIX):
-                fig = fp.plot_db_family(curves, width=width, title=title,
-                                        ylabel=f"{source.s_param_latex(tree)} (dB)")
+                fig = fp.plot_db_family(
+                    curves, width=width, title=title, ylabel=f"{source.s_param_latex(tree)} (dB)"
+                )
             else:
                 ylabel = curves[0]["ylabel"] or name
                 fig = fp.plot_real(curves, width=width, title=title, ylabel=ylabel)
@@ -512,8 +569,10 @@ def _plot(arguments: dict, client):
             "run_labels": {str(r): labels.get(r, "") for r in runs},
             "reader": "cst.results",
             "snapshot": "Last saved project results; unsaved GUI changes are not included",
-            "overlays": [{k: o[k] for k in ("path", "label", "n", "freq_unit", "freq_unit_source")}
-                         for o in overlays],
+            "overlays": [
+                {k: o[k] for k in ("path", "label", "n", "freq_unit", "freq_unit_source")}
+                for o in overlays
+            ],
         },
         "out_dir": str(out_dir),
         "warnings": warnings,
@@ -521,6 +580,6 @@ def _plot(arguments: dict, client):
     return as_json(_clean(payload))
 
 
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

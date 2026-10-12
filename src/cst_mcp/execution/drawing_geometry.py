@@ -30,9 +30,7 @@ MANIFEST_NAME = "manifest.json"
 VIEW_NAMES = ("top", "front", "side", "iso")
 
 _FLOAT = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
-_VERTEX_RE = re.compile(
-    rf"vertex\s+({_FLOAT})\s+({_FLOAT})\s+({_FLOAT})", re.IGNORECASE
-)
+_VERTEX_RE = re.compile(rf"vertex\s+({_FLOAT})\s+({_FLOAT})\s+({_FLOAT})", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -46,9 +44,7 @@ def read_stl(path: str | Path) -> np.ndarray:
     if len(data) >= 84:
         (count,) = struct.unpack_from("<I", data, 80)
         if 84 + 50 * count == len(data):
-            record = np.dtype(
-                [("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")]
-            )
+            record = np.dtype([("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
             arr = np.frombuffer(data, dtype=record, count=count, offset=84)
             return arr["v"].astype(np.float64)
     text = data.decode("latin-1")
@@ -69,7 +65,9 @@ def _normals(tris: np.ndarray) -> np.ndarray:
         return np.where(norm > 0, n / np.where(norm > 0, norm, 1), 0.0)
 
 
-def write_stl(path: str | Path, tris: np.ndarray, *, binary: bool = True, name: str = "solid") -> None:
+def write_stl(
+    path: str | Path, tris: np.ndarray, *, binary: bool = True, name: str = "solid"
+) -> None:
     """Write triangles (n, 3, 3) as binary or ASCII STL (used by tests/fixtures)."""
     tris = np.asarray(tris, dtype=np.float64)
     normals = _normals(tris)
@@ -96,8 +94,16 @@ def write_stl(path: str | Path, tris: np.ndarray, *, binary: bool = True, name: 
 def box_triangles(x0, x1, y0, y1, z0, z1) -> np.ndarray:
     """Closed axis-aligned box as 12 outward-facing triangles."""
     p = np.array(
-        [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
-         [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+        [
+            [x0, y0, z0],
+            [x1, y0, z0],
+            [x1, y1, z0],
+            [x0, y1, z0],
+            [x0, y0, z1],
+            [x1, y0, z1],
+            [x1, y1, z1],
+            [x0, y1, z1],
+        ],
         dtype=np.float64,
     )
     quads = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
@@ -120,10 +126,14 @@ def ring_triangles(cx, cy, r_in, r_out, z0, z1, segments: int = 48) -> np.ndarra
     ii, ij = pt(r_in, t, z0), pt(r_in, t2, z0)
     Ii, Ij = pt(r_in, t, z1), pt(r_in, t2, z1)
     faces = [
-        (Ii, Oi, Oj), (Ii, Oj, Ij),  # top (+z)
-        (ii, oj, oi), (ii, ij, oj),  # bottom (-z)
-        (oi, oj, Oj), (oi, Oj, Oi),  # outer wall
-        (ii, Ii, Ij), (ii, Ij, ij),  # inner wall
+        (Ii, Oi, Oj),
+        (Ii, Oj, Ij),  # top (+z)
+        (ii, oj, oi),
+        (ii, ij, oj),  # bottom (-z)
+        (oi, oj, Oj),
+        (oi, Oj, Oi),  # outer wall
+        (ii, Ii, Ij),
+        (ii, Ij, ij),  # inner wall
     ]
     return np.concatenate([np.stack(f, axis=1) for f in faces])
 
@@ -173,10 +183,15 @@ class Solid:
 def bbox_dict(lo, hi) -> dict[str, float]:
     r = lambda v: round(float(v), 6)
     return {
-        "xmin": r(lo[0]), "xmax": r(hi[0]),
-        "ymin": r(lo[1]), "ymax": r(hi[1]),
-        "zmin": r(lo[2]), "zmax": r(hi[2]),
-        "dx": r(hi[0] - lo[0]), "dy": r(hi[1] - lo[1]), "dz": r(hi[2] - lo[2]),
+        "xmin": r(lo[0]),
+        "xmax": r(hi[0]),
+        "ymin": r(lo[1]),
+        "ymax": r(hi[1]),
+        "zmin": r(lo[2]),
+        "zmax": r(hi[2]),
+        "dx": r(hi[0] - lo[0]),
+        "dy": r(hi[1] - lo[1]),
+        "dz": r(hi[2] - lo[2]),
     }
 
 
@@ -240,8 +255,15 @@ def _classify_edges(tris: np.ndarray, angle_deg: float):
     return (coords[ci], cf), (coords[si], sf)
 
 
-def load_solid(path: Path, *, scale: float, name: str, component: str = "",
-               material: str = "", angle_deg: float = 20.0) -> Solid:
+def load_solid(
+    path: Path,
+    *,
+    scale: float,
+    name: str,
+    component: str = "",
+    material: str = "",
+    angle_deg: float = 20.0,
+) -> Solid:
     tris = read_stl(path) * scale
     solid = Solid(name=name, tris=tris, component=component, material=material, source=str(path))
     (solid.edges, solid.edge_faces), smooth = _classify_edges(tris, angle_deg)
@@ -249,8 +271,9 @@ def load_solid(path: Path, *, scale: float, name: str, component: str = "",
     return solid
 
 
-def load_stl_dir(stl_dir: str | Path, *, units: str | None = None,
-                 angle_deg: float = 20.0) -> tuple[list[Solid], dict[str, Any]]:
+def load_stl_dir(
+    stl_dir: str | Path, *, units: str | None = None, angle_deg: float = 20.0
+) -> tuple[list[Solid], dict[str, Any]]:
     """Load every *.stl in a directory. ``manifest.json`` (written by the
     connected export) supplies solid names, materials and file units."""
     root = Path(stl_dir)
@@ -269,7 +292,9 @@ def load_stl_dir(stl_dir: str | Path, *, units: str | None = None,
     for path in sorted(root.glob("*.stl")) + sorted(root.glob("*.STL")):
         meta = entries.get(path.name, {})
         solid = load_solid(
-            path, scale=scale, angle_deg=angle_deg,
+            path,
+            scale=scale,
+            angle_deg=angle_deg,
             name=meta.get("name") or path.stem,
             component=meta.get("component", ""),
             material=meta.get("material", ""),
@@ -281,8 +306,11 @@ def load_stl_dir(stl_dir: str | Path, *, units: str | None = None,
         if s.source.lower() not in seen:
             seen.add(s.source.lower())
             unique.append(s)
-    info = {"units_in_file": file_units, "manifest": bool(manifest),
-            "project": manifest.get("project", "")}
+    info = {
+        "units_in_file": file_units,
+        "manifest": bool(manifest),
+        "project": manifest.get("project", ""),
+    }
     return unique, info
 
 
@@ -294,6 +322,7 @@ def overall_bbox(solids: list[Solid]) -> tuple[np.ndarray, np.ndarray]:
 # ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
+
 
 def view_basis(view: str) -> np.ndarray:
     """3x3 matrix whose rows are (u, v, depth) axes; depth grows away from viewer.
@@ -327,7 +356,9 @@ def project(points: np.ndarray, basis: np.ndarray, z_scale: float = 1.0) -> np.n
 def view_edges(solid: Solid, view: str, basis: np.ndarray, z_scale: float = 1.0) -> np.ndarray:
     """Crease/boundary edges plus view silhouettes of smooth surfaces, (m,2,3) uvd."""
     edges = [solid.edges]
-    smooth_edges, smooth_faces = getattr(solid, "_smooth", (np.zeros((0, 2, 3)), np.zeros((0, 2), int)))
+    smooth_edges, smooth_faces = getattr(
+        solid, "_smooth", (np.zeros((0, 2, 3)), np.zeros((0, 2), int))
+    )
     if len(smooth_edges):
         normals = _normals(solid.tris)
         d = basis[2]
@@ -389,18 +420,26 @@ def _covered(points: np.ndarray, tris_uvd: np.ndarray, eps: float) -> np.ndarray
     bary_tol = 1e-7
     chunk = max(1, int(4_000_000 // max(len(det), 1)))
     for s in range(0, m, chunk):
-        p = points[s:s + chunk]
+        p = points[s : s + chunk]
         inside_box = (
-            (p[:, None, 0] > tmin[None, :, 0]) & (p[:, None, 0] < tmax[None, :, 0])
-            & (p[:, None, 1] > tmin[None, :, 1]) & (p[:, None, 1] < tmax[None, :, 1])
+            (p[:, None, 0] > tmin[None, :, 0])
+            & (p[:, None, 0] < tmax[None, :, 0])
+            & (p[:, None, 1] > tmin[None, :, 1])
+            & (p[:, None, 1] < tmax[None, :, 1])
             & (tmin[None, :, 2] < p[:, None, 2] - eps)
         )
         rows, cols = np.nonzero(inside_box)
         if len(rows) == 0:
             continue
         pa, ta, tb, tc, td = p[rows], a[cols], b[cols], c[cols], det[cols]
-        l1 = ((tb[:, 0] - pa[:, 0]) * (tc[:, 1] - pa[:, 1]) - (tc[:, 0] - pa[:, 0]) * (tb[:, 1] - pa[:, 1])) / td
-        l2 = ((tc[:, 0] - pa[:, 0]) * (ta[:, 1] - pa[:, 1]) - (ta[:, 0] - pa[:, 0]) * (tc[:, 1] - pa[:, 1])) / td
+        l1 = (
+            (tb[:, 0] - pa[:, 0]) * (tc[:, 1] - pa[:, 1])
+            - (tc[:, 0] - pa[:, 0]) * (tb[:, 1] - pa[:, 1])
+        ) / td
+        l2 = (
+            (tc[:, 0] - pa[:, 0]) * (ta[:, 1] - pa[:, 1])
+            - (ta[:, 0] - pa[:, 0]) * (tc[:, 1] - pa[:, 1])
+        ) / td
         l3 = 1.0 - l1 - l2
         inside = (l1 > bary_tol) & (l2 > bary_tol) & (l3 > bary_tol)
         depth = l1 * ta[:, 2] + l2 * tb[:, 2] + l3 * tc[:, 2]

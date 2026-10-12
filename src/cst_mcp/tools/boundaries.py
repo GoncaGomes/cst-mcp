@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.types import TextContent, Tool
 
@@ -76,7 +77,10 @@ TOOLS: list[Tool] = [
                 },
                 "waveguide_port_faces": {
                     "type": "array",
-                    "items": {"type": "string", "enum": ["x_min", "x_max", "y_min", "y_max", "z_min", "z_max"]},
+                    "items": {
+                        "type": "string",
+                        "enum": ["x_min", "x_max", "y_min", "y_max", "z_min", "z_max"],
+                    },
                     "maxItems": 6,
                     "default": [],
                     "description": (
@@ -222,9 +226,8 @@ TOOLS: list[Tool] = [
     ),
 ]
 
-async def handle(
-    name: str, arguments: dict, client: CSTClient
-) -> list[TextContent]:
+
+async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextContent]:
     """Handle a boundary/domain tool call."""
     try:
         if name == "cst_set_boundary":
@@ -240,27 +243,32 @@ async def handle(
         if name == "cst_set_floquet_port_advanced":
             return await _handle_set_floquet_port_advanced(arguments, client)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": f"Unknown boundary tool: {name}"}, indent=2),
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"tool": name, "status": "error", "message": f"Unknown boundary tool: {name}"},
+                    indent=2,
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
-        )]
+        logging.getLogger(__name__).debug("Handled error in boundaries.handle", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"tool": name, "status": "error", "message": str(e)}, indent=2),
+            )
+        ]
 
 
-async def _handle_set_boundary(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_set_boundary(arguments: dict, client: CSTClient) -> list[TextContent]:
     faces = {}
     for face_key in ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max"):
         value = arguments[face_key]
         if value not in _BOUNDARY_TYPES:
             raise ValueError(
-                f"Invalid boundary type '{value}' for {face_key}. "
-                f"Must be one of: {_BOUNDARY_TYPES}"
+                f"Invalid boundary type '{value}' for {face_key}. Must be one of: {_BOUNDARY_TYPES}"
             )
         faces[face_key] = value
 
@@ -278,8 +286,10 @@ async def _handle_set_boundary(
     port_faces = arguments.get("waveguide_port_faces") or []
     check = check_setup(
         faces,
-        [{"port_number": i + 1, "orientation": f.replace("_", ""), "type": "waveguide"}
-         for i, f in enumerate(port_faces)],
+        [
+            {"port_number": i + 1, "orientation": f.replace("_", ""), "type": "waveguide"}
+            for i, f in enumerate(port_faces)
+        ],
     )
 
     script = vba.build()
@@ -291,14 +301,11 @@ async def _handle_set_boundary(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_set_background(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_set_background(arguments: dict, client: CSTClient) -> list[TextContent]:
     material = arguments.get("material", "Normal")
     if material not in _BACKGROUND_MATERIALS:
         raise ValueError(
-            f"Invalid background material '{material}'. "
-            f"Must be one of: {_BACKGROUND_MATERIALS}"
+            f"Invalid background material '{material}'. Must be one of: {_BACKGROUND_MATERIALS}"
         )
     epsilon = float(arguments.get("epsilon", 1.0))
     mu = float(arguments.get("mu", 1.0))
@@ -306,11 +313,7 @@ async def _handle_set_background(
     validate_non_negative(epsilon, "epsilon")
     validate_non_negative(mu, "mu")
 
-    vba = (
-        VBABuilder("Background")
-        .call("Reset")
-        .set("Type", material)
-    )
+    vba = VBABuilder("Background").call("Reset").set("Type", material)
 
     if material == "Normal":
         vba.set_number("Epsilon", epsilon)
@@ -328,9 +331,7 @@ async def _handle_set_background(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_set_symmetry(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_set_symmetry(arguments: dict, client: CSTClient) -> list[TextContent]:
     x_plane = arguments.get("x_plane", "none")
     y_plane = arguments.get("y_plane", "none")
     z_plane = arguments.get("z_plane", "none")
@@ -338,8 +339,7 @@ async def _handle_set_symmetry(
     for label, value in [("x_plane", x_plane), ("y_plane", y_plane), ("z_plane", z_plane)]:
         if value not in _SYMMETRY_OPTIONS:
             raise ValueError(
-                f"Invalid symmetry '{value}' for {label}. "
-                f"Must be one of: {_SYMMETRY_OPTIONS}"
+                f"Invalid symmetry '{value}' for {label}. Must be one of: {_SYMMETRY_OPTIONS}"
             )
 
     vba = (
@@ -359,9 +359,7 @@ async def _handle_set_symmetry(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_set_frequency_range(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_set_frequency_range(arguments: dict, client: CSTClient) -> list[TextContent]:
     f_min = float(arguments["f_min"])
     f_max = float(arguments["f_max"])
 
@@ -369,14 +367,9 @@ async def _handle_set_frequency_range(
     validate_frequency(f_max)
 
     if f_min >= f_max:
-        raise ValueError(
-            f"f_min ({f_min} GHz) must be less than f_max ({f_max} GHz)"
-        )
+        raise ValueError(f"f_min ({f_min} GHz) must be less than f_max ({f_max} GHz)")
 
-    vba = (
-        VBABuilder("Solver")
-        .set_double("FrequencyRange", f_min, f_max)
-    )
+    vba = VBABuilder("Solver").set_double("FrequencyRange", f_min, f_max)
     script = vba.build()
     result = client.execute_vba(script)
     result["frequency_range"] = {
@@ -387,9 +380,7 @@ async def _handle_set_frequency_range(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def _handle_set_periodic_boundary(
-    arguments: dict, client: CSTClient
-) -> list[TextContent]:
+async def _handle_set_periodic_boundary(arguments: dict, client: CSTClient) -> list[TextContent]:
     phase_x = float(arguments.get("phase_x_deg", 0))
     phase_y = float(arguments.get("phase_y_deg", 0))
 
@@ -444,6 +435,6 @@ async def _handle_set_floquet_port_advanced(
 
 # Reject line breaks and non-numeric values in numeric slots before any VBA
 # is generated from the arguments (generated VBA bypasses CST_ALLOW_RAW_VBA).
-from cst_mcp.vba_safety import guard_handler as _guard_handler  # noqa: E402
+from cst_mcp.vba_safety import guard_handler as _guard_handler
 
 handle = _guard_handler(TOOLS, handle)

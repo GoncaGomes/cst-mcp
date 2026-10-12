@@ -1,5 +1,7 @@
+import logging
+import sys
 from pathlib import Path
-import sys, json
+
 sys.path.insert(0, r"E:\cst_mcp_update\src")
 sys.path.insert(0, r"E:\CST Studio Suite 2026\AMD64\python_cst_libraries")
 from cst_mcp.config import CSTConfig
@@ -7,7 +9,7 @@ from cst_mcp.cst_client import CSTClient
 
 c = CSTClient(CSTConfig.from_env())
 print(c.connect())
-print([a for a in dir(c) if not a.startswith('__')])
+print([a for a in dir(c) if not a.startswith("__")])
 # open fffix project
 print(c.open_project(r"E:\cstprojects\patch_2p4_fffix.cst"))
 
@@ -16,7 +18,9 @@ sess = getattr(c, "_session", None) or getattr(c, "session", None)
 print("sess", sess)
 if sess is None:
     # maybe client IS session wrapper
-    print("attrs with project", [a for a in dir(c) if "project" in a.lower() or "model" in a.lower()])
+    print(
+        "attrs with project", [a for a in dir(c) if "project" in a.lower() or "model" in a.lower()]
+    )
 
 m3d = None
 for path in ["model3d", "_session.model3d", "session.model3d"]:
@@ -35,6 +39,7 @@ for tree in [
     try:
         print("select", tree, "->", m3d.SelectTreeItem(tree))
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in _ff_metrics_only.main", exc_info=True)
         print("select fail", tree, e)
 
 metrics_file = Path(r"E:\cstprojects\exports\ff_fix_metrics.txt")
@@ -119,11 +124,17 @@ elif hasattr(c, "_session"):
         c._session._project.schematic.execute_vba_code(vba)
         print("schematic OK")
     except Exception as e:
+        logging.getLogger(__name__).debug("Handled error in _ff_metrics_only.main", exc_info=True)
         print("schematic ERR", str(e)[-500:])
 else:
     print("no exec path")
 
-print("FILE", metrics_file.read_text(encoding="utf-8", errors="replace") if metrics_file.exists() else "missing")
-print("S11", c.get_s_parameters(1,1,max_points=20).get("metrics"))
+print(
+    "FILE",
+    metrics_file.read_text(encoding="utf-8", errors="replace")
+    if metrics_file.exists()
+    else "missing",
+)
+print("S11", c.get_s_parameters(1, 1, max_points=20).get("metrics"))
 print("FF", c.get_farfield_metrics(2.4))
 print("disk", c.discover_farfield_monitors())

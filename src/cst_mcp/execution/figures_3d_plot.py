@@ -58,8 +58,10 @@ def _cut_curves(grid: FarfieldGrid, cut: Cut) -> list[tuple[str, np.ndarray]]:
     curves = [(f"{grid.label}", cut.total)]
     co, cx = cut_co_cross(grid, cut)
     if co and cx:
-        curves = [(f"Co-pol ({_COMP_LABEL.get(co, co)})", cut.components[co]),
-                  (f"Cross-pol ({_COMP_LABEL.get(cx, cx)})", cut.components[cx])]
+        curves = [
+            (f"Co-pol ({_COMP_LABEL.get(co, co)})", cut.components[co]),
+            (f"Cross-pol ({_COMP_LABEL.get(cx, cx)})", cut.components[cx]),
+        ]
         # keep total when it differs from the co-pol (e.g. CP antennas)
         if np.nanmax(np.abs(cut.total - cut.components[co])) > 0.5:
             curves.insert(0, (grid.label, cut.total))
@@ -71,8 +73,16 @@ def _cut_title(grid: FarfieldGrid, cut: Cut) -> str:
     return f"{cut.label} ({plane})" if plane else cut.label
 
 
-def plot_polar(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *, dynamic_range_db: float,
-               width: float, formats: list[str]) -> list[str]:
+def plot_polar(
+    grid: FarfieldGrid,
+    cuts: list[Cut],
+    out_dir: Path,
+    stem: str,
+    *,
+    dynamic_range_db: float,
+    width: float,
+    formats: list[str],
+) -> list[str]:
     _, plt, _ = st.require_matplotlib()
     st.apply_style(plt)
     n = len(cuts)
@@ -82,8 +92,13 @@ def plot_polar(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *,
     top = math.ceil(vmax / 5.0) * 5.0 if vmax > 0 else math.ceil(vmax)
     bottom = top - dynamic_range_db
     panel = width / ncols
-    fig, axes = plt.subplots(nrows, ncols, subplot_kw={"projection": "polar"},
-                             figsize=(width, panel * nrows * 1.08), squeeze=False)
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        subplot_kw={"projection": "polar"},
+        figsize=(width, panel * nrows * 1.08),
+        squeeze=False,
+    )
     for idx, cut in enumerate(cuts):
         ax = axes[idx // ncols][idx % ncols]
         ax.set_theta_zero_location("N")
@@ -98,8 +113,13 @@ def plot_polar(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *,
             if closed:
                 a = np.append(a, a[0] + 2 * np.pi)
                 r = np.append(r, r[0])
-            ax.plot(a, r, linestyle=st.LINE_STYLES[k % len(st.LINE_STYLES)],
-                    color=st.COLORS[k % len(st.COLORS)], label=label)
+            ax.plot(
+                a,
+                r,
+                linestyle=st.LINE_STYLES[k % len(st.LINE_STYLES)],
+                color=st.COLORS[k % len(st.COLORS)],
+                label=label,
+            )
         ax.set_ylim(bottom, top)
         step = 10 if dynamic_range_db >= 20 else 5
         ticks = np.arange(top, bottom - 1e-9, -step)[::-1]
@@ -110,10 +130,22 @@ def plot_polar(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *,
         bm = beam_metrics(cut)
         if bm["hpbw_edges_deg"]:
             for edge in bm["hpbw_edges_deg"]:
-                ax.plot([np.deg2rad(edge)] * 2, [bottom, bm["peak"] - 3.0], color="0.35",
-                        linestyle=":", linewidth=0.7)
-            ax.text(0.5, -0.12, f"HPBW = {bm['hpbw_deg']:.1f}°", transform=ax.transAxes,
-                    ha="center", va="top", fontsize=7)
+                ax.plot(
+                    [np.deg2rad(edge)] * 2,
+                    [bottom, bm["peak"] - 3.0],
+                    color="0.35",
+                    linestyle=":",
+                    linewidth=0.7,
+                )
+            ax.text(
+                0.5,
+                -0.12,
+                f"HPBW = {bm['hpbw_deg']:.1f}°",
+                transform=ax.transAxes,
+                ha="center",
+                va="top",
+                fontsize=7,
+            )
         ax.set_title(_cut_title(grid, cut), pad=10)
         if idx == 0:
             ax.legend(loc="upper left", bbox_to_anchor=(-0.18, 1.18), frameon=False, fontsize=6)
@@ -124,8 +156,16 @@ def plot_polar(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *,
     return _save(fig, plt, out_dir, f"{stem}_polar", formats)
 
 
-def plot_rect(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *, dynamic_range_db: float,
-              width: float, formats: list[str]) -> list[str]:
+def plot_rect(
+    grid: FarfieldGrid,
+    cuts: list[Cut],
+    out_dir: Path,
+    stem: str,
+    *,
+    dynamic_range_db: float,
+    width: float,
+    formats: list[str],
+) -> list[str]:
     _, plt, _ = st.require_matplotlib()
     st.apply_style(plt)
     fig, ax = plt.subplots(figsize=(width, width * 0.62))
@@ -134,8 +174,13 @@ def plot_rect(grid: FarfieldGrid, cuts: list[Cut], out_dir: Path, stem: str, *, 
     k = 0
     for cut in cuts:
         for label, vals in _cut_curves(grid, cut):
-            ax.plot(cut.angle, np.clip(vals, bottom, None), linestyle=st.LINE_STYLES[k % len(st.LINE_STYLES)],
-                    color=st.COLORS[k % len(st.COLORS)], label=f"{_cut_title(grid, cut)}: {label}")
+            ax.plot(
+                cut.angle,
+                np.clip(vals, bottom, None),
+                linestyle=st.LINE_STYLES[k % len(st.LINE_STYLES)],
+                color=st.COLORS[k % len(st.COLORS)],
+                label=f"{_cut_title(grid, cut)}: {label}",
+            )
             k += 1
     ax.axhline(vmax - 3.0, color="0.5", linewidth=0.5, linestyle=(0, (1, 2)))
     ax.set_ylim(bottom, math.ceil(vmax / 5.0) * 5.0 + (5 if vmax % 5 == 0 else 0))
@@ -161,8 +206,16 @@ def _closed_grid(grid: FarfieldGrid) -> tuple[np.ndarray, np.ndarray]:
     return phi, z
 
 
-def plot_heatmap(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_db: float, width: float,
-                 formats: list[str], projection: str = "theta_phi") -> list[str]:
+def plot_heatmap(
+    grid: FarfieldGrid,
+    out_dir: Path,
+    stem: str,
+    *,
+    dynamic_range_db: float,
+    width: float,
+    formats: list[str],
+    projection: str = "theta_phi",
+) -> list[str]:
     _, plt, _ = st.require_matplotlib()
     st.apply_style(plt)
     phi, z = _closed_grid(grid)
@@ -174,8 +227,16 @@ def plot_heatmap(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_
         mask = grid.theta <= 90 + 1e-9
         T, P = np.meshgrid(np.deg2rad(grid.theta[mask]), np.deg2rad(phi))
         U, V = np.sin(T) * np.cos(P), np.sin(T) * np.sin(P)
-        mesh = ax.pcolormesh(U, V, zc[:, mask], cmap="viridis", vmin=vmin, vmax=vmax, shading="gouraud",
-                             rasterized=True)
+        mesh = ax.pcolormesh(
+            U,
+            V,
+            zc[:, mask],
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            shading="gouraud",
+            rasterized=True,
+        )
         ax.set_aspect("equal")
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
@@ -184,10 +245,25 @@ def plot_heatmap(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_
         ax.add_patch(plt.Circle((0, 0), 1.0, fill=False, color="0.3", linewidth=0.5))
     else:
         fig, ax = plt.subplots(figsize=(width, width * 0.6))
-        mesh = ax.pcolormesh(phi, grid.theta, zc.T, cmap="viridis", vmin=vmin, vmax=vmax, shading="gouraud",
-                             rasterized=True)
-        cs = ax.contour(phi, grid.theta, z.T, levels=[vmax - 3.0], colors="white", linewidths=0.6,
-                        linestyles="--")
+        mesh = ax.pcolormesh(
+            phi,
+            grid.theta,
+            zc.T,
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            shading="gouraud",
+            rasterized=True,
+        )
+        cs = ax.contour(
+            phi,
+            grid.theta,
+            z.T,
+            levels=[vmax - 3.0],
+            colors="white",
+            linewidths=0.6,
+            linestyles="--",
+        )
         if cs.allsegs and any(len(s) for s in cs.allsegs[0]):
             ax.clabel(cs, fmt={vmax - 3.0: "−3 dB"}, fontsize=5)
         ax.set_xlabel("φ / deg")
@@ -200,17 +276,32 @@ def plot_heatmap(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_
     if projection == "uv":
         th, ph = np.deg2rad(grid.theta[it]), np.deg2rad(grid.phi[ip])
         if grid.theta[it] <= 90:
-            ax.plot(np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), marker="+", color="white", markersize=6)
+            ax.plot(
+                np.sin(th) * np.cos(ph),
+                np.sin(th) * np.sin(ph),
+                marker="+",
+                color="white",
+                markersize=6,
+            )
     else:
         ax.plot(grid.phi[ip], grid.theta[it], marker="+", color="white", markersize=6)
     cb = fig.colorbar(mesh, ax=ax, pad=0.02)
     cb.set_label(f"{grid.label} / {grid.unit}")
     fig.tight_layout()
-    return _save(fig, plt, out_dir, f"{stem}_heatmap_{'uv' if projection == 'uv' else 'thetaphi'}", formats)
+    return _save(
+        fig, plt, out_dir, f"{stem}_heatmap_{'uv' if projection == 'uv' else 'thetaphi'}", formats
+    )
 
 
-def plot_3d(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_db: float, width: float,
-            formats: list[str]) -> list[str]:
+def plot_3d(
+    grid: FarfieldGrid,
+    out_dir: Path,
+    stem: str,
+    *,
+    dynamic_range_db: float,
+    width: float,
+    formats: list[str],
+) -> list[str]:
     matplotlib, plt, _ = st.require_matplotlib()
     st.apply_style(plt)
     from matplotlib import cm
@@ -227,8 +318,18 @@ def plot_3d(grid: FarfieldGrid, out_dir: Path, stem: str, *, dynamic_range_db: f
     cmap = matplotlib.colormaps["viridis"]
     fig = plt.figure(figsize=(width, width * 0.85))
     ax = fig.add_subplot(111, projection="3d")
-    ax.plot_surface(X, Y, Z, facecolors=cmap(norm(zc)), rstride=1, cstride=1, linewidth=0.1,
-                    edgecolor=(0, 0, 0, 0.15), antialiased=True, shade=False)
+    ax.plot_surface(
+        X,
+        Y,
+        Z,
+        facecolors=cmap(norm(zc)),
+        rstride=1,
+        cstride=1,
+        linewidth=0.1,
+        edgecolor=(0, 0, 0, 0.15),
+        antialiased=True,
+        shade=False,
+    )
     lim = 1.0
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)

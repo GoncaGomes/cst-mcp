@@ -10,10 +10,9 @@ from __future__ import annotations
 import re
 
 from cst_mcp.validators import validate_name, validate_vba_input
+from cst_mcp.vba_safety import vba_escape
 
-_DANGEROUS_IN_STRINGS = re.compile(
-    r'"\s*[&+]\s*(Shell|CreateObject|GetObject)', re.IGNORECASE
-)
+_DANGEROUS_IN_STRINGS = re.compile(r'"\s*[&+]\s*(Shell|CreateObject|GetObject)', re.IGNORECASE)
 
 
 _FORBIDDEN_STRING_CHARS = re.compile(r"[\r\n\x00]")
@@ -27,7 +26,9 @@ def _escape_vba_string(value: str) -> str:
     literal and let the rest of the value run as a new VBA statement.
     """
     if _FORBIDDEN_STRING_CHARS.search(value):
-        raise ValueError(f"VBA string value must not contain line breaks or NUL characters: {value!r}")
+        raise ValueError(
+            f"VBA string value must not contain line breaks or NUL characters: {value!r}"
+        )
     escaped = value.replace('"', '""')
     # Block VBA string concatenation injection attempts
     if _DANGEROUS_IN_STRINGS.search(f'"{escaped}"'):
@@ -44,6 +45,30 @@ def _format_number(value: float) -> str:
     if value == int(value) and abs(value) < 1e15:
         return str(int(value))
     return f"{value:.10g}"
+
+
+def _format_expression(value: float | str) -> str:
+    """Serialize a finite JSON number or nonempty CST expression as a VBA literal.
+
+    Preserve expression text for CST's parameter/history evaluator. This is
+    string serialization, not an expression parser: CST reports malformed
+    arithmetic, undefined parameters and other semantic errors. Quoted input
+    stays inside one literal; all line-breaking characters and NUL are rejected.
+    Numeric formatting remains identical to the number-only builder methods.
+    """
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("CST expression must be nonempty")
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
+            raise ValueError("CST expression must not contain control characters")
+        vba_escape(value, "CST expression")  # Check the full line-break set.
+        return '"' + _escape_vba_string(value) + '"'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("CST expression must be a JSON number or a string expression")  # noqa: TRY004
+    try:
+        return '"' + _format_number(value) + '"'
+    except OverflowError:
+        raise ValueError("CST expression number must be finite and representable") from None
 
 
 class VBABuilder:
@@ -92,6 +117,25 @@ class VBABuilder:
         self._with_block.append(f'.{prop} "{_format_number(v1)}", "{_format_number(v2)}"')
         return self
 
+    def set_expression_pair(self, prop: str, v1: float | str, v2: float | str) -> VBABuilder:
+        """Set a range with quoted numbers/unevaluated CST parameter expressions."""
+        self._with_block.append(f".{prop} {_format_expression(v1)}, {_format_expression(v2)}")
+        return self
+
+    def set_expression(self, prop: str, value: float | str) -> VBABuilder:
+        """Set one quoted number or unevaluated CST parameter expression."""
+        self._with_block.append(f".{prop} {_format_expression(value)}")
+        return self
+
+    def set_expression_triple(
+        self, prop: str, v1: float | str, v2: float | str, v3: float | str
+    ) -> VBABuilder:
+        """Set a point/center with quoted numbers or CST expressions."""
+        self._with_block.append(
+            f".{prop} {_format_expression(v1)}, {_format_expression(v2)}, {_format_expression(v3)}"
+        )
+        return self
+
     def set_triple(self, prop: str, v1: float, v2: float, v3: float) -> VBABuilder:
         """Set a triple-value property: .Prop "v1", "v2", "v3" """
         self._with_block.append(
@@ -103,7 +147,9 @@ class VBABuilder:
         """Official DiscretePort/LumpedElement SetP1/SetP2 signature."""
         if prop not in {"SetP1", "SetP2"}:
             raise ValueError("Use SetP1 or SetP2")
-        self._with_block.append(f'.{prop} False, "{_format_number(x)}", "{_format_number(y)}", "{_format_number(z)}"')
+        self._with_block.append(
+            f'.{prop} False, "{_format_number(x)}", "{_format_number(y)}", "{_format_number(z)}"'
+        )
         return self
 
     def set_bool(self, prop: str, value: bool) -> VBABuilder:

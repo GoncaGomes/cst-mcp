@@ -78,7 +78,9 @@ _RAW_DANGEROUS_VBA_PATTERNS = [
 ]
 
 _DANGEROUS_VBA_RE = re.compile("|".join(_DANGEROUS_VBA_PATTERNS), re.IGNORECASE | re.MULTILINE)
-_RAW_DANGEROUS_VBA_RE = re.compile("|".join(_RAW_DANGEROUS_VBA_PATTERNS), re.IGNORECASE | re.MULTILINE)
+_RAW_DANGEROUS_VBA_RE = re.compile(
+    "|".join(_RAW_DANGEROUS_VBA_PATTERNS), re.IGNORECASE | re.MULTILINE
+)
 
 # VBA line continuation: whitespace, underscore, optional trailing blanks, newline.
 _LINE_CONTINUATION_RE = re.compile(r"[ \t]+_[ \t]*\n")
@@ -131,7 +133,11 @@ def _mask_line(line: str, continued: bool, brackets: bool) -> str:
             i = j + 1
             stmt_start = False
             continue
-        if stmt_start and _REM_RE.match(line, i) and (i == 0 or not (line[i - 1].isalnum() or line[i - 1] == "_")):
+        if (
+            stmt_start
+            and _REM_RE.match(line, i)
+            and (i == 0 or not (line[i - 1].isalnum() or line[i - 1] == "_"))
+        ):
             break  # Rem comment
         if ch == ":":
             stmt_start = True
@@ -151,6 +157,7 @@ def _mask_code(code: str, brackets: bool) -> str:
         masked.append(m)
         continued = bool(_ENDS_WITH_CONTINUATION_RE.search(m))
     return _LINE_CONTINUATION_RE.sub(" ", "\n".join(masked))
+
 
 RAW_VBA_ENV = "CST_ALLOW_RAW_VBA"
 
@@ -176,9 +183,12 @@ def raw_vba_disabled_message() -> str:
         "so only enable it for fully trusted clients."
     )
 
+
 _VALID_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_ .-]{0,99}$")
 
-_VALID_COMPONENT_PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_ .-]{0,99}(:[A-Za-z_][A-Za-z0-9_ .-]{0,99})?$")
+_VALID_COMPONENT_PATH_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_ .-]{0,99}(:[A-Za-z_][A-Za-z0-9_ .-]{0,99})?$"
+)
 
 
 class ValidationError(Exception):
@@ -220,7 +230,9 @@ def validate_vba_input(vba_code: str) -> str:
     either hit rejects, so tokenizer ambiguity cannot hide code.
     """
     if _CONTROL_CHARS_RE.search(vba_code):
-        raise ValidationError("VBA code contains control characters (e.g. NUL), which are not allowed.")
+        raise ValidationError(
+            "VBA code contains control characters (e.g. NUL), which are not allowed."
+        )
     normalized = _normalize_newlines(vba_code)
     match = _RAW_DANGEROUS_VBA_RE.search(_LINE_CONTINUATION_RE.sub(" ", normalized))
     if not match:
