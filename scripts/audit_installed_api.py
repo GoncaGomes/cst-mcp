@@ -107,7 +107,8 @@ def main():
         ],
         "builder_members": results,
     }
-    target = ROOT / "docs/installed-api-audit.json"
+    target = ROOT / "build/audits/installed-api-audit.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(

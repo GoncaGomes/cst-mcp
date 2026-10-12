@@ -1,52 +1,40 @@
-# Documentation / Belgeler
+# Documentation
 
-Current release: [1.1.0 API review](API_REVIEW_2026.md) · [Agent setup](AGENT_SETUP.md).
+Use the local Markdown documents for setup, tool contracts and capability procedures.
+The [project README](../README.md) is the repository entry point.
 
-Interactive **English / Türkçe** documentation for **cst-studio-mcp**, including installation,
-environment variables, MCP client setup, and the full tool catalog.
+## Current instructions
 
-| File | EN | TR |
-|------|----|----|
-| [**index.html**](index.html) | Interactive guide + tool browser | İnteraktif kurulum + araç rehberi |
-| [TOOLS.md](TOOLS.md) | Markdown catalog | Markdown katalog |
-| [tools.json](tools.json) | Machine-readable schemas | Makine-okur şemalar |
-| [VBA_ALIGNMENT.md](VBA_ALIGNMENT.md) | Fixes vs `vba_cst` help dump | `vba_cst` yardım dökümüne göre düzeltmeler |
-| [../README.md](../README.md) | Full project README (install, troubleshoot) | Ana kurulum ve sorun giderme |
+- [Agent setup and acceptance](AGENT_SETUP.md) covers installation, stdio configuration and checks.
+- [Markdown tool reference](TOOLS.md) describes the tool catalog.
+  Confirm current input contracts through MCP tool discovery.
+- [Utility scripts](../scripts/README.md) covers installed-help, modeler and saved-result checks.
+- [Project, geometry and materials](../capabilities_test/01_project_geometry_materials/README.md)
+  documents Batch 01 and its known limitations.
+- [Parameter-driven geometry](../capabilities_test/02_parameters/README.md)
+  documents supported inputs, owned workspaces, reset rules and measurement coverage.
+- [Parameter implementation review](../capabilities_test/02_parameters/REVIEW.md)
+  records changes and offline checks.
+- [Boolean operations and error handling](../capabilities_test/03_booleans/README.md)
+  documents operations, error cases and workspace rules.
+- [Boolean implementation review](../capabilities_test/03_booleans/REVIEW.md)
+  records the reviewed live operations result and later changes.
 
-## Open the site
+The user confirmed the agreed modeling scenarios and manual checks.
+Some preserved summaries retain older pending manual wording.
+That wording is preserved evidence, not a reversal of user confirmation.
+Automated readbacks establish only the properties measured by each scenario.
+The latest boolean operations summary is preflight.
+An earlier documented live invocation completed successfully.
+The errors stage has a completed live report with nine passing cases.
+See [validation status](../README.md#validation-status) for the full overview.
 
-```powershell
-start docs\index.html
-# or
-python -m http.server 8080 --directory docs
-```
+## Current assessments
 
-In the UI:
+- [API and capability assessment](API_REVIEW.md) describes implemented input contracts,
+  completed campaign evidence and measurement limits.
+- [Reliability assessment](RELIABILITY_REVIEW.md) describes server safeguards,
+  capability-client ownership, timeout handling and transport preservation.
 
-- Toggle **English / Türkçe**
-- Toggle **Light / Dark** (stored in `localStorage`)
-- Search tools, open categories, expand parameters
-- **Copy** copies the full tool text (name, description, parameters)
-
-The top of the page includes **installation**, **environment variables**, **MCP config**,
-**verify**, and **farfield tips** — aligned with the root README.
-
-Design: academic paper + engineering reference (warm paper / slate dark, IBM Plex / Source Serif).
-
-## Rebuild
-
-From the repository root:
-
-```powershell
-python scripts/build_docs.py
-```
-
-Regenerates:
-
-- `docs/index.html` (from `_template.html` + live tools)
-- `docs/tools.json`
-- `docs/TOOLS.md`
-- README tool catalog section (`<!-- TOOL_CATALOG_START -->` …)
-- `docs/VBA_ALIGNMENT.md` (notes file)
-
-Requires the package importable (`pip install -e .`) and MCP dependency installed.
+These reports distinguish offline checks, native readbacks and manual confirmation.
+They do not establish live correctness for every tool or simulation accuracy.
