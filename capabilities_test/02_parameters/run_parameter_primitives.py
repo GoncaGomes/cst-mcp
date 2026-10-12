@@ -1,7 +1,3 @@
-# /// script
-# requires-python = ">=3.12,<3.13"
-# dependencies = ["mcp>=1.29,<3", "jsonschema>=4.20"]
-# ///
 """Deterministic primitive expression validation through a real MCP stdio session."""
 
 from __future__ import annotations

@@ -1,7 +1,3 @@
-# /// script
-# requires-python = ">=3.12,<3.13"
-# dependencies = ["mcp>=1.29,<3", "jsonschema>=4.20"]
-# ///
 """Deterministic batch 01. All CST operations use an MCP client over stdio."""
 
 from __future__ import annotations
@@ -470,8 +466,8 @@ def make_plan(work: Path) -> list[Case]:
             "name": "BatchLoftProbe",
             "material": "PEC",
             "profiles": [
-                [[120, 20], [126, 20], [126, 26], [120, 26]],
-                [[121, 21], [125, 21], [125, 25], [121, 25]],
+                [[120, 20, 0], [126, 20, 0], [126, 26, 0], [120, 26, 0]],
+                [[121, 21, 6], [125, 21, 6], [125, 25, 6], [121, 25, 6]],
             ],
         },
         kind="loft",
