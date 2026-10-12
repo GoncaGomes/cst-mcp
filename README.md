@@ -255,10 +255,6 @@ $env:CST_CONNECT_MODE = "disabled"
 .\.venv\Scripts\python.exe -m pytest -q -ra
 ```
 
-There is a known cleanup issue in `tests/test_docs_catalog.py`.
-It still imports a removed documentation generator and fails until updated separately.
-Keep that failure visible when reporting test results.
-
 CI runs Python 3.12 offline tests on Ubuntu and Windows.
 Its matrix installs MCP SDK 1.29.0 and 2.2.0 with `.[dev,figures]`.
 Formatting, lint and documentation generation are not CI steps.

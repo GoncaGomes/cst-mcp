@@ -26,9 +26,6 @@ $env:CST_CONNECT_MODE = "disabled"
 For an existing checkout, skip cloning.
 Stop the MCP client before updating its installed environment.
 Do not interrupt a running simulation to update.
-The offline suite has a known cleanup failure in `tests/test_docs_catalog.py`.
-That test still imports the removed documentation generator.
-Report the failure separately rather than treating the suite as passing.
 
 ## Configure the stdio client
 
@@ -211,7 +208,7 @@ Volume and area checks do not independently measure every coordinate or history 
 > Check the installed CST library ABI before any native work.
 > Start acceptance with CST_CONNECT_MODE=disabled.
 > Perform MCP initialization, tool discovery and connection status.
-> Run the offline tests and report the known documentation catalog failure separately.
+> Run the offline tests and report the results.
 > Check installed official help as a separate step.
 > If I supplied a completed project, list its actual result paths and run IDs.
 > Read its complex results without connecting to CST or starting a solver.

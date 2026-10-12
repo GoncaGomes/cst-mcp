@@ -152,8 +152,6 @@ with MCP SDK 1.29.0 and 2.2.0.
 It installs `.[dev,figures]` and runs pytest.
 Formatting, lint and documentation generation are not workflow steps.
 A successful workflow validates its specific commit, not every later cleanup state.
-The existing catalog test still imports a removed documentation generator.
-That separate cleanup failure remains unresolved.
 
 Use [agent acceptance](AGENT_SETUP.md) and the
 [parameter ownership guide](../capabilities_test/02_parameters/README.md#ownership-and-reset)

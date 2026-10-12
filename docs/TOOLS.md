@@ -1,8 +1,7 @@
 ## Full tool catalog (192 tools)
 
-Interactive bilingual docs: open [`docs/index.html`](docs/index.html) (EN/TR toggle, search, full-width cards). Rebuild: `python scripts/build_docs.py`.
-
-VBA for geometry/ports/transforms is cross-checked against the CST help dump in [`vba_cst/`](vba_cst/).
+This file is the Markdown tool reference for the complete registered tool catalog.
+MCP tool discovery supplies the active schemas for the configured toolsets.
 
 ### Official API and saved results (4)
 
