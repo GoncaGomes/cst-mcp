@@ -10,11 +10,13 @@ from __future__ import annotations
 import logging
 import math
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar
 
 from cst_mcp.config import CSTConfig
+from cst_mcp.dialog_handler import EducationNoticeWatcher
 from cst_mcp.vba_safety import vba_escape
 
 logger = logging.getLogger(__name__)
@@ -191,12 +193,44 @@ class CSTSession:
             before = self._running_de_pids(cst.interface)
             newly_started: bool | None
             if mode == "new":
-                if hasattr(factory, "new"):
-                    self._de = factory.new()
-                else:
-                    self._de = factory()  # default StartMode.New
-                msg = "Started a new Design Environment (mode='new')"
-                newly_started = True
+                if mode == "new":
+                    watcher: EducationNoticeWatcher | None = None
+                    startup_args: dict[str, Any] = {}
+
+                    if sys.platform == "win32" and hasattr(factory, "ProcessInfo"):
+                        process_info = factory.ProcessInfo()
+                        startup_args["process_info"] = process_info
+
+                        watcher = EducationNoticeWatcher(
+                            timeout_s=60.0,
+                            target_pid_getter=lambda: int(process_info.pid) or None,
+                        )
+
+                    try:
+                        if watcher is not None:
+                            watcher.start()
+
+                        if hasattr(factory, "new"):
+                            self._de = factory.new(**startup_args)
+                        else:
+                            self._de = factory(**startup_args)
+
+                    finally:
+                        if watcher is not None:
+                            stopped = watcher.stop()
+                            logger.info(
+                                "Education notice observer stopped: %s",
+                                stopped,
+                            )
+                            if not stopped:
+                                logger.warning(
+                                    "Education notice observer is still running "
+                                    "after the stop request"
+                                )
+
+                    msg = "Started a new Design Environment (mode='new')"
+                    newly_started = True
+
             elif hasattr(factory, "connect_to_any_or_new"):
                 self._de = factory.connect_to_any_or_new()
                 msg = "Connected via connect_to_any_or_new() (mode='any')"
