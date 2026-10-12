@@ -1,4 +1,0 @@
-# Keep standalone presentations and their recorded hashes identical on every OS.
-presentation/** -text
-site/** -text
-scripts/build_site.py -text

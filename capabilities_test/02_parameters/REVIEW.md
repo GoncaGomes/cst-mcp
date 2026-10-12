@@ -1,495 +1,122 @@
-# Review record
-
-Inspected baseline: `main`, commit
-`e027735f0f61e666801fe18a6e0f93cfbfff9f69`. Tracked working tree/index matched
-HEAD. Batch 01's five files were untracked and were preserved. Batch 02 was
-empty. No applicable `AGENTS.md` was found. No branch switch, commit or push
-was performed.
-
-Server functions/helpers changed:
-
-- `geometry._build_brick`: uses the new expression-aware range method for
-  X/Y/Z instead of the number-only range method. Only this primitive changes.
-- `VBABuilder.set_expression_pair` (new): emits two quoted CST values while
-  keeping number-only builder methods intact.
-- `_format_expression` (new): preserves expression text, retains numeric
-  formatting, rejects invalid types/nonfinite/control-character values and
-  applies existing string escaping/injection checks.
-- `vba_safety.check_arguments`: fallback to SDK 2.x `input_schema`, restoring
-  schema-based validation that SDK 2.x previously bypassed. Shared numeric-only
-  restrictions are therefore effective under both supported SDK layouts.
-- `cst_create_brick` catalog schema/descriptions: all six bounds explicitly
-  accept number/string and document persistence and CST-side semantic errors.
-
-The public geometry handler and its history execution path are reused without
-modification. No changes to parameters, workflows, other primitives, solver or
-optimization behavior were made. The existing workflow `_brick_expr` confirms
-that quoted expressions are the established CST-history representation.
-The parameter tool already performs storage and rebuild as separate operations.
-
-Review focused on literal containment, expression dependency preservation,
-numeric compatibility, SDK schema lookup, fixed-workspace ownership/reset
-boundaries, original-source preservation, independent query evidence and
-cessation after unknown native execution. No unresolved implementation finding
-was identified in those reviewed paths; actual CST compatibility and model
-behavior remain unverified until the live test is executed.
-
-Offline checks executed: the full repository pytest suite passed with **615
-passed, 7 skipped**; the focused selection passed with **343 passed**; the seven
-existing batch-01 response/transport unittest tests passed. Focused Ruff checks,
-Python compilation and `git diff --check` passed. The real MCP `--preflight`
-passed with `CST_CONNECT_MODE=disabled`. Substitute and offline checks cannot
-validate CST geometry/rebuilds. The full suite reported one existing SyntaxWarning
-in `tests/test_live_regressions.py` (an invalid escape sequence).
-The final preflight artifact audit confirmed two append-preserved invocations,
-nine complete request pairs each, no CST connection calls and no project copies.
-After the final client-only reporting adjustment, its 27 substitute tests passed again.
-Nine Ruff diagnostics in `geometry.py` were reproduced from HEAD and were left
-unchanged; no unrelated formatting fixes were applied to server functions.
-
-The potential live initialization blocker observed initially was the source
-companion's `project/Model.lok`, a zero-byte lock. It was absent on the final
-filesystem recheck; no CST operation was performed to clear it. The original file is
-45,283 bytes, compared with 42,505 in its old report. Save/close the source and
-investigate any remaining lock before live initialization. The script records
-the actual source hash/size and copy-time file provenance; it neither deletes
-locks nor assumes they are stale. A baseline rebuild failure may expose inherited
-history problems; it is reported and stopped without reconstruction.
-
-Actual source SHA-256 recorded by the final preflight (45,283 bytes):
-`1eae47647fcd4723c38d43aecdf5bc9b81254dd1ff684e102faa36459ba2ddf8`.
-This is an observation of the current saved source, not copy-time provenance;
-the live initializer separately records and verifies copy-time fingerprints.
-
-## Primitive extension and scope relocation, 8 October 2026
-
-The earlier sections describe the original brick implementation and its historical
-baseline. This extension was inspected on `feat/brick-parameter-expressions` at
-`59b52b7f9673b7932b981f2ee45bf2541b9fbd96`. No applicable `AGENTS.md` was found in
-the repository or its ancestors. Existing root README edits, Batch 02 documentation
-edits and unrelated presentation/site deletions were present. Unrelated work was
-preserved. No branch switch, commit, push or discard was performed.
-
-The cylinder, cone, sphere, elliptical cylinder, torus and Polygon3D schemas and
-builders now support the selected expression dimensions. The helpers are
-`geometry._expression_field`, `geometry._radius_expression`,
-`VBABuilder.set_expression` and `VBABuilder.set_expression_triple`; the existing
-expression formatter and pair helper are reused. The formatter additionally
-rejects non-line-breaking forbidden controls. Numeric formatting, defaults and
-numeric radius sign rules are retained. Number-only builder methods,
-`vba_safety.py` and `cst_set_parameter` were not changed by this extension.
-
-Installed CST 2025 Torus VBA help, the torus dialog/creation-mode help and its
-diagram were inspected. CST's large/small radii are outer/inner surface extents.
-The misleading major/tube-radius descriptions in the geometry catalog and bundled
-VBA reference were corrected without converting numeric inputs. The six entries
-in the static tool catalog and embedded documentation were updated in place.
-Other tool contracts remain unchanged.
-
-The primitive client uses only `artifacts\02_primitives`, starts its own new
-DesignEnvironment, creates a blank MWS project and guards subsequent reuse with
-ownership, OS/project locks, checkpoint hashes and companion inventories. Its
-reset is confined to verified project paths. Imported helpers were inspected for
-side effects; no imported client is constructed. Parameter storage remains outside
-model history and assignments rebuild only when required. Read-only queries use
-native output capture. Unknown execution stops every further MCP call and transport
-shutdown is restricted to the server process.
-
-The brick relocation inspected 15 identified top-level entries: `project.cst`,
-the 106-file `project` companion, empty `Cache` and `Temp`, MCP/CST/stderr logs,
-reports, metadata, catalog, manifest, user notes and retained `workspace.lock`.
-All 138 original files/directories were moved into `artifacts\01_brick` through
-a collision-checked staging directory and verified by inventories and SHA-256.
-Links, junctions, ambiguous entries and collisions were refused. Exclusive access
-to every file and an OS lock on the retained workspace lock established inactivity.
-There were no CST project locks. No locks were removed or judged stale.
-
-The original manifest bytes are in `workspace.before_relocation.json`; the local
-`relocation.json` records progress, both inventories and verification. Only the
-operational project path changed in `workspace.json`. Historical logs/reports,
-metadata, notes and source-copy evidence remain byte-preserved. The original
-saved hash, fixture state and checkpoint ID remain unchanged:
-
-- Saved: `490f5597d9f2dd1083367c21db1ad0a18e949ee9448343426507924eae53b49c`
-- Current project: `92fb5dde4d9b11eb4c8c50f052431adf91dbd0195049fcfeb5c6e31563de8065`
-- Checkpoint invocation: `4bb6ff44ae794d35910ede3e9bffe822`, phase `final_geometry`
-
-The mismatch still blocks ordinary brick reuse. The existing checkpoint recovery
-or explicit reset-from-closed-source procedure is required. Relocation did not
-adopt the current project fingerprint. Brick preflight was not rerun against the
-real workspace, preserving its existing latest historical reports.
-
-The final semantic audit caught automatic date normalization by the relocation
-serializer. The operational manifest was restored from its preserved original
-bytes with only the project-path token replaced. The correction is recorded in
-`relocation.json`; every original provenance/checkpoint field now compares exactly.
-
-Offline verification for this extension:
-
-- Focused handler/helper, client ownership/isolation, VBA/security and registry
-  selection: **453 passed**. Tests used temporary files and substitutes without CST.
-- Primitive real MCP `--preflight`: **passed**, CST access disabled. It checked all
-  six effective schemas, numeric/mixed generation and invalid inputs. No project
-  was created, opened or reset.
-  The final audit found three append-preserved preflight invocations, each with
-  45 complete request/response pairs. The latest metadata matches the final script.
-- Changed/new Python files pass focused Ruff checks. Full-file `geometry.py`
-  retains the nine pre-existing Ruff diagnostics, with no new diagnostics.
-- Python compilation, numeric-output compatibility and `git diff --check` are
-  checked offline. The final artifact audit verifies original brick fingerprints
-  and preserved manifest fields, ignored scope files and preflight call isolation.
-
-Volume is checked analytically for all five solids and exact area for four.
-Elliptical-cylinder area is recorded without an approximate exact reference.
-Curve closure and its documented maximum point count are recorded. Installed help
-does not specify complete point-ID enumeration, so coordinate verification is
-unsupported. Volume/area do not prove all positions, dimensions or expression
-associations. No loose-box or manual-validation suite was added.
-
-Live CST connection, project opening, model rebuild or simulation was performed
-by this extension task. 
-
-## 2026-10-09: extrusion expressions and deterministic capability client
-
-Verified baseline: `feat/brick-parameter-expressions`, commit `6d34392`, clean
-working tree. No branch switch, commit, push or discard was performed.
-
-Both extrusion tools now preserve expressions in height, profile/hole coordinates
-and active-axis offsets. Installed CST 2025 Extrude, ExtrudeCurve, Polygon3D and
-Application help was inspected. String Height remains symbolic; documented double
-arguments use safe native Evaluate calls inside stored history. Numeric winding
-behavior is retained; symbolic signed-area checks and independent outline/hole
-winding selection run during reconstruction. Pointlist down now reverses the
-plane normal with consistent local remapping, correcting the previously ignored
-option. Height-sign contracts and unrelated geometry functions remain unchanged.
-Metadata is prepared before mutation; symbolic endpoints are labeled predictions
-and native errors/timeouts retain their complete payloads without creation metadata.
-
-`run_parameter_extrusions.py` owns only `artifacts/03_extrusions`, with four retained
-PEC fixtures, both tools/directions, x/y/z mappings and two rectangular holes.
-The updated parameter state flips symbolic outline and hole winding. The client
-uses real MCP stdio, inspected stateless helpers, owned blank-project initialization,
-checkpoint/lock guards, scoped explicit reset and accumulated logs. Unknown state
-forbids all further MCP calls; teardown preserves CST and affects only the Python
-server transport. No earlier client is instantiated or workspace global changed.
-
-Offline checks performed:
-
-- Focused extrusion, existing primitive/brick client, VBA/security, registry and
-  catalog selection: **516 passed, 4 skipped**, without CST access. The compact
-  extrusion module covers meaningful history/metadata/input regressions and three
-  focused checkpoint/unknown-state cases; it contains no fake CST interpreter.
-- Real MCP disabled-server preflight: **passed**, latest invocation
-  `0a0c63da8d1c4f55a1d171152701fee3`, 31 complete responses. Effective schemas,
-  planned calls, generated numeric/mixed VBA and representative rejections checked.
-  No connect or project lifecycle calls occurred; no project/manifest was created.
-- New files and updated schema tests pass Ruff. Baseline comparison retains nine
-  geometry and twenty official-test diagnostics, with no added diagnostics.
-  Python compilation and `git diff --check` pass.
-- All **235 existing files** in `01_brick` and `02_primitives` retain their hashes
-  with no new files in either scope. The brick checkpoint mismatch is untouched.
-  Static and embedded catalog audits confirm only the two extrusion entries changed.
-
-The README now cites the existing completed primitive live evidence, invocation
-`0659b7cbd45e4e019e8dda5d01d5a467`. Extrusion live validation remains pending.
-No CST connection, launch, project opening, reconstruction or live validation was
-performed for this task. Analytic volume/area comparisons do not prove exact
-offsets, direction, every coordinate or history-expression association. Native
-reconstruction and persistence require the user-run scenario and evidence review;
-native dialogs may show evaluated values. Brief inspection guidance is in README.md.
-
-## 2026-10-09: typed coordinate assignment correction
-
-User-run invocation `dc5899a603d147c9b878303699beac35` failed during the first
-extrusion's history update with a native Type mismatch at
-`cstProfile0U(0) = "0"`. The component setup completed, but the profile checks
-failed before solid creation. This is a known failure, not completed validation.
-
-`_profile_area_checks` now wraps every coordinate assignment in native Evaluate,
-including numeric literals, so typed Double arrays receive double values. Shared
-expression serialization and validation remain in use. Geometry-property formatting
-and the capability client's lifecycle/ownership rules were not changed. The existing
-mixed-profile regression now checks numeric outer/hole assignments for both tools.
-
-Focused offline tests: **188 passed, 4 skipped**. Updated regression lint and
-Python compilation pass; geometry retains its nine existing lint diagnostics,
-with none in the changed helper. Disabled-server MCP preflight passed, invocation
-`694c645ce7b248c5806cdf4efa69b8ae`, with 31 responses and no CST lifecycle calls.
-`git diff --check` passes. No CST connection, project operation or live validation
-was performed during this correction.
-
-The failed live summaries/metadata are preserved as `failed_live_summary.json`,
-`failed_live_summary.md` and `failed_live_metadata.json` in `03_extrusions` before
-preflight updated latest reports. Complete native responses remain in accumulated
-logs. Owned project and manifest hashes are unchanged; no reset was performed.
-The failed initialization remains incomplete. For another live run, save and
-close the owned project, then use the existing explicit `--reset` command.
-Native geometry, winding/reconstruction and persistence still require live checks.
-
-## 2026-10-09: analytical-curve parameter bounds
-
-`cst_create_analytical_curve.t_min` and `.t_max` now reuse the shared expression
-schema and pair serializer. Finite numbers, expressions and mixed bounds retain
-numeric formatting and caller expression text in history. No new sign/order
-rule, expression parser, dependency or public tool was added. The obsolete
-number-only schema assertions were replaced; the extrusion client retains its
-wire restriction and its scenario/lifecycle remain unchanged.
-
-Installed CST 2025 AnalyticalCurve and Curve references were inspected.
-`ParameterRange` lists doubles but demonstrates quoted `"-r*pi"`, `"r*pi"`.
-The new deterministic client owns only `artifacts/04_analytical_curve`, creates
-one blank MWS project on first live initialization and follows existing scoped
-ownership, lock, fingerprint, explicit-reset and server-only teardown guards.
-Stateless helpers are reused without instantiating earlier clients or changing
-their globals. All MCP calls stop after indeterminate execution.
-
-Offline validation commands and results:
-
-```powershell
-uv run --python 3.12 --extra dev pytest tests/test_primitive_expressions.py tests/test_brick_expressions.py tests/test_extrusion_expressions.py tests/test_parameter_primitives_client.py tests/test_parameter_brick_client.py tests/test_vba_and_patch.py tests/test_vba_injection.py tests/test_vba_security.py tests/test_tools_registry.py tests/test_docs_catalog.py -q
-uv run capabilities_test/02_parameters/run_parameter_analytical_curve.py --preflight
-uv run capabilities_test/02_parameters/run_parameter_extrusions.py --preflight
-uv run ruff format
-uv run ruff format --check
-uv run ruff check
-```
-
-- Focused tests: **496 passed**. Only a compact serialization/rejection group
-  was added to the existing primitive test file; attempted VBA calls are recorded
-  and asserted absent for rejected bounds. No new client substitute suite exists.
-- Analytical disabled-server preflight: **passed**, 15 checks and 11 responses.
-  It checked the effective catalog, planned schemas, numeric/symbolic/mixed
-  generated VBA and representative rejections. No project/manifest was created
-  and no connect or project lifecycle tool was called.
-- Extrusion disabled-server preflight ran once: **passed**, 54 checks and 31
-  responses, invocation `1229333169594ebf99e0f1516a68f61c`. Its earlier evidence
-  files were restored byte-for-byte with original modification times after this
-  offline check. The check result is retained in the new workspace.
-- Repository-wide Ruff format, format-check and lint: **passed**, 141 files.
-  No configuration was weakened and no diagnostic suppression was added.
-- All **353 earlier evidence files** retain their bytes, sizes and modification
-  times, with no new files in those scopes. Only the analytical-curve entries
-  changed in the four static/embedded catalogs; both JSON catalogs agree.
-
-Live analytical-curve validation remains pending user execution and review.
-The three states predict x=2..7, -1..9 and 3..7 mm, with lengths 5, 10 and 4 mm.
-Automated live coverage is command/rebuild acceptance, actual parameters,
-effective units, named-item closure/reported maximum-point readbacks and
-parameter/unit save-reopen checks. Maximum points is not an exact count.
-The inspected help establishes neither reliable length/endpoint queries nor
-complete point-ID enumeration. No measurements or IDs were invented; length,
-endpoints and stored history association remain pending manual inspection.
-Reuse without reset is deferred. No CST connection, launch, live validation,
-commit or push was performed during implementation.
-
-## 2026-10-09: face-from-curves correction and deterministic client
-
-Confirmed the old builder validated whole curve references with `validate_name`
-and emitted `CoverCurve.AddCurve`. Installed CST 2025 CoverCurve, Polygon3D,
-Curve and Solid references were inspected. The correction retains `curve_names`
-but requires exactly one qualified reference, validates both names separately,
-and safely emits `Reset`, `Name`, `Component`, `Curve`, `Create`. The result is
-one planar sheet/face, retaining the native Vacuum default. General name
-validation and loft behavior are unchanged.
-
-`run_face_from_curves.py` owns only `artifacts/05_face_from_curves`. It reuses
-inspected stateless helpers and existing lifecycle/transport conventions. Its
-prepared live scenario closes a 6 by 4 mm Polygon3D at z=2 mm, reads closure
-before conversion, then queries named-sheet existence, type, face presence and
-available area before and after save/close/reopen. No volume proves success and
-no retained source curve is assumed. `Solid.GetArea` documents shape surface
-area without explicitly guaranteeing sheet support. Finite positive native
-area is compared with 24 mm²; unavailable/invalid area stays pending manual
-inspection. Timeout or unknown execution stops every subsequent MCP call.
-
-Actual offline validation:
-
-```powershell
-uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_tools_registry.py tests/test_docs_catalog.py tests/test_vba_and_patch.py tests/test_vba_injection.py tests/test_vba_security.py -q
-uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
-uv run ruff format
-uv run ruff format --check
-uv run ruff check
-```
-
-- Focused tests: **159 passed**. Eleven compact regressions were added to the
-  existing geometry-builder test file. Rejection tests record attempted
-  execution calls and assert that none occurred.
-- Final disabled-server preflight: **passed**, 27 checks and 18 responses,
-  invocation `dd54320a1cf3471bb0a6cfddd4a15ea4`. MCP 2.3.0 and jsonschema 4.26.0
-  ran on Python 3.12. The final script hash matches the metadata. No project or
-  ownership manifest was created and no connection or project lifecycle tool
-  was called. Evidence is retained in the fixed scope 05 reports.
-- Repository-wide Ruff formatting, format-check and lint: **passed**, 142 files.
-  Exception logging was corrected during lint review; no rules were weakened.
-- All **468 existing files** in scopes 01 through 04 retain their hashes, sizes,
-  modification times and inventory. Only this tool's entries changed in the
-  four catalogs; the static and embedded JSON catalogs agree.
-
-Live creation, native sheet area support and persistence remain pending user
-execution and inspection. Aggregate area does not measure dimensions or exact
-face count. Reuse without reset remains unvalidated. No CST connection, launch,
-live validation, commit or push was performed.
-
-## 2026-10-09: native Boolean readback correction
-
-The user-initiated invocation `920d1bcf8ad74e72ac5b8d2592e98e53` created the
-rectangle and received `CLOSED=-1` successfully. The client incorrectly required
-textual `True` and stopped before face conversion. A local strict Boolean parser
-now accepts `True`/`-1` and `False`/`0` for closure, shape existence and sheet
-type, retaining original response text and rejecting unexpected values.
-One small regression in the existing primitive-client test file replays the
-observed closure response and covers numeric sheet readbacks and invalid values.
-
-Validation for this fix:
-
-```powershell
-uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_parameter_primitives_client.py -k 'face_from_curves or face_client_native_boolean_readbacks' -q
-uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
-uv run ruff format
-uv run ruff format --check
-uv run ruff check
-```
-
-Focused tests passed: **12 passed, 25 deselected**. Disabled-server preflight
-passed with **27 checks and 18 responses**. All repository-wide Ruff checks
-passed, with 142 files. No additional CST calls or live validation were made.
-Existing append-only evidence was retained; latest summaries reflect preflight.
-Scopes 01 through 04, the saved project file and ownership manifest were
-preserved. Open CST continued updating companion autosave/temporary files;
-those files and project locks were left alone. Native face conversion, area and
-persistence remain pending. Save and close the owned project normally before
-the explicit `--reset` rerun; no reset was performed for this fix.
-
-## 2026-10-09: separate raw shape area from one-sided face area
-
-The user-initiated invocation `e208659f1590475b93d1a71794dc7671` created the
-named sheet and passed closure, existence, sheet-type and face-presence checks.
-`Solid.GetArea` returned 48 mm² without a native error, then the client stopped
-because it compared that raw result directly with the analytic one-sided area
-of 24 mm². Counting both sides is consistent with this result but remains an
-unconfirmed hypothesis.
-
-Reports now retain `native_shape_area` separately from `expected_planar_area`.
-`measured_planar_area` stays null with verification pending manual inspection.
-No area normalization is applied. Available raw areas are compared only across
-save/reopen for persistence, using existing `1e-6` tolerances. Changed raw area
-fails persistence; unavailable or unusable readbacks leave it pending. Sheet
-checks and all timeout/unknown-state stops remain enforced. The scenario can
-continue to save/reopen without treating 48 mm² as a verified face area.
-
-Offline validation:
-
-```powershell
-uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_parameter_primitives_client.py -k 'face_from_curves or face_client' -q
-uv run capabilities_test\02_parameters\run_face_from_curves.py --preflight
-uv run ruff format
-uv run ruff format --check
-uv run ruff check
-```
-
-Focused tests: **14 passed, 25 deselected**. Two compact regressions cover the
-observed 48 mm² response, both real measurement-method stages using fixed
-offline responses, raw-area persistence/mismatch/unavailability and native
-timeout propagation. No fake CST interpreter or new client suite was added.
-Disabled-server preflight passed with **27 checks and 18 responses**. All
-repository-wide Ruff checks passed, with 142 files. Existing logs retained
-their prefixes; scopes 01 through 04, the saved project file and ownership
-manifest were preserved. Latest reports reflect the offline preflight.
-
-No additional CST calls, project reset, live validation, commit or push were
-performed. Live save/reopen remains pending. One-sided face area, exact face
-count and CST's sheet-area counting convention require manual confirmation.
-
-
-## 2026-10-09: explicit 3D loft correction and scope 06 client
-
-Inspected the installed CST 2025 LoftCurves, Polygon3D, Curve, loft-dialog and
-Solid references. The old builder used 2D Polygon profiles and the picked-face
-`Loft` operation. Only the loft schema and builder changed on the server.
-`cst_create_loft` retains component/name/material/profiles and the PEC default;
-it now requires at least two profiles with explicit `[x, y, z]` coordinates and
-at least three vertices after removing closing endpoints. Finite JSON numbers
-and nonempty single-line CST expressions are safely serialized without a Python
-geometry/expression interpreter. Legacy 2D input gets an explicit 3D-coordinate
-message from the builder. MCP 2.x schema prevalidation may instead return its
-array-length error before reaching that builder; registry behavior is unchanged.
-
-Vertex order is retained and polygons are closed once. Each Polygon3D belongs
-to a distinct Curve.NewCurve group. Auxiliary names are deterministic, bounded
-and derived from the target component/name and profile index. A native group
-iteration guard rejects collisions before creating profiles, without adopting
-or deleting existing groups. LoftCurves receives Reset, Name, Component,
-Material, Solid True, qualified AddCurve references in input order and Create.
-Path and additional options are omitted; the validated polygon tool is unchanged.
-
-`run_parameter_loft.py` owns only `artifacts/06_loft`. It uses Python 3.12 inline
-dependencies, real MCP stdio, an OS lock, scoped ownership, explicit reset,
-project/companion/sidecar fingerprints, append-only invocation-tagged logs and
-fixed latest reports. No timestamped directories are used. Scope 06 retains
-`project.cst`, `project/`, recorded same-stem sidecars, `workspace.lock`,
-`workspace.json`, `mcp_calls.jsonl`, `cst_messages.jsonl`, `metadata.jsonl`,
-`server_stderr.log`, `metadata.json`, `tool_catalog.json`, `summary.json` and
-`summary.md` as appropriate to the invocation. Preflight creates only local
-evidence and a retained workspace lock. It performs no project preparation,
-reset, connection/status or lifecycle calls. Reuse without reset remains
-deferred. Earlier clients and scopes 01 through 05 were not run or modified.
-The existing face-validation documentation is preserved.
-
-The prepared fixture is LoftValidation:ParametricLoft, a PEC rectangular prism
-between matching expression-based rectangles at z=0 and z=PLoft_Length.
-Initial width/depth/length 4/2/5 predicts 40 mm³ and 76 mm²; grouped parameter
-rebuild to 6/3/4 predicts 72 mm³ and 108 mm². Save/close/reopen repeats all
-updated-state readbacks. Only length changes after reopening, to 7, predicting
-126 mm³ and 162 mm²; the final state is saved and closed for inspection.
-Dedicated loft/parameter tools create and rebuild. Fixed setup and native
-queries use output capture outside model history. Independent parameter list
-and individual readbacks, units, shape/material enumeration, existence, solid
-and hybrid type, volume and area are retained with expected/actual values,
-relative/absolute tolerances of 1e-6 and installed-reference paths/hashes.
-Parameter-setting echoes are not measurements. Profile curves may be consumed;
-no survival assertion is made. Volume and area do not independently verify every
-coordinate or orientation. Manual inspection remains separate.
-
-Unknown execution, timeout or transport loss forbids every later MCP call,
-including diagnostics and save/close/disconnect. The inspected existing transport
-mechanism preserves CST; only local reports and Python-server teardown continue.
-
-Actual offline validation from the repository root:
-
-```powershell
-uv run --python 3.12 --extra dev pytest tests/test_official_tools.py tests/test_tools_registry.py::test_list_tools_full_surface tests/test_docs_catalog.py -k 'loft or list_tools_full_surface or documented_tools_match_registered_tools' -q
-uv run capabilities_test\02_parameters\run_parameter_loft.py --preflight
-uv run ruff format
-uv run ruff format --check
-uv run ruff check
-```
-
-- Focused regressions plus existing catalog smoke checks: **18 passed**,
-  25 unrelated geometry tests deselected. One successful loft regression and
-  one compact parametrized rejection regression were added in the existing
-  test file. Invalid calls record execution attempts and assert none occurred.
-  No new client test suite or fake CST interpreter was added.
-- Final disabled-server preflight: **passed**, 25 checks and 15 responses,
-  invocation `11c00dde94bf4292b4cd6e41a1f2b805`. Python 3.12, MCP 2.3.0 and jsonschema
-  4.26.0 ran through real stdio. The final script hash matches the
-  metadata. No project, companion or ownership manifest was created; no
-  connection/status or project lifecycle call was made.
-- Required Ruff format, format-check and lint commands: **passed**, 143 files.
-  The final format pass changed one file and left 142 unchanged; the format
-  check confirmed all 143. Import ordering and an unnecessary encode argument
-  were corrected after the initial lint run. No lint rule was weakened.
-- Only the loft rows/objects changed in root README, docs/TOOLS.md,
-  docs/tools.json and the embedded HTML catalog. Structural comparisons confirm
-  all other catalog entries and surrounding HTML/text are unchanged, and the
-  static and embedded catalogs agree. The face-validation section is retained.
-
-Manual live command, pending native execution:
-
-```powershell
-uv run capabilities_test\02_parameters\run_parameter_loft.py --reset
-```
-
-Native creation, parameter reconstruction, persistence and manual inspection
-remain pending. No CST connection, launch, native execution, unrelated capability
-client, commit or push was performed during this task.
+# Parameter capability assessment
+
+This review describes the final contracts and completed CST 2025 fixture evidence.
+Use the [scenario index](README.md) for commands, ownership and report locations.
+
+## Final contracts
+
+| Scenario | Final contract |
+| --- | --- |
+| [Brick](scenarios/01_brick.md) | Number-or-expression support in all six bounds |
+| [Primitives](scenarios/02_primitives.md) | Selected radii, centers and axial ranges, plus Polygon3D coordinates |
+| [Extrusions](scenarios/03_extrusions.md) | Height, all profile and hole coordinates, and active-axis offsets |
+| [Analytical curve](scenarios/04_analytical_curve.md) | Number-or-expression support in parameter bounds |
+| [Face from curves](scenarios/05_face_from_curves.md) | Exactly one qualified closed planar curve reference for CoverCurve |
+| [Loft](scenarios/06_loft.md) | Explicit 3D profiles for capped LoftCurves construction |
+
+Python serializes expressions and CST evaluates their meaning.
+The builders do not evaluate arbitrary caller expressions in Python.
+Names, axes, materials, segment counts and unrelated fields retain their own contracts.
+Parameter-setting values are input echoes.
+The clients obtain actual parameter values through independent queries.
+
+## Important corrections
+
+### SDK schema attributes
+
+The handler guard reads SDK 1.x `inputSchema` and SDK 2.x `input_schema`.
+Both names must reach the same checks.
+Otherwise SDK attribute changes can silently bypass declared numeric restrictions.
+The correction preserves existing input contracts rather than extending every numeric field.
+
+### Native extrusion evaluation
+
+Documented extrusion origin, coordinate and thickness arguments use typed doubles.
+The builders pass symbolic values through native `Evaluate` with safely serialized literals.
+Evaluation stays in model history, so rebuilding uses updated parameters.
+Python does not freeze the initial values.
+
+The builders preserve the documented axis mapping and active-offset rule.
+Pointlist down reverses the plane normal and remaps local coordinates.
+Symbolic polygon outlines and holes choose winding independently on every rebuild.
+Native signed-area checks reject degenerate symbolic profiles.
+Endpoint metadata remains a prediction.
+
+### Qualified CoverCurve input
+
+A curve item is identified by `curvegroup:curveitem`.
+The builder validates the two names separately and accepts exactly one qualified reference.
+It uses `CoverCurve.Curve` to create a planar sheet with the native Vacuum default.
+This resolves the earlier Batch 01 qualified-reference limitation.
+It does not add independent profile lists, holes or thickness.
+
+### Native Boolean readback parsing
+
+CST can represent VBA true as `True` or `-1`, and false as `False` or `0`.
+The face client accepts those representations with case and whitespace normalization.
+It retains raw text and rejects unexpected values.
+A native numeric true value is not treated as a failed closure check.
+
+### Raw sheet area
+
+The fixture's analytic one-sided planar area is 24 mm².
+Native shape area has no established sheet counting convention in this campaign.
+Reports separate expected planar area, raw shape area and the unmeasured automatic planar area.
+They compare available raw areas across save/reopen without dividing by two.
+User confirmation remains separate from that automatic measurement limit.
+
+### Explicit 3D LoftCurves profiles
+
+The final loft builder uses Polygon3D profiles in separate auxiliary curve groups.
+It preserves profile order and explicit z coordinates.
+A collision guard prevents adoption of existing auxiliary groups.
+LoftCurves with `Solid=True` creates the capped solid.
+Legacy 2D points cannot describe profile spacing and are rejected.
+This replaces the contract assessed by the failed Batch 01 loft probe.
+Profile curves may be consumed by the native operation.
+
+## Verification
+
+The six retained live summaries identify completed scenarios with exit code 0.
+This table records the local reports inspected for this assessment.
+
+| Scenario | Live invocation | Automated evidence |
+| --- | --- | --- |
+| Brick | `ac6192097edc4a1d935c3880b8ab5c3c` | Parameters, units, identity, material, volume and area across rebuild and reopen |
+| Primitives | `0659b7cbd45e4e019e8dda5d01d5a467` | Solid volumes, supported smooth areas, curve closure and maximum point count |
+| Extrusions | `04e4fcb1bb404bde9d5570ad77ff85d8` | Parameters, identities, volume and area with holes and persistence |
+| Analytical curve | `c24aaee2eaa147cc9db486e1a3c4f66b` | Parameters, units, named closure and reported maximum point count |
+| Face from curves | `320827ff532b48359219c1244f60c363` | Closed profile, named sheet, type, material, face presence and raw area persistence |
+| Loft | `11c00dde94bf4292b4cd6e41a1f2b805` | Parameters, units, solid type, material, volume and area across rebuild and reopen |
+
+The local report locations are `artifacts/<scenario>/summary.json` and `summary.md`.
+They are generated evidence, not files guaranteed in a fresh checkout.
+Accumulated logs retain invocation-tagged responses.
+A later invocation can replace a latest summary.
+
+Offline regressions cover serialization, numeric compatibility, invalid types,
+schema attributes, expression containment and builder contracts.
+Client substitutes cover ownership, source copying, locks, reset scope,
+readback parsing and cessation after uncertain execution.
+Real MCP preflight discovers schemas and checks offline generation or rejection.
+Those checks remain separate from live readbacks.
+
+The user confirmed the agreed modeling scenarios and manual inspections.
+Older pending wording remains in preserved summaries.
+It does not reverse that confirmation or create automatic measurements that were not made.
+
+## Remaining limits
+
+- Volume and area do not independently establish every coordinate, orientation or expression association.
+- Elliptical-cylinder area has no exact analytic comparison in this campaign.
+- Reported maximum point counts are not exact vertex counts.
+- Analytical-curve endpoints and length were not measured automatically.
+- Raw sheet area does not establish one-sided planar area or its counting convention.
+- The loft fixture covers a rectangular prism, not arbitrary section topology.
+- Existing-project reuse without reset remains deferred where stated in the scenario guides.
+- These fixtures do not establish simulation accuracy or general geometry validity.
+
+Batch 01 remains a preserved assessment with known failures.
+The later corrections and successful fixtures do not make the entire earlier batch pass.
+See the [API assessment](../../docs/API_REVIEW.md) and
+[reliability assessment](../../docs/RELIABILITY_REVIEW.md) for broader context.
