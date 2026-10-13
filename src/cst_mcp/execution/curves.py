@@ -89,6 +89,31 @@ def format_curve(data: dict, fmt: str = "real_imag", unwrap: bool = False) -> di
     return out
 
 
+def input_impedance(data: dict, z0: float = 50) -> dict:
+    """Convert Spp to driving-point impedance with the other ports matched."""
+    if data.get("status") != "ok":
+        return dict(data)
+    out = derived_s(data, "cst_get_smith_chart_data", {"z0": z0})
+    real = out.pop("impedance_real")
+    imag = out.pop("impedance_imag")
+    if not all(v is None or math.isfinite(v) for v in [*real, *imag]):
+        raise ValueError("Derived impedance exceeds the finite numeric range")
+    out.update(
+        real=real, imag=imag,
+        y=[None if r is None else [r, i] for r, i in zip(real, imag)],
+        format="real_imag", data_type="input_impedance", unit="ohm",
+        source="derived_from_s_parameters", source_api=data.get("source"),
+        source_tree_path=data.get("tree_path"),
+        source_title=data.get("title"), title="Input impedance",
+        ylabel="Input impedance / ohm", impedance_mode="input",
+        formula="Zin = z0 * (1 + Spp) / (1 - Spp)",
+        assumption="z0 must match the scalar real reference impedance of the source S-parameters",
+        other_ports="Terminated in their S-parameter reference impedances",
+        singular_value="null when abs(1-Spp) <= 1e-15",
+    )
+    return out
+
+
 def frequency_scale(label: str) -> float:
     """CST xlabel includes the physical unit; never silently assume GHz."""
     import re

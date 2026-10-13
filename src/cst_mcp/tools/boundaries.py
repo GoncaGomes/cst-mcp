@@ -319,7 +319,6 @@ async def _handle_set_background(arguments: dict, client: CSTClient) -> list[Tex
         vba.set_number("Epsilon", epsilon)
         vba.set_number("Mu", mu)
 
-    vba.call("Apply")
     script = vba.build()
     result = client.execute_vba(script)
     result["background"] = {

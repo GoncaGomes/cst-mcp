@@ -119,7 +119,7 @@ Metals, dielectrics, and advanced material models.
 | `cst_create_material` | Create a new material with electromagnetic properties in CST Studio. Specify relative permittivity (epsilon), relative permeability (mu),… |
 | `cst_create_lossy_metal` | Create a lossy metal material in CST Studio. Lossy metals model finite conductivity skin-effect losses, essential for accurate loss calcu… |
 | `cst_create_anisotropic_material` | Create an anisotropic material with per-axis permittivity, permeability, and loss tangent values. Used for crystals, metamaterials, and c… |
-| `cst_load_material` | Load a material from the CST material library by its library name. The material is added to the project under the given name. |
+| `cst_load_material` | Import all properties from a native CST `.mtd` library definition under the requested project name. Optionally select a library directory with `library_path`. |
 | `cst_list_materials` | List available materials from the bundled material database. Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. Ret… |
 | `cst_assign_material` | Assign a material to an existing solid in CST Studio. The solid is specified as 'Component:SolidName'. |
 | `cst_get_material_info` | Get electromagnetic properties of a material from the bundled database. Returns epsilon_r, mu_r, conductivity, loss tangent, and usage no… |
@@ -131,6 +131,36 @@ Metals, dielectrics, and advanced material models.
 | `cst_create_temperature_dependent_material` | Create a material with temperature-dependent electromagnetic properties. Specify base properties and temperature coefficients for thermal… |
 | `cst_create_cole_cole_material` | Create a Cole-Cole dispersive material. Generalisation of the Debye model with a distribution parameter alpha (0-1) that broadens the rel… |
 | `cst_list_ferrite_materials` | List available ferrite materials from the bundled database. Returns name, permittivity, saturation magnetisation, linewidth, loss tangent… |
+
+`cst_load_material` requires `name` (the destination project material name) and
+`library_name` (a single native library entry name, such as `Copper (annealed)`,
+without the `.mtd` extension). The optional string `library_path` selects the
+directory containing native `.mtd` files, rather than an individual file.
+Otherwise, the directory is `client.config.cst_path / "Library" / "Materials"`.
+If the installation path is unavailable, configure `CST_PATH` or supply
+`library_path`.
+
+The tool reads `<library_name>.mtd` and imports the complete `[Definition]`
+section in command order, including frequency regimes, units, electromagnetic,
+thermal, mechanical, and appearance properties. Later metadata sections are
+excluded. A single `Material` history block starts with `.Reset`, the requested
+`.Name`, and `.Folder ""`, then includes the native commands and their terminating
+`.Create`. Source identity settings cannot override the requested name.
+Missing or unreadable files and malformed or unsupported definitions return
+errors without a fallback material. The block uses the existing VBA execution
+route and preserves its execution errors and offline status.
+
+```json
+{"name": "DipoleCopper", "library_name": "Copper (annealed)"}
+```
+
+```json
+{
+  "name": "DipoleCopper",
+  "library_name": "Copper (annealed)",
+  "library_path": "C:\\Program Files (x86)\\CST Studio Suite 2025\\Library\\Materials"
+}
+```
 
 ### Ports & excitations (8)
 
@@ -169,7 +199,7 @@ Mesh type, density, refinement, adaptive meshing.
 | `cst_set_mesh_type` | Set the mesh type for the simulation. Hexahedral is used for time-domain, Tetrahedral for frequency-domain, Surface for integral-equation… |
 | `cst_set_mesh_density` | Set global mesh density parameters controlling automatic mesh generation. Higher cells_per_wavelength gives finer mesh and better accurac… |
 | `cst_add_mesh_refinement` | Add local mesh refinement to a specific solid. This creates finer mesh around critical geometry features like feed points, gaps, or thin … |
-| `cst_set_adaptive_mesh` | Configure adaptive mesh refinement. When enabled, the solver runs multiple passes, refining the mesh in regions of high field gradient un… |
+| `cst_set_adaptive_mesh` | Configure time-domain adaptive mesh refinement, the maximum pass count, and the linear complex S-parameter difference threshold (0 to 1). |
 | `cst_get_mesh_info` | Get current mesh statistics and settings. In connected mode this queries the live mesh data; in offline mode it returns the VBA to retrie… |
 | `cst_get_mesh_quality` | Extract mesh quality metrics including total cells, aspect ratios, and cells per wavelength. In connected mode this queries actual mesh s… |
 | `cst_set_pml_properties` | Configure PML (Perfectly Matched Layer) absorbing boundary properties. Controls the number of absorbing layers and the target reflection … |
@@ -213,12 +243,12 @@ S-parameters, far-field, VSWR, gain, Smith, bandwidth…
 | `cst_get_s_parameters` | Extract S-parameter results from a completed CST simulation. Returns S-parameter data (magnitude, phase, real/imaginary) for the specifie… |
 | `cst_get_farfield` | Get far-field radiation pattern results from a completed CST simulation at a specific frequency. Returns gain, directivity, radiation eff… |
 | `cst_add_field_monitor` | Add a field monitor at a specific frequency to the CST project. Field monitors must be defined before running a simulation to capture fie… |
-| `cst_get_impedance` | Get input impedance (Z-parameters) for a port from a completed CST simulation. Returns real and imaginary impedance vs frequency. Useful … |
+| `cst_get_impedance` | Return complex impedance: `mode=input` (default) derives Zin from Spp using `z0` (default 50 ohms) with other ports matched; `mode=z_parameter` reads native Zpp with other ports open-circuited. Includes source and assumptions. |
 | `cst_get_vswr` | Get Voltage Standing Wave Ratio (VSWR) for a port from a completed CST simulation. VSWR indicates impedance matching quality: 1.0 is perf… |
 | `cst_get_gain` | Get antenna gain at a specific frequency from a completed CST simulation. Returns peak gain in dBi and the direction (theta, phi) of maxi… |
 | `cst_get_efficiency` | Get antenna radiation efficiency from a completed CST simulation at a specific frequency. Returns total efficiency (including mismatch), … |
 | `cst_list_results` | List all available results in the CST result tree. Optionally specify a subtree path to narrow the listing. Useful for discovering what s… |
-| `cst_export_result` | Export a simulation result to a file (CSV, Touchstone, or text). Specify the result tree path and desired output format. Useful for post-… |
+| `cst_export_result` | Export results as CSV, Touchstone or text. E/H field CSV/TXT exports use configurable `field_samples` (`x`, `y`, `z`; default 32 each), and report the sampling settings used. |
 | `cst_get_result_summary` | Get a summary of all key simulation results from a completed CST simulation. Returns an overview of S-parameters, gain, efficiency, and i… |
 | `cst_get_s_parameter_phase` | Extract S-parameter phase response from a completed CST simulation. Returns the phase of the specified S-parameter vs frequency. Optional… |
 | `cst_get_group_delay` | Compute group delay from S-parameter phase for a port pair. Group delay is defined as tau = -d(phase)/d(2*pi*f) and represents the signal… |

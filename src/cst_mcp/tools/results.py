@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 from mcp.types import TextContent, Tool
 
@@ -188,9 +189,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_get_impedance",
         description=(
-            "Get input impedance (Z-parameters) for a port from a completed "
-            "CST simulation. Returns real and imaginary impedance vs frequency. "
-            "Useful for matching network design and feed optimization."
+            "Get complex impedance vs frequency for a port. Mode 'input' (default) "
+            "derives Zin from Spp with all other ports matched and a scalar real z0. "
+            "Mode 'z_parameter' reads native Zpp, which describes the other ports "
+            "open-circuited. The response identifies the source and assumptions."
         ),
         inputSchema={
             "type": "object",
@@ -199,6 +201,18 @@ TOOLS: list[Tool] = [
                     "type": "integer",
                     "description": "Port number to extract impedance for.",
                     "default": 1,
+                },
+                "mode": {
+                    "type": "string", "enum": ["input", "z_parameter"], "default": "input",
+                    "description": "Derive input impedance from Spp or read native Zpp.",
+                },
+                "z0": {
+                    "type": "number", "exclusiveMinimum": 0, "default": 50,
+                    "description": (
+                        "Scalar real reference impedance in ohms for mode 'input'; "
+                        "must match the source S-parameter normalization. "
+                        "Not used for native 'z_parameter' mode."
+                    ),
                 },
             },
             "required": [],
@@ -324,6 +338,19 @@ TOOLS: list[Tool] = [
                     ),
                     "default": "csv",
                     "enum": ["csv", "touchstone", "txt"],
+                },
+                "field_samples": {
+                    "type": "object",
+                    "description": (
+                        "Spatial export sampling for E-Field/H-Field CSV or TXT results. "
+                        "Each omitted axis defaults to 32. Controls export sampling, "
+                        "not the solver mesh."
+                    ),
+                    "properties": {
+                        axis: {"type": "integer", "minimum": 1, "default": 32}
+                        for axis in ("x", "y", "z")
+                    },
+                    "additionalProperties": False,
                 },
             },
             "required": ["result_path", "output_file"],
@@ -1097,8 +1124,29 @@ def _build_list_results_vba(tree_path: str | None) -> str:
     return script.build()
 
 
-def _build_export_result_vba(result_path: str, output_file: str, fmt: str) -> str:
+def _field_export_samples(result_path: str, fmt: str, samples: dict | None) -> dict | None:
+    is_field = fmt in {"csv", "txt"} and result_path.casefold().startswith(
+        ("2d/3d results\\e-field\\", "2d/3d results\\h-field\\")
+    )
+    if not is_field:
+        if samples is not None:
+            raise ValueError("field_samples only applies to E-Field/H-Field CSV or TXT exports")
+        return None
+    if samples is None:
+        samples = {}
+    if not isinstance(samples, dict) or set(samples) - {"x", "y", "z"}:
+        raise ValueError("field_samples must be an object containing only x, y and z")
+    resolved = {axis: samples.get(axis, 32) for axis in ("x", "y", "z")}
+    if any(isinstance(n, bool) or not isinstance(n, int) or n < 1 for n in resolved.values()):
+        raise ValueError("field_samples values must be positive integers")
+    return resolved
+
+
+def _build_export_result_vba(
+    result_path: str, output_file: str, fmt: str, field_samples: dict | None = None
+) -> str:
     """Build VBA script for exporting a result to file."""
+    samples = _field_export_samples(result_path, fmt, field_samples)
     script = VBAScript()
     script.add_comment(f"Export result '{result_path}' to {fmt.upper()}: {output_file}")
     script.add_blank()
@@ -1134,6 +1182,12 @@ def _build_export_result_vba(result_path: str, output_file: str, fmt: str) -> st
             "    .Reset",
             f'    .FileName "{_qf(output_file, "output_file")}"',
             f'    .SetfileType "{_q(fmt, "format")}"',
+        ]
+        if samples is not None:
+            lines += ['    .Mode "FixedNumber"'] + [
+                f'    .Step{axis.upper()} "{samples[axis]}"' for axis in ("x", "y", "z")
+            ]
+        lines += [
             "    .Execute",
             "  End With",
             "End Sub",
@@ -2230,40 +2284,46 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
     if name == "cst_get_impedance":
         port = arguments.get("port", 1)
         validate_port_number(port)
-
-        tree_path = _impedance_tree_path(port)
+        mode = arguments.get("mode", "input")
+        if mode not in {"input", "z_parameter"}:
+            raise ValueError("mode must be 'input' or 'z_parameter'")
+        z0 = float(arguments.get("z0", 50)) if mode == "input" else None
+        if z0 is not None and (not math.isfinite(z0) or z0 <= 0):
+            raise ValueError("z0 must be finite and positive")
+        tree_path = _s_param_tree_path(port, port) if mode == "input" else _impedance_tree_path(port)
 
         if client.connected:
-            result = client.get_result(tree_path)
+            result = dict(client.get_result(tree_path))
+            if mode == "input":
+                from cst_mcp.execution.curves import input_impedance
+
+                result = input_impedance(result, z0)
+            elif result.get("status") == "ok":
+                result.update(
+                    data_type="z_parameter", unit="ohm",
+                    other_ports="Open-circuited (native Zpp definition)",
+                )
             result["port"] = port
             result["tree_path"] = tree_path
+            result["impedance_mode"] = mode
             return _text(result)
 
-        vba = _build_impedance_vba(port)
         return _text(
             {
                 "status": "offline",
                 "port": port,
                 "tree_path": tree_path,
-                "result_tree_info": {
-                    "description": (
-                        "CST stores impedance data under '1D Results\\Z-Parameters'. "
-                        "ZX,X gives the input impedance at port X. The real part "
-                        "is in ZX,X and imaginary in ZX,X_imag. At resonance, the "
-                        "imaginary part crosses zero and the real part should be "
-                        "close to 50 ohms for a matched antenna."
-                    ),
-                    "common_paths": [
-                        "1D Results\\Z-Parameters\\Z1,1  (input impedance port 1)",
-                        "1D Results\\Z-Parameters\\Z1,1_imag  (imaginary part)",
-                        "1D Results\\Z-Parameters\\Z2,2  (input impedance port 2)",
-                    ],
-                },
-                "vba_script": vba,
+                "impedance_mode": mode,
+                "unit": "ohm",
+                **({"z0": z0, "formula": "Zin = z0 * (1 + Spp) / (1 - Spp)",
+                    "assumption": "z0 must match the scalar real S-parameter reference impedance",
+                    "other_ports": "Terminated in their S-parameter reference impedances"}
+                   if mode == "input" else {
+                       "other_ports": "Open-circuited (native Zpp definition)"
+                   }),
                 "instructions": (
-                    "Run the VBA script in CST Studio Suite after the simulation "
-                    "has completed. Output is printed as freq,Re(Z),Im(Z) to the "
-                    "CST message window."
+                    "Connect a completed, saved CST project. The selected 1D curve "
+                    "will be read with the results API without changing model history."
                 ),
             }
         )
@@ -2493,12 +2553,18 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
                 }
             )
 
-        vba = _build_export_result_vba(result_path, output_file, fmt)
+        samples = _field_export_samples(result_path, fmt, arguments.get("field_samples"))
+        vba = _build_export_result_vba(result_path, output_file, fmt, samples)
 
         if client.connected:
             # Exports must not become model-history steps (they would re-run on
             # every rebuild), so never fall back to add_to_history.
             result = client.execute_vba_silent(vba, history_fallback=False)
+            if samples is not None:
+                result["field_sampling"] = {
+                    "mode": "FixedNumber", "samples_per_axis": samples,
+                    "applied": result.get("status") == "executed",
+                }
             if result.get("status") != "error":
                 result["result_path"] = result_path
                 result["output_file"] = output_file
@@ -2511,6 +2577,9 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
                 "result_path": result_path,
                 "output_file": output_file,
                 "format": fmt,
+                **({"field_sampling": {
+                    "mode": "FixedNumber", "samples_per_axis": samples, "applied": False,
+                }} if samples is not None else {}),
                 "format_notes": {
                     "csv": (
                         "Comma-separated values with header row. "

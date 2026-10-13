@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 
 from mcp.types import TextContent, Tool
@@ -257,6 +258,8 @@ def _build_import_touchstone(args: dict) -> str:
 def _build_export_touchstone(args: dict) -> str:
     """Build VBA script for Touchstone S-parameter export."""
     file_path = validate_file_path(args["file_path"])
+    # TOUCHSTONE.Write appends the extension for the model's port count.
+    native_file_name = re.sub(r"\.s[1-9]\d*p$", "", file_path, flags=re.IGNORECASE)
     fmt = args.get("format", "s2p")
 
     script = VBAScript()
@@ -265,7 +268,7 @@ def _build_export_touchstone(args: dict) -> str:
     vba = (
         VBABuilder("TOUCHSTONE")
         .call("Reset")
-        .set("FileName", file_path)
+        .set("FileName", native_file_name)
         .set("Format", "RI")
         .set("Impedance", "50")
         .set("ExportType", "S")
@@ -390,15 +393,26 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
                     filepath=arguments["file_path"],
                     monitor_name=arguments.get("monitor_name"),
                 )
-            elif fmt == "ffs" and not arguments.get("monitor_name"):
+            elif fmt == "ffs":
                 # Live CST 2026: after a TD solve the item is "farfield (f=X) [1]";
                 # try the documented tree-name variants until SelectTreeItem succeeds.
-                from cst_mcp.execution.farfield import farfield_tree_candidates
+                from cst_mcp.execution.farfield import (
+                    extract_frequency_ghz,
+                    farfield_tree_candidates,
+                )
 
+                monitor_name = arguments.get("monitor_name")
+                frequency = float(arguments["frequency"])
+                candidates = farfield_tree_candidates(
+                    None if monitor_name else frequency, monitor_name
+                )
                 tried = []
                 result = {"status": "error", "message": "No farfield tree item found"}
-                for tree in farfield_tree_candidates(float(arguments["frequency"])):
+                for tree in candidates:
                     if not tree.startswith("Farfields\\"):
+                        continue
+                    tree_frequency = extract_frequency_ghz(tree)
+                    if tree_frequency is not None and abs(tree_frequency - frequency) > 1e-9:
                         continue
                     label = tree.split("\\", 1)[1]
                     tried.append(tree)
@@ -411,6 +425,8 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
                 result["tried_paths"] = tried
             else:
                 result = client.execute_vba_silent(vba_code, history_fallback=False)
+        elif name == "cst_export_touchstone":
+            result = client.execute_vba_silent(vba_code, history_fallback=False)
         else:
             result = client.execute_vba(vba_code)
 
