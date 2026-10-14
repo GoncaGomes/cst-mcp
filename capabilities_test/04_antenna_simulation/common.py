@@ -101,9 +101,11 @@ def reject_links(path, recursive=True):
 
 
 @contextmanager
-def workspace_lock(parent, preflight):
+def workspace_lock(parent, preflight, scenario="dipole"):
     """Retained OS lock prevents simultaneous replacement in the same mode."""
-    path = parent / (".preflight-dipole.lock" if preflight else ".dipole.lock")
+    if scenario not in {"dipole", "patch", "wr90"}:
+        raise Stop("Unknown owned antenna scenario")
+    path = parent / (f".preflight-{scenario}.lock" if preflight else f".{scenario}.lock")
     reject_links(path)
     stream = path.open("a+b")
     try:
@@ -122,9 +124,11 @@ def workspace_lock(parent, preflight):
         stream.close()
 
 
-def prepare_outputs(base, parent, preflight):
+def prepare_outputs(base, parent, preflight, scenario="dipole"):
     """Validate ALL targets and locks before deleting ANY generated output."""
-    expected = parent / ("preflight/dipole" if preflight else "dipole")
+    if scenario not in {"dipole", "patch", "wr90"}:
+        raise Stop("Unknown owned antenna scenario")
+    expected = parent / (f"preflight/{scenario}" if preflight else scenario)
     reject_links(parent, recursive=False)
     if base.resolve() != expected.resolve():
         raise Stop(f"Output must be the fixed owned directory: {expected}")
@@ -151,7 +155,50 @@ def prepare_outputs(base, parent, preflight):
     for name in ("mcp", "protocol", "cst_logs", "exports", "figures", "work"):
         (base / "results" / name).mkdir()
     (base / "reports/calls.jsonl").write_text("", encoding="utf-8")
-    atomic_text(base / "reports/validation.md", "# Thin copper dipole validation\n\nInvocation started. Assessment pending.\n")
+    title = {"dipole": "Thin copper dipole", "patch": "Rectangular patch",
+             "wr90": "WR-90 open-ended waveguide"}[scenario]
+    atomic_text(base / "reports/validation.md", f"# {title} validation\n\nInvocation started. Assessment pending.\n")
+
+
+async def initialize_catalog(session, protocol_directory, prefix=""):
+    """Initialize and archive every catalog page using the existing SDK conventions."""
+    import asyncio
+    import inspect
+    import time
+    from mcp.types import PaginatedRequestParams
+
+    started, utc = time.monotonic(), timestamp()
+    init = serialize(await asyncio.wait_for(session.initialize(), 120))
+    write_json(protocol_directory / f"{prefix}initialize.json", {
+        "started_utc": utc, "ended_utc": timestamp(), "elapsed_s": time.monotonic() - started,
+        "request": {"method": "initialize"}, "response": init,
+    })
+    catalog, cursor, seen, number = {}, None, set(), 0
+    while True:
+        started, utc = time.monotonic(), timestamp()
+        if "params" in inspect.signature(session.list_tools).parameters:
+            request = session.list_tools(params=PaginatedRequestParams(cursor=cursor))
+        else:
+            request = session.list_tools() if cursor is None else session.list_tools(cursor=cursor)
+        raw = serialize(await asyncio.wait_for(request, 120))
+        number += 1
+        write_json(protocol_directory / f"{prefix}catalog_{number:03d}.json", {
+            "cursor": cursor, "response": raw, "started_utc": utc, "ended_utc": timestamp(),
+            "elapsed_s": time.monotonic() - started,
+            "request": {"method": "tools/list", "params": {} if cursor is None else {"cursor": cursor}},
+        })
+        for tool in raw.get("tools", []):
+            if tool["name"] in catalog:
+                raise Stop(f"Duplicate catalog tool {tool['name']}")
+            catalog[tool["name"]] = tool
+        cursor = raw.get("nextCursor")
+        if cursor is None:
+            break
+        if cursor in seen:
+            raise Stop("Catalog cursor repeated")
+        seen.add(cursor)
+    write_json(protocol_directory / f"{prefix}schemas.json", catalog)
+    return init, catalog
 
 
 def complex_curve(data):

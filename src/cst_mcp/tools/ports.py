@@ -27,7 +27,8 @@ TOOLS: list[Tool] = [
         name="cst_add_waveguide_port",
         description=(
             "Add a waveguide port for S-parameter excitation. Defines a port face on "
-            "the boundary of the simulation domain for guided-wave excitation. "
+            "the boundary of the simulation domain by default. Set port_on_bound=False "
+            "to preserve the supplied normal coordinate for an internal port. "
             "IMPORTANT: The port plane should be at or near the edge of the model "
             "geometry. Ground planes and substrates must NOT extend past the port "
             "plane in the port's orientation direction, or VBA execution may hang. "
@@ -45,7 +46,7 @@ TOOLS: list[Tool] = [
                 "orientation": {
                     "type": "string",
                     "enum": _ORIENTATION_ENUM,
-                    "description": "Face of the bounding box where the port is placed",
+                    "description": "Port orientation and excitation direction, also valid for internal ports",
                 },
                 "x_min": {
                     "type": "number",
@@ -73,7 +74,7 @@ TOOLS: list[Tool] = [
                 },
                 "mode_number": {
                     "type": "integer",
-                    "description": "Number of modes to consider (default 1)",
+                    "description": "Number of calculated modes (default 1), not a mode-index selector",
                     "default": 1,
                 },
                 "coordinates": {
@@ -86,6 +87,15 @@ TOOLS: list[Tool] = [
                         "'Picks' uses previously picked geometry faces. Default: 'Free'."
                     ),
                     "default": "Free",
+                },
+                "port_on_bound": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Place the port on the domain boundary by default. False preserves "
+                        "the explicitly supplied normal coordinate inside the domain. "
+                        "CST ignores this setting for picked ports."
+                    ),
                 },
             },
             "required": [
@@ -424,6 +434,9 @@ async def _handle_waveguide_port(arguments: dict, client: CSTClient) -> list[Tex
     coordinates = arguments.get("coordinates", "Free")
     if coordinates not in ("Free", "Full", "Picks"):
         raise ValueError(f"Invalid coordinates '{coordinates}'. Must be Free, Full, or Picks.")
+    port_on_bound = arguments.get("port_on_bound", True)
+    if not isinstance(port_on_bound, bool):
+        raise TypeError("port_on_bound must be a boolean")
 
     vba = (
         VBABuilder("Port")
@@ -432,6 +445,7 @@ async def _handle_waveguide_port(arguments: dict, client: CSTClient) -> list[Tex
         .set("Label", "")
         .set("Coordinates", coordinates)
         .set("Orientation", orientation)
+        .set_bool("PortOnBound", port_on_bound)
         .set_double("Xrange", x_min, x_max)
         .set_double("Yrange", y_min, y_max)
         .set_double("Zrange", z_min, z_max)
@@ -444,6 +458,7 @@ async def _handle_waveguide_port(arguments: dict, client: CSTClient) -> list[Tex
     result["port_number"] = port_number
     result["orientation"] = orientation
     result["coordinates"] = coordinates
+    result["port_on_bound"] = port_on_bound
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

@@ -12,7 +12,7 @@ Read local CST Python/VBA help and complex saved results without opening CST.
 | `cst_search_help` | Full-text search of the installed official CST Python/VBA help (offline; does not start CST). Every query word must appear in the topic's… |
 | `cst_read_help` | Read a paginated official local CST help topic returned by cst_search_help. No GUI or solver. |
 | `cst_list_saved_results` | List exact result tree paths and run IDs from a saved, unpacked, completed .cst file using cst.results. No connection or CST GUI is requi… |
-| `cst_read_saved_result` | Read a complete complex 1D curve by exact tree path and run_id from a completed saved .cst, without opening CST. Raw real/imag are preser… |
+| `cst_read_saved_result` | Read a complete complex 1D curve or native 0D scalar by exact tree path and run ID. A scalar without a native x-axis retains `x=[]`, `n=1` and `native_result_type="0D"`. No coordinate or unit is invented. |
 
 ### Explicit connection (2)
 
@@ -168,7 +168,7 @@ Waveguide, discrete, plane wave, Floquet…
 
 | Tool | What it does |
 |------|--------------|
-| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Defines a port face on the boundary of the simulation domain for guided-wave excitation.… |
+| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Optional `port_on_bound` defaults to `true`. Set it to `false` with `coordinates="Free"` to preserve the supplied normal coordinate inside the domain. CST ignores this setting for picked ports. `mode_number` is the number of calculated modes. |
 | `cst_add_discrete_port` | Add a discrete (lumped) port between two points. Used for circuit-level excitation with a defined impedance. |
 | `cst_add_lumped_element` | Add a lumped R, L, C, or RLC element between two points. Value is in ohms for R, henries for L, farads for C. |
 | `cst_add_plane_wave` | Add a plane wave excitation source. Defines an incident plane wave with given direction and polarization for scattering / RCS analysis. |
@@ -212,13 +212,54 @@ Time domain, frequency domain, eigenmode, IE…
 | Tool | What it does |
 |------|--------------|
 | `cst_configure_time_domain_solver` | Configure the time domain (transient) solver. This is CST's flagship solver for broadband simulations — it excites the structure with a p… |
-| `cst_configure_frequency_domain_solver` | Configure the frequency domain solver. Best for narrowband problems, resonant structures, and when field distributions at specific freque… |
+| `cst_configure_frequency_domain_solver` | Configure CST 2025 volume-mesh frequency-domain methods, native sampling intervals, adaptation, monitor samples and impedance normalization. Does not start a solve. |
 | `cst_configure_eigenmode_solver` | Configure the eigenmode solver. Computes resonant frequencies and field distributions of cavity structures. Used for filter design, reson… |
 | `cst_configure_integral_equation_solver` | Configure the integral equation (IE) solver. Best for electrically large, open-boundary problems like antenna placement on vehicles, RCS … |
 | `cst_get_solver_info` | Get current solver configuration and status. In connected mode this queries the active solver settings; in offline mode it describes expe… |
 | `cst_configure_eigenmode_advanced` | Advanced eigenmode solver configuration for higher-order modes. Use this for waveguide mode analysis, cavity resonator design, and filter… |
 | `cst_configure_ie_solver_advanced` | Advanced Integral Equation solver configuration for electrically large structures. Provides control over preconditioner, MLFMM accelerati… |
 | `cst_configure_multilayer_solver` | Configure the solver for planar multilayer structures. Optimised for antenna-on-PCB, frequency selective surfaces (FSS), and radome analy… |
+
+#### Frequency-domain configuration
+
+`cst_configure_frequency_domain_solver` retains required `f_min` and `f_max` in
+the project's frequency unit, conventionally GHz. It sets the global interval
+through the documented `Solver.FrequencyRange` route. It does not call
+`FDSolver.FrequencyMin`, `FrequencyMax`, `Accuracy`, `Samples` or `SweepType`.
+
+| Argument | Default | Native mapping |
+| --- | --- | --- |
+| `accuracy` | 1e-6 | `AccuracyTet` or `AccuracyHex`, residual target from 1e-12 to 1e-3 |
+| `samples` | 1001 | At least 2, interpreted according to the sweep table below |
+| `sweep_type` | `Interpolated` | `SetMethod` sweep selection |
+| `mesh_type` | `Tetrahedral` | `Tetrahedral` or `Hexahedral` volume mesh in `SetMethod` |
+| `adaptive_mesh` | true | `MeshAdaptionTet` or `MeshAdaptionHex`, plus the interval adaptation flag |
+| `include_monitor_frequencies` | true | `AddMonitorSamples`, which can add solved frequencies |
+| `normalize_to_fixed_impedance` | true | Emits `AutoNormImpedance=False` when true |
+| `fixed_impedance` | 50 | Positive `NormingImpedance` in ohms |
+
+| Exposed sweep | Native method | Sampling semantics |
+| --- | --- | --- |
+| `Discrete` | `Discrete samples only` | `AddSampleInterval` with `Equidistant` and the requested solved-sample count. Broadband interpolation is disabled. |
+| `Interpolated` | `Fast reduced order model` | Tetrahedral only. `Automatic` interval sampling uses `samples` as the solved-sample cap. `SetNumberOfResultDataSamples` sets the interpolated output count. |
+| `General purpose` | `General purpose` | Either volume mesh. `Automatic` interval sampling uses `samples` as the solved-sample cap. `SetNumberOfResultDataSamples` sets the interpolated output count. |
+
+All choices call `ResetSampleIntervals("all")` before adding their interval.
+Automatic frequency sampling is distinct from adaptive mesh refinement.
+Interpolated output points are not independently solved frequency samples.
+Enabled monitor frequencies can increase the total number of solved samples.
+Native execution errors and offline responses are preserved.
+
+The installed CST 2025 FDSolver help describes `AutoNormImpedance=False` as using
+the stimulation-port impedance and says `NormingImpedance` is considered when
+the flag is true. The rectangular patch baseline explicitly requests false and
+`NormingImpedance=50` with a 50 ohm discrete port. The exposed normalization
+option emits that requested flag convention. Do not infer actual normalization
+from it alone. Validate the native curve against the 50 ohm Touchstone export.
+
+The documented source is
+`Online Help/mergedProjects/VBA_3D/special_vbasolver/special_vbasolver_fdsolver_object.htm`
+in the selected CST 2025 installation.
 
 ### Simulation control (7)
 

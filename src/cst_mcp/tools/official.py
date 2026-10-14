@@ -70,7 +70,11 @@ TOOLS = [
     ),
     tool(
         "cst_read_saved_result",
-        "Read a complete complex 1D curve by exact tree path and run_id from a completed saved .cst, without opening CST. Raw real/imag are preserved; format adds derived values. max_points=0 returns all samples; otherwise returns an explicitly sampled preview.",
+        "Read a complete complex 1D curve or native 0D scalar by exact tree path and run_id "
+        "from a completed saved .cst, without opening CST. Raw real/imag are preserved. "
+        "A scalar with no native x-axis has native_result_type='0D', n=1 and x=[]. "
+        "No coordinate or unit is invented. Format adds derived values. max_points=0 "
+        "returns all samples, otherwise returns an explicitly sampled preview.",
         {
             "project_path": {"type": "string"},
             "tree_path": {"type": "string"},

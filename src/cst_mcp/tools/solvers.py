@@ -14,7 +14,7 @@ from cst_mcp.validators import (
     validate_positive,
     validate_range,
 )
-from cst_mcp.vba_builder import VBABuilder
+from cst_mcp.vba_builder import VBABuilder, VBAScript
 
 TOOLS: list[Tool] = [
     Tool(
@@ -107,7 +107,14 @@ TOOLS: list[Tool] = [
         description=(
             "Configure the frequency domain solver. Best for narrowband problems, resonant "
             "structures, and when field distributions at specific frequencies are needed. "
-            "Supports interpolated, discrete, and general-purpose sweep types."
+            "Uses CST 2025 SetMethod and sample intervals on a volume mesh. "
+            "Discrete solves equidistant samples without broadband interpolation. "
+            "Interpolated uses the tetrahedral fast reduced order model with automatic "
+            "frequency sampling. General purpose uses automatic frequency sampling "
+            "on either volume mesh. For both broadband choices, samples caps the "
+            "automatic solved samples and sets the interpolated output resolution. "
+            "Monitor frequencies can add solved samples. Sets the global range through "
+            "Solver.FrequencyRange. No simulation is started."
         ),
         inputSchema={
             "type": "object",
@@ -127,7 +134,8 @@ TOOLS: list[Tool] = [
                 },
                 "samples": {
                     "type": "integer",
-                    "description": "Number of frequency samples (default 1001)",
+                    "minimum": 2,
+                    "description": "Discrete solved samples, or broadband solved-sample cap and interpolated output count (default 1001)",
                     "default": 1001,
                 },
                 "sweep_type": {
@@ -135,6 +143,27 @@ TOOLS: list[Tool] = [
                     "enum": ["Interpolated", "Discrete", "General purpose"],
                     "description": "Frequency sweep type (default Interpolated)",
                     "default": "Interpolated",
+                },
+                "mesh_type": {
+                    "type": "string", "enum": ["Tetrahedral", "Hexahedral"],
+                    "default": "Tetrahedral",
+                    "description": "Volume mesh. Interpolated requires Tetrahedral.",
+                },
+                "adaptive_mesh": {
+                    "type": "boolean", "default": True,
+                    "description": "Enable native MeshAdaptionTet or MeshAdaptionHex and mark interval samples for adaptation.",
+                },
+                "include_monitor_frequencies": {
+                    "type": "boolean", "default": True,
+                    "description": "Calculate monitor frequencies in addition to interval samples (AddMonitorSamples).",
+                },
+                "normalize_to_fixed_impedance": {
+                    "type": "boolean", "default": True,
+                    "description": "Emit AutoNormImpedance=False when true, with NormingImpedance. Verify actual normalization from exported results.",
+                },
+                "fixed_impedance": {
+                    "type": "number", "exclusiveMinimum": 0, "default": 50,
+                    "description": "NormingImpedance in ohms. The actual result reference must be checked independently.",
                 },
             },
             "required": ["f_min", "f_max"],
@@ -475,8 +504,24 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
     f_max = float(arguments.get("f_max", 0))
     samples = int(arguments.get("samples", 1001))
     sweep_type = arguments.get("sweep_type", "Interpolated")
+    mesh_type = arguments.get("mesh_type", "Tetrahedral")
+    adaptive_mesh = arguments.get("adaptive_mesh", True)
+    include_monitors = arguments.get("include_monitor_frequencies", True)
+    fixed_norm = arguments.get("normalize_to_fixed_impedance", True)
+    fixed_impedance = float(arguments.get("fixed_impedance", 50))
 
     validate_positive(accuracy, "accuracy")
+    if not 1e-12 <= accuracy <= 1e-3:
+        raise ValueError("accuracy must be between 1e-12 and 1e-3 for the volume frequency-domain solver")
+    validate_positive(fixed_impedance, "fixed_impedance")
+    for key, value in (("adaptive_mesh", adaptive_mesh), ("include_monitor_frequencies", include_monitors),
+                       ("normalize_to_fixed_impedance", fixed_norm)):
+        if not isinstance(value, bool):
+            raise TypeError(f"{key} must be boolean")
+    if mesh_type not in {"Tetrahedral", "Hexahedral"}:
+        raise ValueError("mesh_type must be Tetrahedral or Hexahedral")
+    if sweep_type == "Interpolated" and mesh_type != "Tetrahedral":
+        raise ValueError("The fast reduced order model sweep requires Tetrahedral mesh")
     validate_positive(f_max, "f_max")
     f_min = max(f_min, 0)
     if f_min >= f_max:
@@ -492,6 +537,8 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
             )
         ]
     validate_positive(samples, "samples")
+    if samples < 2:
+        raise ValueError("samples must be at least 2 for a frequency interval")
     valid_sweeps = ["Interpolated", "Discrete", "General purpose"]
     if sweep_type not in valid_sweeps:
         return [
@@ -507,12 +554,27 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
         ]
 
     vba = VBABuilder("FDSolver")
-    vba.set_number("Accuracy", accuracy)
-    vba.set_number("FrequencyMin", f_min)
-    vba.set_number("FrequencyMax", f_max)
-    vba.set_number("Samples", samples)
-    vba.set("SweepType", sweep_type)
-    script = vba.build()
+    native_sweep = {
+        "Discrete": "Discrete samples only",
+        "Interpolated": "Fast reduced order model",
+        "General purpose": "General purpose",
+    }[sweep_type]
+    suffix = "Tet" if mesh_type == "Tetrahedral" else "Hex"
+    vba.call_with_args("SetMethod", mesh_type, native_sweep)
+    vba.set_number("Accuracy" + suffix, accuracy)
+    vba.set("ResetSampleIntervals", "all")
+    # The interval's adaptation flag is distinct from adaptive frequency sampling.
+    vba.call_with_args("AddSampleInterval", str(f_min), str(f_max), str(samples),
+                       "Equidistant" if sweep_type == "Discrete" else "Automatic", str(adaptive_mesh))
+    vba.set_bool("MeshAdaption" + suffix, adaptive_mesh)
+    vba.set_bool("AddMonitorSamples", include_monitors)
+    vba.set_bool("AutoNormImpedance", not fixed_norm)
+    vba.set_number("NormingImpedance", fixed_impedance)
+    if sweep_type != "Discrete":
+        vba.set_number("SetNumberOfResultDataSamples", samples)
+    script = VBAScript().add_block(
+        VBABuilder("Solver").set_double("FrequencyRange", f_min, f_max)
+    ).add_block(vba).build()
 
     result = client.execute_vba(script)
     result["solver"] = "Frequency Domain"
@@ -521,6 +583,12 @@ def _configure_frequency_domain(arguments: dict, client: CSTClient) -> list[Text
     result["f_max_ghz"] = f_max
     result["samples"] = samples
     result["sweep_type"] = sweep_type
+    result.update(mesh_type=mesh_type, native_sweep=native_sweep, adaptive_mesh=adaptive_mesh,
+                  include_monitor_frequencies=include_monitors,
+                  normalize_to_fixed_impedance=fixed_norm, fixed_impedance=fixed_impedance,
+                  sample_semantics="equidistant solved samples" if sweep_type == "Discrete" else
+                  "automatic solved-sample cap and interpolated output count",
+                  normalization_note="CST 2025 help describes False as port normalization. Check the actual reference impedance in exported results.")
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 

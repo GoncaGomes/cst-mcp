@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import math
 from itertools import pairwise
+from numbers import Number
 from typing import Any
 
 
@@ -20,9 +21,18 @@ def read_curve(
         project = cst.results.ProjectFile(project_path, allow_interactive=allow_interactive)
         module = project.get_3d()
         item = module.get_result_item(tree_path, run_id)
-        x = [float(v) for v in item.get_xdata()]
-        values = [complex(v) for v in item.get_ydata()]
-        if not x or len(x) != len(values):
+        # CST can return a scalar axis for a single native result sample.
+        # Preserve that actual sample without inventing a coordinate or unit.
+        x_data, y_data = item.get_xdata(), item.get_ydata()
+        x_samples = [] if x_data is None else [x_data] if isinstance(x_data, Number) else x_data
+        y_samples = [y_data] if isinstance(y_data, Number) else y_data
+        x = [float(v) for v in x_samples]
+        values = [complex(v) for v in y_samples]
+        scalar_result = not x and isinstance(y_data, Number)
+        if scalar_result:
+            if len(values) != 1:
+                raise ValueError("Scalar native result must contain exactly one value")
+        elif not x or len(x) != len(values):
             raise ValueError("Empty or mismatched result axes")
         if not all(math.isfinite(v) for v in x):
             raise ValueError("Non-finite x samples")
@@ -34,7 +44,8 @@ def read_curve(
             "project_path": project_path,
             "tree_path": tree_path,
             "run_id": run_id,
-            "n": len(x),
+            "n": len(values),
+            "native_result_type": "0D" if scalar_result else "1D",
             "x": x,
             "real": [v.real for v in values],
             "imag": [v.imag for v in values],
