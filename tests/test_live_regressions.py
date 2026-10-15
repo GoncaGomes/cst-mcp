@@ -69,9 +69,16 @@ def test_touchstone_filename_leaves_extension_to_cst(tmp_path, filename, native_
 async def test_input_impedance_uses_spp_and_scalar_reference_with_explicit_provenance(z0):
     calls = []
     raw = {
-        "status": "ok", "source": "cst.results", "project_path": "project.cst", "run_id": 0,
-        "n": 5, "x": [.8, .9, 1, 1.1, 1.2], "real": [0, .5, 0, -.5, 1],
-        "imag": [0, 0, .5, 0, 0], "xlabel": "Frequency / GHz", "title": "S2,2",
+        "status": "ok",
+        "source": "cst.results",
+        "project_path": "project.cst",
+        "run_id": 0,
+        "n": 5,
+        "x": [0.8, 0.9, 1, 1.1, 1.2],
+        "real": [0, 0.5, 0, -0.5, 1],
+        "imag": [0, 0, 0.5, 0, 0],
+        "xlabel": "Frequency / GHz",
+        "title": "S2,2",
     }
 
     class Capture:
@@ -84,14 +91,19 @@ async def test_input_impedance_uses_spp_and_scalar_reference_with_explicit_prove
     args = {"port": 2}
     if z0 is not None:
         args.update(mode="input", z0=z0)
-    schema = next(t.model_dump(by_alias=True)["inputSchema"]
-                  for t in results.TOOLS if t.name == "cst_get_impedance")
+    schema = next(
+        t.model_dump(by_alias=True)["inputSchema"]
+        for t in results.TOOLS
+        if t.name == "cst_get_impedance"
+    )
     jsonschema.validate(args, schema)
     response = _decode(await results.handle("cst_get_impedance", args, Capture()))
     reference = 50 if z0 is None else z0
     assert calls == [r"1D Results\S-Parameters\S2,2"]
-    assert response["real"][:-1] == pytest.approx([reference, 3*reference, .6*reference, reference/3])
-    assert response["imag"][:-1] == pytest.approx([0, 0, .8*reference, 0])
+    assert response["real"][:-1] == pytest.approx(
+        [reference, 3 * reference, 0.6 * reference, reference / 3]
+    )
+    assert response["imag"][:-1] == pytest.approx([0, 0, 0.8 * reference, 0])
     assert response["real"][-1] is None and response["imag"][-1] is None
     assert response["y"][-1] is None
     assert response["x"] == raw["x"] and response["n"] == raw["n"]
@@ -109,8 +121,14 @@ async def test_input_impedance_uses_spp_and_scalar_reference_with_explicit_prove
 @pytest.mark.parametrize("status", ["ok", "error", "busy"])
 async def test_native_z_parameter_reads_native_curve_without_s_parameter_fallback(status):
     calls = []
-    native = {"status": status, "source": "cst.results", "x": [.9, 1],
-              "real": [37, 41], "imag": [9, -3], "message": "native response"}
+    native = {
+        "status": status,
+        "source": "cst.results",
+        "x": [0.9, 1],
+        "real": [37, 41],
+        "imag": [9, -3],
+        "message": "native response",
+    }
 
     class Capture:
         connected = True
@@ -119,9 +137,9 @@ async def test_native_z_parameter_reads_native_curve_without_s_parameter_fallbac
             calls.append(tree)
             return dict(native)
 
-    response = _decode(await results.handle(
-        "cst_get_impedance", {"port": 3, "mode": "z_parameter"}, Capture()
-    ))
+    response = _decode(
+        await results.handle("cst_get_impedance", {"port": 3, "mode": "z_parameter"}, Capture())
+    )
     assert calls == [r"1D Results\Z-Parameters\Z3,3"]
     assert response["status"] == status and response["real"] == native["real"]
     assert response["imag"] == native["imag"]
@@ -132,9 +150,10 @@ async def test_native_z_parameter_reads_native_curve_without_s_parameter_fallbac
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("arguments", [
-    {"mode": "unknown"}, {"z0": 0}, {"z0": -1}, {"z0": float("nan")}, {"z0": float("inf")}
-])
+@pytest.mark.parametrize(
+    "arguments",
+    [{"mode": "unknown"}, {"z0": 0}, {"z0": -1}, {"z0": float("nan")}, {"z0": float("inf")}],
+)
 async def test_impedance_invalid_mode_or_reference_is_rejected_before_reading(arguments):
     class NoRead:
         connected = True
@@ -257,7 +276,7 @@ def test_local_mesh_refinement_uses_solid_volume_api(arguments, expected_factor)
             return {"status": "offline", "vba": vba}
 
     result = _decode(mesh._add_mesh_refinement(arguments, Capture()))
-    solid_path = f'{arguments["component"]}:{arguments["solid"]}'
+    solid_path = f"{arguments['component']}:{arguments['solid']}"
     assert result["vba"] == (
         f'With Solid\n  .SetMeshRefinement "{solid_path}", "False", "1", '
         f'"True", "{expected_factor}"\nEnd With'
@@ -298,8 +317,7 @@ def test_adaptive_mesh_uses_time_domain_api(arguments, enabled, max_passes, thre
     if enabled:
         expected = (
             'With MeshAdaption3D\n  .SetType "Time"\n  .MinPasses "2"\n'
-            f'  .MaxPasses "{max_passes}"\n  .MaxDeltaS "{threshold}"\nEnd With\n'
-            + expected
+            f'  .MaxPasses "{max_passes}"\n  .MaxDeltaS "{threshold}"\nEnd With\n' + expected
         )
     else:
         assert result["notes"] == [
@@ -576,24 +594,32 @@ async def test_field_export_uses_and_reports_configurable_sampling(field, fmt, r
 
     arguments = {
         "result_path": f"2D/3D Results\\{field}\\field (f=1) [1]",
-        "output_file": f"field.{fmt}", "format": fmt,
+        "output_file": f"field.{fmt}",
+        "format": fmt,
     }
     if requested is not None:
         arguments["field_samples"] = requested
-    schema = next(t.model_dump(by_alias=True)["inputSchema"]
-                  for t in results.TOOLS if t.name == "cst_export_result")
+    schema = next(
+        t.model_dump(by_alias=True)["inputSchema"]
+        for t in results.TOOLS
+        if t.name == "cst_export_result"
+    )
     jsonschema.validate(arguments, schema)
     result = _decode(await results.handle("cst_export_result", arguments, Capture()))
     assert result["status"] == "executed"
     assert result["field_sampling"] == {
-        "mode": "FixedNumber", "samples_per_axis": expected, "applied": True,
+        "mode": "FixedNumber",
+        "samples_per_axis": expected,
+        "applied": True,
     }
     assert len(codes) == 1
     code = codes[0]
     assert '.Mode "FixedNumber"' in code
     for axis, count in expected.items():
         assert f'.Step{axis.upper()} "{count}"' in code
-    assert code.index(".Reset") < code.index(".Mode") < code.index(".StepX") < code.index(".Execute")
+    assert (
+        code.index(".Reset") < code.index(".Mode") < code.index(".StepX") < code.index(".Execute")
+    )
 
 
 @pytest.mark.asyncio
@@ -605,10 +631,17 @@ async def test_field_export_rejects_invalid_sampling_before_native_execution(sam
         def execute_vba_silent(self, *args, **kwargs):
             raise AssertionError("invalid field samples reached CST")
 
-    result = _decode(await results.handle("cst_export_result", {
-        "result_path": r"2D/3D Results\E-Field\e-field (f=1) [1]",
-        "output_file": "field.txt", "field_samples": samples,
-    }, NoExecution()))
+    result = _decode(
+        await results.handle(
+            "cst_export_result",
+            {
+                "result_path": r"2D/3D Results\E-Field\e-field (f=1) [1]",
+                "output_file": "field.txt",
+                "field_samples": samples,
+            },
+            NoExecution(),
+        )
+    )
     assert result["status"] == "error"
     assert "field_samples" in result["message"]
 
@@ -622,8 +655,11 @@ async def test_failed_and_offline_field_export_do_not_claim_sampling_was_applied
             return {"status": "error", "message": "native failure"}
 
     client = Client()
-    args = {"result_path": r"2D/3D Results\H-Field\h-field (f=1) [1]",
-            "output_file": "field.txt", "format": "txt"}
+    args = {
+        "result_path": r"2D/3D Results\H-Field\h-field (f=1) [1]",
+        "output_file": "field.txt",
+        "format": "txt",
+    }
     failed = _decode(await results.handle("cst_export_result", args, client))
     assert failed["field_sampling"]["applied"] is False
     client.connected = False

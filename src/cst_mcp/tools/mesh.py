@@ -331,7 +331,11 @@ def _add_mesh_refinement(arguments: dict, client: CSTClient) -> list[TextContent
         raise ValueError("refinement_factor must be finite")
 
     vba = VBABuilder("Solid").call_with_args(
-        "SetMeshRefinement", f"{component}:{solid}", "False", "1", "True",
+        "SetMeshRefinement",
+        f"{component}:{solid}",
+        "False",
+        "1",
+        "True",
         str(refinement_factor),
     )
     script = vba.build()

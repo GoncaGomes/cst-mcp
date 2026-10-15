@@ -156,7 +156,9 @@ def load_material_vba(
                 continue
             if key == "reset":
                 if arguments or has_properties:
-                    raise ValidationError(".Reset must have no arguments and precede all properties")
+                    raise ValidationError(
+                        ".Reset must have no arguments and precede all properties"
+                    )
                 continue
             if key in {"rename", "delete"}:
                 raise ValidationError(f".{method} is not a material definition command")

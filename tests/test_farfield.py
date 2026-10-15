@@ -127,8 +127,11 @@ def test_farfield_export_respects_requested_frequency_and_monitor(
 ):
     session = CSTSession(CSTConfig(work_dir=tmp_path))
     monitors = [
-        {"monitor_name": f"farfield (f={f:g})", "frequency_ghz": f,
-         "tree_candidates": farfield_tree_candidates(f)}
+        {
+            "monitor_name": f"farfield (f={f:g})",
+            "frequency_ghz": f,
+            "tree_candidates": farfield_tree_candidates(f),
+        }
         for f in (0.9, 1, 1.1)
     ]
     available = {m["tree_candidates"][0] for m in monitors}
@@ -271,8 +274,12 @@ async def test_export_farfield_ffs_tries_port_suffixed_tree_names(monitor):
         (
             await import_export.handle(
                 "cst_export_farfield",
-                {"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs",
-                 **({"monitor_name": monitor} if monitor else {})},
+                {
+                    "file_path": "C:/x/ff.ffs",
+                    "frequency": 2.4,
+                    "format": "ffs",
+                    **({"monitor_name": monitor} if monitor else {}),
+                },
                 client,
             )
         )[0].text
@@ -285,11 +292,13 @@ async def test_export_farfield_ffs_tries_port_suffixed_tree_names(monitor):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "frequency,monitor,succeeds",
-    [(2.4, "farfield (f=2.4) [1]", True),
-     (2.4, "farfield (f=2.4) [2]", False),
-     (2.4, "missing monitor", False),
-     (2.4, "farfield (f=2.5)", False),
-     (2.5, None, False)],
+    [
+        (2.4, "farfield (f=2.4) [1]", True),
+        (2.4, "farfield (f=2.4) [2]", False),
+        (2.4, "missing monitor", False),
+        (2.4, "farfield (f=2.5)", False),
+        (2.5, None, False),
+    ],
 )
 async def test_export_farfield_ffs_respects_monitor_frequency_and_excitation(
     frequency, monitor, succeeds
@@ -305,15 +314,19 @@ async def test_export_farfield_ffs_respects_monitor_frequency_and_excitation(
         assert history_fallback is False
         codes.append(code)
         available = r'SelectTreeItem("Farfields\farfield (f=2.4) [1]")'
-        return {"status": "executed"} if available in code else {
-            "status": "error", "message": "not found"
-        }
+        return (
+            {"status": "executed"}
+            if available in code
+            else {"status": "error", "message": "not found"}
+        )
 
     client = SimpleNamespace(connected=True, execute_vba_silent=silent)
     arguments = {"file_path": "C:/x/ff.ffs", "frequency": frequency, "format": "ffs"}
     if monitor:
         arguments["monitor_name"] = monitor
-    out = _json.loads((await import_export.handle("cst_export_farfield", arguments, client))[0].text)
+    out = _json.loads(
+        (await import_export.handle("cst_export_farfield", arguments, client))[0].text
+    )
     assert out["status"] == ("executed" if succeeds else "error")
     if succeeds:
         assert out["tree_path"] == r"Farfields\farfield (f=2.4) [1]"

@@ -203,11 +203,15 @@ TOOLS: list[Tool] = [
                     "default": 1,
                 },
                 "mode": {
-                    "type": "string", "enum": ["input", "z_parameter"], "default": "input",
+                    "type": "string",
+                    "enum": ["input", "z_parameter"],
+                    "default": "input",
                     "description": "Derive input impedance from Spp or read native Zpp.",
                 },
                 "z0": {
-                    "type": "number", "exclusiveMinimum": 0, "default": 50,
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 50,
                     "description": (
                         "Scalar real reference impedance in ohms for mode 'input'; "
                         "must match the source S-parameter normalization. "
@@ -2290,7 +2294,9 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
         z0 = float(arguments.get("z0", 50)) if mode == "input" else None
         if z0 is not None and (not math.isfinite(z0) or z0 <= 0):
             raise ValueError("z0 must be finite and positive")
-        tree_path = _s_param_tree_path(port, port) if mode == "input" else _impedance_tree_path(port)
+        tree_path = (
+            _s_param_tree_path(port, port) if mode == "input" else _impedance_tree_path(port)
+        )
 
         if client.connected:
             result = dict(client.get_result(tree_path))
@@ -2300,7 +2306,8 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
                 result = input_impedance(result, z0)
             elif result.get("status") == "ok":
                 result.update(
-                    data_type="z_parameter", unit="ohm",
+                    data_type="z_parameter",
+                    unit="ohm",
                     other_ports="Open-circuited (native Zpp definition)",
                 )
             result["port"] = port
@@ -2315,12 +2322,16 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
                 "tree_path": tree_path,
                 "impedance_mode": mode,
                 "unit": "ohm",
-                **({"z0": z0, "formula": "Zin = z0 * (1 + Spp) / (1 - Spp)",
-                    "assumption": "z0 must match the scalar real S-parameter reference impedance",
-                    "other_ports": "Terminated in their S-parameter reference impedances"}
-                   if mode == "input" else {
-                       "other_ports": "Open-circuited (native Zpp definition)"
-                   }),
+                **(
+                    {
+                        "z0": z0,
+                        "formula": "Zin = z0 * (1 + Spp) / (1 - Spp)",
+                        "assumption": "z0 must match the scalar real S-parameter reference impedance",
+                        "other_ports": "Terminated in their S-parameter reference impedances",
+                    }
+                    if mode == "input"
+                    else {"other_ports": "Open-circuited (native Zpp definition)"}
+                ),
                 "instructions": (
                     "Connect a completed, saved CST project. The selected 1D curve "
                     "will be read with the results API without changing model history."
@@ -2562,7 +2573,8 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
             result = client.execute_vba_silent(vba, history_fallback=False)
             if samples is not None:
                 result["field_sampling"] = {
-                    "mode": "FixedNumber", "samples_per_axis": samples,
+                    "mode": "FixedNumber",
+                    "samples_per_axis": samples,
                     "applied": result.get("status") == "executed",
                 }
             if result.get("status") != "error":
@@ -2577,9 +2589,17 @@ async def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[Te
                 "result_path": result_path,
                 "output_file": output_file,
                 "format": fmt,
-                **({"field_sampling": {
-                    "mode": "FixedNumber", "samples_per_axis": samples, "applied": False,
-                }} if samples is not None else {}),
+                **(
+                    {
+                        "field_sampling": {
+                            "mode": "FixedNumber",
+                            "samples_per_axis": samples,
+                            "applied": False,
+                        }
+                    }
+                    if samples is not None
+                    else {}
+                ),
                 "format_notes": {
                     "csv": (
                         "Comma-separated values with header row. "

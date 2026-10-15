@@ -1,4 +1,5 @@
 """Offline checks use temporary folders and never import a CST application client."""
+
 import asyncio
 import json
 import math
@@ -13,8 +14,18 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import run_dipole as dipole
 from common import (
-    Incomplete, Stop, bandwidth, compare, complex_curve, derive, dipole_physics,
-    farfield_grid, ffs_source, prepare_outputs, sphere_mean, touchstone,
+    Incomplete,
+    Stop,
+    bandwidth,
+    compare,
+    complex_curve,
+    derive,
+    dipole_physics,
+    farfield_grid,
+    ffs_source,
+    prepare_outputs,
+    sphere_mean,
+    touchstone,
 )
 
 
@@ -27,13 +38,25 @@ def make_runner(tmp_path, preflight=False):
 
 
 def catalog(runner, tool, properties=None):
-    runner.catalog[tool] = {"inputSchema": {"type": "object", "properties": properties or {}, "additionalProperties": False}}
+    runner.catalog[tool] = {
+        "inputSchema": {
+            "type": "object",
+            "properties": properties or {},
+            "additionalProperties": False,
+        }
+    }
 
 
 def response(payload, is_error=False):
-    return {"content": [{"type": "text", "text": json.dumps(payload)},
-                        {"type": "text", "text": "original second block"}],
-            "structuredContent": payload, "isError": is_error, "customExtension": {"retained": True}}
+    return {
+        "content": [
+            {"type": "text", "text": json.dumps(payload)},
+            {"type": "text", "text": "original second block"},
+        ],
+        "structuredContent": payload,
+        "isError": is_error,
+        "customExtension": {"retained": True},
+    }
 
 
 def test_independent_complex_conversion_and_touchstone(tmp_path):
@@ -43,11 +66,13 @@ def test_independent_complex_conversion_and_touchstone(tmp_path):
     derived = derive(values)
     assert compare(derived["db"], expected_db, 1e-12)
     assert derived["vswr"] == [1, 3, 3, 3, None]
-    assert compare(derived["z"], [50+0j, 150+0j, 30+40j, 50/3+0j, None], 1e-12)
+    assert compare(derived["z"], [50 + 0j, 150 + 0j, 30 + 40j, 50 / 3 + 0j, None], 1e-12)
     assert derived["phase"] == [None, 0, 90, 180, 0]
     assert compare([179, -179], [179, 181], wrapped=True)
     file = tmp_path / "model.s1p"
-    file.write_text("! independently specified one port\n# MHZ S RI R 50\n800 0 0\n900 .5 0\n1000 0 .5\n1100 -.5 0\n1200 1 0\n")
+    file.write_text(
+        "! independently specified one port\n# MHZ S RI R 50\n800 0 0\n900 .5 0\n1000 0 .5\n1100 -.5 0\n1200 1 0\n"
+    )
     parsed = touchstone(file)
     assert parsed["x"] == pytest.approx([0.8, 0.9, 1, 1.1, 1.2])
     assert parsed["values"] == values
@@ -55,25 +80,26 @@ def test_independent_complex_conversion_and_touchstone(tmp_path):
     assert parsed["representation"] == "RI"
 
 
-@pytest.mark.parametrize("representation, pair", [("MA", "0.5 90"), ("DB", "-6.020599913279624 90")])
+@pytest.mark.parametrize(
+    "representation, pair", [("MA", "0.5 90"), ("DB", "-6.020599913279624 90")]
+)
 def test_touchstone_declared_representation(tmp_path, representation, pair):
     file = tmp_path / "model.s1p"
     file.write_text(f"# GHz S {representation} R 75\n1 {pair}\n")
     parsed = touchstone(file)
-    assert abs(parsed["values"][0] - .5j) < 1e-12
+    assert abs(parsed["values"][0] - 0.5j) < 1e-12
     assert parsed["reference_ohm"] == 75
 
 
 @pytest.mark.parametrize(
     "frequency_shift,complex_shift,drop_sample,passes",
-    [(0, 0, False, True), (2e-7, 0, False, False),
-     (0, 2e-5, False, False), (0, 0, True, False)],
+    [(0, 0, False, True), (2e-7, 0, False, False), (0, 2e-5, False, False), (0, 0, True, False)],
 )
 def test_touchstone_validation_allows_frequency_rounding_only(
     tmp_path, frequency_shift, complex_shift, drop_sample, passes
 ):
     runner = make_runner(tmp_path)
-    runner.baseline = ([0.800000011920929, 1.2000000476837158], [.3+.1j, .2-.1j])
+    runner.baseline = ([0.800000011920929, 1.2000000476837158], [0.3 + 0.1j, 0.2 - 0.1j])
     path = tmp_path / "dipole.s1p"
     rows = [f"{0.8 + frequency_shift:.10f} {0.3 + complex_shift:.10f} 0.1"]
     if not drop_sample:
@@ -97,22 +123,28 @@ def test_touchstone_validation_allows_frequency_rounding_only(
 def test_bandwidth_multiple_intervals_and_truncated_edges():
     # -20 dB means magnitude 0.1, crossings at 1.5, 2.5, 3.5, 4.5.
     bands = bandwidth([1, 2, 3, 4, 5], [0.05, 0.15, 0.05, 0.15, 0.05], -20)
-    assert [(b["f_lower_ghz"], b["f_upper_ghz"]) for b in bands] == pytest.approx([(1, 1.5), (2.5, 3.5), (4.5, 5)])
-    assert [(b["lower_truncated"], b["upper_truncated"]) for b in bands] == [(True, False), (False, False), (False, True)]
-    assert bandwidth([1, 2], [.5, .5]) == []
+    assert [(b["f_lower_ghz"], b["f_upper_ghz"]) for b in bands] == pytest.approx(
+        [(1, 1.5), (2.5, 3.5), (4.5, 5)]
+    )
+    assert [(b["lower_truncated"], b["upper_truncated"]) for b in bands] == [
+        (True, False),
+        (False, False),
+        (False, True),
+    ]
+    assert bandwidth([1, 2], [0.5, 0.5]) == []
     with pytest.raises(Incomplete):
-        bandwidth([1, 1], [.5, .2])
+        bandwidth([1, 1], [0.5, 0.2])
 
 
 def test_raw_curve_units_and_singular_values_are_not_fabricated():
     with pytest.raises(Incomplete, match="GHz"):
-        complex_curve({"x": [1], "real": [.2], "imag": [0], "xlabel": "Frequency"})
+        complex_curve({"x": [1], "real": [0.2], "imag": [0], "xlabel": "Frequency"})
     with pytest.raises(Stop, match="nonfinite"):
         complex_curve({"x": [1], "real": [math.nan], "imag": [0], "xlabel": "Frequency / GHz"})
     with pytest.raises(Stop, match="preview"):
-        complex_curve({"x": [1], "real": [.2], "imag": [0], "xlabel": "GHz", "sampled": True})
-    assert derive([1+0j])["z"] == [None]
-    assert derive([1.01+0j])["vswr"] == [None]
+        complex_curve({"x": [1], "real": [0.2], "imag": [0], "xlabel": "GHz", "sampled": True})
+    assert derive([1 + 0j])["z"] == [None]
+    assert derive([1.01 + 0j])["vswr"] == [None]
 
 
 def test_partial_failure_keeps_exact_request_response_and_reports(tmp_path):
@@ -149,7 +181,9 @@ def test_unknown_state_blocks_all_later_native_requests(tmp_path, transport):
         session.call_tool.side_effect = TimeoutError("lost response")
         error = TimeoutError
     else:
-        session.call_tool.return_value = response({"status": "timeout", "execution_state": "unknown"}, True)
+        session.call_tool.return_value = response(
+            {"status": "timeout", "execution_state": "unknown"}, True
+        )
         error = Incomplete
     with pytest.raises(error):
         asyncio.run(runner.request(session, "cst_run_simulation", {"timeout_s": 1800}))
@@ -170,10 +204,17 @@ def test_preflight_protocol_uses_only_disabled_status_and_paginates(tmp_path):
     # Schemas are mocked only for client behavior, never live-support evidence.
     tools = []
     for name in sorted({item["tool"] for item in dipole.MANIFEST}):
-        props = {key: {} for item in dipole.MANIFEST if item["tool"] == name for key in item["arguments"]}
+        props = {
+            key: {} for item in dipole.MANIFEST if item["tool"] == name for key in item["arguments"]
+        }
         tools.append({"name": name, "inputSchema": {"type": "object", "properties": props}})
-    session.list_tools.side_effect = [{"tools": tools[:10], "nextCursor": "next"}, {"tools": tools[10:], "nextCursor": None}]
-    session.call_tool.return_value = response({"mode": "offline", "project_open": False, "cst_available": False})
+    session.list_tools.side_effect = [
+        {"tools": tools[:10], "nextCursor": "next"},
+        {"tools": tools[10:], "nextCursor": None},
+    ]
+    session.call_tool.return_value = response(
+        {"mode": "offline", "project_open": False, "cst_available": False}
+    )
     asyncio.run(runner.protocol(session))
     assert session.list_tools.await_count == 2
     assert session.list_tools.await_args.kwargs["cursor"] == "next"
@@ -236,7 +277,9 @@ def test_cleanup_rejects_escaped_and_linked_paths(tmp_path, monkeypatch):
         # Windows can deny creating symlinks. Exercise the same link rejection
         # branch with a simulated link, still leaving all real files untouched.
         real_is_symlink = Path.is_symlink
-        monkeypatch.setattr(Path, "is_symlink", lambda p: p == live / "results" or real_is_symlink(p))
+        monkeypatch.setattr(
+            Path, "is_symlink", lambda p: p == live / "results" or real_is_symlink(p)
+        )
     with pytest.raises(Stop):
         prepare_outputs(live, tmp_path, False)
     assert sentinel.read_text() == "untouched"
@@ -244,11 +287,24 @@ def test_cleanup_rejects_escaped_and_linked_paths(tmp_path, monkeypatch):
 
 def test_saved_results_pagination_has_same_filter_and_monotonic_offset(tmp_path):
     runner = make_runner(tmp_path)
-    catalog(runner, "cst_list_saved_results", {"project_path": {}, "contains": {}, "offset": {}, "limit": {}})
+    catalog(
+        runner,
+        "cst_list_saved_results",
+        {"project_path": {}, "contains": {}, "offset": {}, "limit": {}},
+    )
     session = AsyncMock()
-    session.call_tool.return_value = response({"status": "ok", "entries": [{"tree_path": "last"}], "next_offset": None})
-    args = {"project_path": str(runner.project), "contains": "S-Parameters", "offset": 0, "limit": 50}
-    items = asyncio.run(runner.saved_pages(session, args, {"entries": [{"tree_path": "first"}], "next_offset": 50}))
+    session.call_tool.return_value = response(
+        {"status": "ok", "entries": [{"tree_path": "last"}], "next_offset": None}
+    )
+    args = {
+        "project_path": str(runner.project),
+        "contains": "S-Parameters",
+        "offset": 0,
+        "limit": 50,
+    }
+    items = asyncio.run(
+        runner.saved_pages(session, args, {"entries": [{"tree_path": "first"}], "next_offset": 50})
+    )
     assert [p["tree_path"] for p in items] == ["first", "last"]
     assert session.call_tool.await_args.args[1] == {**args, "offset": 50}
     with pytest.raises(Stop):
@@ -260,7 +316,13 @@ def test_quantity_provenance_and_ideal_pattern_with_seam(tmp_path):
     lines = ["Theta [deg.] Phi [deg.] Abs(Directivity) [dBi]"]
     for p in range(0, 361, 5):
         for t in range(0, 181, 5):
-            amplitude = 0 if t in (0, 180) else abs(math.cos(math.pi/2 * math.cos(math.radians(t))) / math.sin(math.radians(t)))
+            amplitude = (
+                0
+                if t in (0, 180)
+                else abs(
+                    math.cos(math.pi / 2 * math.cos(math.radians(t))) / math.sin(math.radians(t))
+                )
+            )
             db = 2.15 + 20 * math.log10(max(amplitude, 1e-12))
             lines.append(f"{t} {p} {db:.12g}")
     file.write_text("\n".join(lines))
@@ -273,7 +335,7 @@ def test_quantity_provenance_and_ideal_pattern_with_seam(tmp_path):
     assert physics["axial_suppression_db"] > 200
     assert physics["azimuth_ripple_db"] == 0
     assert physics["shape_max_error_db_above_minus20"] < 1e-8
-    assert sphere_mean(grid) == pytest.approx(1, abs=.004)
+    assert sphere_mean(grid) == pytest.approx(1, abs=0.004)
     with pytest.raises(Incomplete, match="original header"):
         farfield_grid(file, "realized_gain")
 
@@ -281,11 +343,14 @@ def test_quantity_provenance_and_ideal_pattern_with_seam(tmp_path):
 @pytest.mark.parametrize(
     "label,quantity", [("Abs(Grlz)", "realized_gain"), ("Abs(Dir.)", "directivity")]
 )
-def test_native_farfield_quantity_labels_are_recognized_without_substitution(tmp_path, label, quantity):
+def test_native_farfield_quantity_labels_are_recognized_without_substitution(
+    tmp_path, label, quantity
+):
     path = tmp_path / "native.txt"
     lines = [f"Theta [deg.] Phi [deg.] {label}[dBi   ]"]
-    lines.extend(f"{theta} {phi} {2 if theta == 90 else -40}"
-                 for phi in (0, 180) for theta in (0, 90, 180))
+    lines.extend(
+        f"{theta} {phi} {2 if theta == 90 else -40}" for phi in (0, 180) for theta in (0, 90, 180)
+    )
     path.write_text("\n".join(lines))
     grid = farfield_grid(path, quantity)
     assert grid["quantity"] == quantity
@@ -320,21 +385,29 @@ def test_entry_point_paths_are_independent_of_cwd(tmp_path, monkeypatch):
 def test_runner_finally_writes_reports_after_failure_without_native_cleanup(tmp_path, monkeypatch):
     runner = dipole.Dipole(dipole.options([]), parent=tmp_path)
     session = AsyncMock()
-    session.call_tool.return_value = response({"status": "error", "message": "missing native prerequisite"}, True)
+    session.call_tool.return_value = response(
+        {"status": "error", "message": "missing native prerequisite"}, True
+    )
     catalog(runner, "cst_get_impedance", {"port": {"type": "integer"}})
+
     @asynccontextmanager
     async def transport(*args, **kwargs):
         yield None, None
+
     @asynccontextmanager
     async def session_context(*args, **kwargs):
         yield session
+
     def environment():
         runner.env = {"CST_CONNECT_MODE": "disabled"}
+
     async def protocol(selected_session):
         pass
+
     async def live(selected_session):
         runner.phase = "E"
         await runner.request(selected_session, "cst_get_impedance", {"port": 1})
+
     monkeypatch.setattr(dipole, "stdio_client", transport)
     monkeypatch.setattr(dipole, "ClientSession", session_context)
     monkeypatch.setattr(dipole, "preserve_cst_processes", nullcontext)
@@ -349,18 +422,24 @@ def test_runner_finally_writes_reports_after_failure_without_native_cleanup(tmp_
 
 
 def test_probes_reject_transport_or_unrelated_errors_as_contract_success():
-    assert dipole.Dipole.probe_rejection("cst_get_radiation_pattern_3d", {}, "Cartesian resampling is not implemented")
-    assert not dipole.Dipole.probe_rejection("cst_get_radiation_pattern_3d", {}, "license server refused the operation")
+    assert dipole.Dipole.probe_rejection(
+        "cst_get_radiation_pattern_3d", {}, "Cartesian resampling is not implemented"
+    )
+    assert not dipole.Dipole.probe_rejection(
+        "cst_get_radiation_pattern_3d", {}, "license server refused the operation"
+    )
 
 
 @pytest.mark.parametrize("power_block", ["1 1.1 1.2 1e9", "1\n1.1\n1.2\n1e9", "1 1.1\n\n1.2 1e9"])
 def test_ffs_complex_fields_and_counts_are_distinct_from_gain(tmp_path, power_block):
     path = tmp_path / "field.ffs"
-    path.write_text("// Data Type:\nFarfield\n// Radiated/Accepted/Stimulated Power, Frequency:\n"
-                    f"{power_block}\n"
-                    "// Total #phi samples, total #theta samples:\n2 2\n"
-                    "// Phi, Theta, Re(E_Theta), Im(E_Theta), Re(E_Phi), Im(E_Phi):\n"
-                    "0 0 1 2 3 4\n0 180 2 3 4 5\n180 0 3 4 5 6\n180 180 4 5 6 7\n")
+    path.write_text(
+        "// Data Type:\nFarfield\n// Radiated/Accepted/Stimulated Power, Frequency:\n"
+        f"{power_block}\n"
+        "// Total #phi samples, total #theta samples:\n2 2\n"
+        "// Phi, Theta, Re(E_Theta), Im(E_Theta), Re(E_Phi), Im(E_Phi):\n"
+        "0 0 1 2 3 4\n0 180 2 3 4 5\n180 0 3 4 5 6\n180 180 4 5 6 7\n"
+    )
     parsed = ffs_source(path)
     assert parsed["sample_count"] == 4
     assert parsed["counts_match"]
@@ -373,10 +452,13 @@ def test_ffs_complex_fields_and_counts_are_distinct_from_gain(tmp_path, power_bl
 @pytest.mark.parametrize("block", ["1 1.1 1.2", "1 1.1 1.2 nan", "1 1.1 1.2 -1e9"])
 def test_ffs_invalid_frequency_block_does_not_consume_next_section(tmp_path, block):
     path = tmp_path / "field.ffs"
-    path.write_text("// Radiated/Accepted/Stimulated Power, Frequency:\n" + block
-                    + "\n// Total #phi samples, total #theta samples:\n2 2\n"
-                    + "// Phi, Theta, Re(E_Theta), Im(E_Theta), Re(E_Phi), Im(E_Phi):\n"
-                    + "0 0 1 2 3 4\n")
+    path.write_text(
+        "// Radiated/Accepted/Stimulated Power, Frequency:\n"
+        + block
+        + "\n// Total #phi samples, total #theta samples:\n2 2\n"
+        + "// Phi, Theta, Re(E_Theta), Im(E_Theta), Re(E_Phi), Im(E_Phi):\n"
+        + "0 0 1 2 3 4\n"
+    )
     with pytest.raises(Incomplete, match="FFS"):
         ffs_source(path)
 
@@ -385,13 +467,18 @@ def test_material_failure_blocks_geometry_and_solver_in_mock_workflow(tmp_path):
     runner = make_runner(tmp_path)
     runner.connected = True
     session = AsyncMock()
-    tools = {"cst_load_material": {"name": {}, "library_name": {}}, "cst_read_project_log": {},
-             "cst_get_simulation_status": {"timeout_s": {}}}
+    tools = {
+        "cst_load_material": {"name": {}, "library_name": {}},
+        "cst_read_project_log": {},
+        "cst_get_simulation_status": {"timeout_s": {}},
+    }
     for tool, props in tools.items():
         catalog(runner, tool, props)
-    session.call_tool.side_effect = [response({"status": "error", "message": "native library load failed"}, True),
-                                    response({"status": "ok", "tail": "native message"}),
-                                    response({"status": "ok", "running": False})]
+    session.call_tool.side_effect = [
+        response({"status": "error", "message": "native library load failed"}, True),
+        response({"status": "ok", "tail": "native message"}),
+        response({"status": "ok", "running": False}),
+    ]
     # Enter the real manifest loop at phase B. Earlier phases are mocked solely
     # to test dependency blocking and never count as native support.
     original = dipole.PHASES

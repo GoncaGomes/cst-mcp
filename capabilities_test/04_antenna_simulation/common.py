@@ -1,4 +1,5 @@
 """Client-only evidence and independent numerical checks. No CST operations."""
+
 from __future__ import annotations
 
 import cmath
@@ -10,6 +11,7 @@ import re
 import shutil
 import sys
 from contextlib import contextmanager
+from itertools import pairwise
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,12 +19,67 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "capabilities_test/01_project_geometry_materials"))
 from preserving_stdio import preserve_cst_processes
 from run_batch import (
-    DEFAULT_CST_PATH, EXPECTED_UNITS, FIXED_VBA, SHAPES_QUERY, UNITS_BLOCK,
-    UNITS_QUERY, exception_leaves, indeterminate, interpret, parse_shapes,
-    parse_units, serialize, timestamp, walk_dicts,
+    DEFAULT_CST_PATH,
+    EXPECTED_UNITS,
+    FIXED_VBA,
+    SHAPES_QUERY,
+    UNITS_BLOCK,
+    UNITS_QUERY,
+    exception_leaves,
+    indeterminate,
+    interpret,
+    parse_shapes,
+    parse_units,
+    serialize,
+    timestamp,
+    walk_dicts,
 )
+
 sys.path.insert(0, str(ROOT / "capabilities_test/02_parameters"))
 from run_parameter_brick import ensure_closed
+
+# Shared client API, including helpers re-exported for all three antenna runners.
+__all__ = [
+    "DEFAULT_CST_PATH",
+    "EXPECTED_UNITS",
+    "FIXED_VBA",
+    "ROOT",
+    "SHAPES_QUERY",
+    "UNITS_BLOCK",
+    "UNITS_QUERY",
+    "Incomplete",
+    "Stop",
+    "ascii_table",
+    "atomic_text",
+    "bandwidth",
+    "compare",
+    "complex_curve",
+    "derive",
+    "dipole_physics",
+    "ensure_closed",
+    "exception_leaves",
+    "executable_version",
+    "farfield_grid",
+    "ffs_source",
+    "indeterminate",
+    "initialize_catalog",
+    "interpret",
+    "parse_shapes",
+    "parse_units",
+    "prepare_outputs",
+    "preserve_cst_processes",
+    "read_text",
+    "reject_links",
+    "safe_json",
+    "serialize",
+    "sha256",
+    "sphere_mean",
+    "timestamp",
+    "touchstone",
+    "walk_dicts",
+    "workspace_lock",
+    "write_json",
+]
 
 
 class Stop(RuntimeError):
@@ -66,12 +123,23 @@ def executable_version(path):
         return None
     import ctypes
     from ctypes import wintypes
+
     api = ctypes.WinDLL("version", use_last_error=True)
     api.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
     api.GetFileVersionInfoSizeW.restype = wintypes.DWORD
-    api.GetFileVersionInfoW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    api.GetFileVersionInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+    ]
     api.GetFileVersionInfoW.restype = wintypes.BOOL
-    api.VerQueryValueW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.UINT)]
+    api.VerQueryValueW.argtypes = [
+        ctypes.c_void_p,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.UINT),
+    ]
     api.VerQueryValueW.restype = wintypes.BOOL
     ignored = wintypes.DWORD()
     size = api.GetFileVersionInfoSizeW(str(path), ctypes.byref(ignored))
@@ -81,14 +149,30 @@ def executable_version(path):
     if not api.GetFileVersionInfoW(str(path), 0, size, buffer):
         return None
     pointer, length = ctypes.c_void_p(), wintypes.UINT()
-    if not api.VerQueryValueW(buffer, "\\", ctypes.byref(pointer), ctypes.byref(length)) or length.value < 52:
+    if (
+        not api.VerQueryValueW(buffer, "\\", ctypes.byref(pointer), ctypes.byref(length))
+        or length.value < 52
+    ):
         return None
     numbers = ctypes.cast(pointer, ctypes.POINTER(wintypes.DWORD * 13)).contents
     if numbers[0] != 0xFEEF04BD:
         return None
-    return {"path": str(path), "product_version": [numbers[4] >> 16, numbers[4] & 65535, numbers[5] >> 16, numbers[5] & 65535],
-            "file_version": [numbers[2] >> 16, numbers[2] & 65535, numbers[3] >> 16, numbers[3] & 65535],
-            "method": "read-only Windows file version resource"}
+    return {
+        "path": str(path),
+        "product_version": [
+            numbers[4] >> 16,
+            numbers[4] & 65535,
+            numbers[5] >> 16,
+            numbers[5] & 65535,
+        ],
+        "file_version": [
+            numbers[2] >> 16,
+            numbers[2] & 65535,
+            numbers[3] >> 16,
+            numbers[3] & 65535,
+        ],
+        "method": "read-only Windows file version resource",
+    }
 
 
 def reject_links(path, recursive=True):
@@ -111,6 +195,7 @@ def workspace_lock(parent, preflight, scenario="dipole"):
     try:
         if os.name == "nt":
             import msvcrt
+
             if path.stat().st_size == 0:
                 stream.write(b"0")
                 stream.flush()
@@ -118,6 +203,7 @@ def workspace_lock(parent, preflight, scenario="dipole"):
             msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
+
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
     finally:
@@ -155,9 +241,15 @@ def prepare_outputs(base, parent, preflight, scenario="dipole"):
     for name in ("mcp", "protocol", "cst_logs", "exports", "figures", "work"):
         (base / "results" / name).mkdir()
     (base / "reports/calls.jsonl").write_text("", encoding="utf-8")
-    title = {"dipole": "Thin copper dipole", "patch": "Rectangular patch",
-             "wr90": "WR-90 open-ended waveguide"}[scenario]
-    atomic_text(base / "reports/validation.md", f"# {title} validation\n\nInvocation started. Assessment pending.\n")
+    title = {
+        "dipole": "Thin copper dipole",
+        "patch": "Rectangular patch",
+        "wr90": "WR-90 open-ended waveguide",
+    }[scenario]
+    atomic_text(
+        base / "reports/validation.md",
+        f"# {title} validation\n\nInvocation started. Assessment pending.\n",
+    )
 
 
 async def initialize_catalog(session, protocol_directory, prefix=""):
@@ -165,14 +257,21 @@ async def initialize_catalog(session, protocol_directory, prefix=""):
     import asyncio
     import inspect
     import time
+
     from mcp.types import PaginatedRequestParams
 
     started, utc = time.monotonic(), timestamp()
     init = serialize(await asyncio.wait_for(session.initialize(), 120))
-    write_json(protocol_directory / f"{prefix}initialize.json", {
-        "started_utc": utc, "ended_utc": timestamp(), "elapsed_s": time.monotonic() - started,
-        "request": {"method": "initialize"}, "response": init,
-    })
+    write_json(
+        protocol_directory / f"{prefix}initialize.json",
+        {
+            "started_utc": utc,
+            "ended_utc": timestamp(),
+            "elapsed_s": time.monotonic() - started,
+            "request": {"method": "initialize"},
+            "response": init,
+        },
+    )
     catalog, cursor, seen, number = {}, None, set(), 0
     while True:
         started, utc = time.monotonic(), timestamp()
@@ -182,11 +281,20 @@ async def initialize_catalog(session, protocol_directory, prefix=""):
             request = session.list_tools() if cursor is None else session.list_tools(cursor=cursor)
         raw = serialize(await asyncio.wait_for(request, 120))
         number += 1
-        write_json(protocol_directory / f"{prefix}catalog_{number:03d}.json", {
-            "cursor": cursor, "response": raw, "started_utc": utc, "ended_utc": timestamp(),
-            "elapsed_s": time.monotonic() - started,
-            "request": {"method": "tools/list", "params": {} if cursor is None else {"cursor": cursor}},
-        })
+        write_json(
+            protocol_directory / f"{prefix}catalog_{number:03d}.json",
+            {
+                "cursor": cursor,
+                "response": raw,
+                "started_utc": utc,
+                "ended_utc": timestamp(),
+                "elapsed_s": time.monotonic() - started,
+                "request": {
+                    "method": "tools/list",
+                    "params": {} if cursor is None else {"cursor": cursor},
+                },
+            },
+        )
         for tool in raw.get("tools", []):
             if tool["name"] in catalog:
                 raise Stop(f"Duplicate catalog tool {tool['name']}")
@@ -209,7 +317,7 @@ def complex_curve(data):
         raise Stop("Full S11 unexpectedly contains a preview")
     if not all(math.isfinite(v) for v in [*x, *real, *imag]):
         raise Stop("Full S11 contains nonfinite raw samples")
-    if not re.search(r"\bGHz\b", data.get("xlabel", data.get("frequency_unit", "")), re.I):
+    if not re.search(r"\bGHz\b", data.get("xlabel", data.get("frequency_unit", "")), re.IGNORECASE):
         raise Incomplete("S11 frequency unit is not verified as GHz")
     return list(x), [complex(r, i) for r, i in zip(real, imag)]
 
@@ -230,7 +338,8 @@ def derive(values):
     return {
         "mag": magnitudes,
         "db": [20 * math.log10(v) if v else None for v in magnitudes],
-        "phase": phases, "unwrapped": unwrapped,
+        "phase": phases,
+        "unwrapped": unwrapped,
         "vswr": [(1 + v) / (1 - v) if v < 1 else None for v in magnitudes],
         "z": [50 * (1 + v) / (1 - v) if abs(1 - v) > 1e-15 else None for v in values],
         "undefined": "null dB at zero, null phase at zero, null VSWR at |S|>=1, null Z at S=1",
@@ -239,7 +348,7 @@ def derive(values):
 
 def bandwidth(x, values, threshold_db=-10):
     """Interpolate MAGNITUDE crossings, preserving all intervals and edge flags."""
-    if len(x) < 2 or any(b <= a for a, b in zip(x, x[1:])):
+    if len(x) < 2 or any(b <= a for a, b in pairwise(x)):
         raise Incomplete("Bandwidth requires strictly increasing frequencies without duplicates")
     limit = 10 ** (threshold_db / 20)
     mag = [abs(v) for v in values]
@@ -252,12 +361,24 @@ def bandwidth(x, values, threshold_db=-10):
             if after:
                 start = crossing
             else:
-                bands.append({"f_lower_ghz": start, "f_upper_ghz": crossing,
-                              "lower_truncated": start == x[0], "upper_truncated": False})
+                bands.append(
+                    {
+                        "f_lower_ghz": start,
+                        "f_upper_ghz": crossing,
+                        "lower_truncated": start == x[0],
+                        "upper_truncated": False,
+                    }
+                )
                 start = None
     if start is not None:
-        bands.append({"f_lower_ghz": start, "f_upper_ghz": x[-1],
-                      "lower_truncated": start == x[0], "upper_truncated": True})
+        bands.append(
+            {
+                "f_lower_ghz": start,
+                "f_upper_ghz": x[-1],
+                "lower_truncated": start == x[0],
+                "upper_truncated": True,
+            }
+        )
     return bands
 
 
@@ -280,11 +401,13 @@ def compare(actual, expected, tolerance=1e-5, wrapped=False):
 
 def read_text(path):
     raw = path.read_bytes()
-    return raw.decode("utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig", errors="replace")
+    return raw.decode(
+        "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig", errors="replace"
+    )
 
 
 def touchstone(path):
-    header, rows, tokens = None, [], []
+    header, tokens = None, []
     for line in read_text(path).splitlines():
         line = line.split("!", 1)[0].strip()
         if not line:
@@ -305,13 +428,25 @@ def touchstone(path):
     x, values = [], []
     for f, a, b in zip(tokens[::3], tokens[1::3], tokens[2::3]):
         x.append(f * scales[header[0]])
-        values.append(complex(a, b) if header[2] == "RI" else cmath.rect(
-            a if header[2] == "MA" else 10 ** (a / 20), math.radians(b)))
-    if not all(math.isfinite(v) for v in [*x, *(v.real for v in values), *(v.imag for v in values)]):
+        values.append(
+            complex(a, b)
+            if header[2] == "RI"
+            else cmath.rect(a if header[2] == "MA" else 10 ** (a / 20), math.radians(b))
+        )
+    if not all(
+        math.isfinite(v) for v in [*x, *(v.real for v in values), *(v.imag for v in values)]
+    ):
         raise Stop("Nonfinite Touchstone sample")
-    return {"header": header, "frequency_unit": header[0], "representation": header[2],
-            "reference_ohm": float(header[4]), "ports": 1, "x": x, "values": values,
-            "sample_count": len(x)}
+    return {
+        "header": header,
+        "frequency_unit": header[0],
+        "representation": header[2],
+        "reference_ohm": float(header[4]),
+        "ports": 1,
+        "x": x,
+        "values": values,
+        "sample_count": len(x),
+    }
 
 
 def ascii_table(path):
@@ -335,9 +470,14 @@ def ascii_table(path):
         raise Incomplete("Inconsistent numeric column count")
     if not all(math.isfinite(v) for row in rows for v in row):
         raise Incomplete("Nonfinite ASCII values require explicit assessment")
-    return {"header": "\n".join(headers), "delimiter": delimiter, "rows": rows,
-            "sample_count": len(rows), "columns": len(rows[0]),
-            "extension_mismatch": path.suffix.lower() == ".csv" and delimiter != ","}
+    return {
+        "header": "\n".join(headers),
+        "delimiter": delimiter,
+        "rows": rows,
+        "sample_count": len(rows),
+        "columns": len(rows[0]),
+        "extension_mismatch": path.suffix.lower() == ".csv" and delimiter != ",",
+    }
 
 
 def ffs_source(path):
@@ -347,7 +487,9 @@ def ffs_source(path):
     fields, counts, frequencies, in_fields = [], None, [], False
     for i, line in enumerate(lines):
         lower = line.lower()
-        following = next((s.strip() for s in lines[i + 1:] if s.strip() and not s.strip().startswith("//")), "")
+        following = next(
+            (s.strip() for s in lines[i + 1 :] if s.strip() and not s.strip().startswith("//")), ""
+        )
         if "phi" in lower and "theta" in lower and ("samples" in lower or "total #" in lower):
             try:
                 pair = [int(v) for v in following.split()]
@@ -357,7 +499,7 @@ def ffs_source(path):
                 pass
         if "frequency" in lower and "power" in lower:
             numbers = []
-            for block_line in lines[i + 1:]:
+            for block_line in lines[i + 1 :]:
                 stripped = block_line.strip()
                 if stripped.startswith("//"):
                     break
@@ -380,7 +522,11 @@ def ffs_source(path):
                     frequencies.append(numbers[-1])
             except ValueError:
                 pass
-        if "phi" in lower and "theta" in lower and re.search(r"re\s*\(|im\s*\(|e_theta|e_phi", lower):
+        if (
+            "phi" in lower
+            and "theta" in lower
+            and re.search(r"re\s*\(|im\s*\(|e_theta|e_phi", lower)
+        ):
             in_fields = True
             continue
         if in_fields and line.strip() and not line.strip().startswith("//"):
@@ -394,27 +540,41 @@ def ffs_source(path):
         raise Incomplete("FFS contains no declared numerical complex vector-field section")
     finite = all(math.isfinite(v) for row in fields for v in row)
     angles = all(0 <= row[0] <= 360 and 0 <= row[1] <= 180 for row in fields)
-    return {"format": "native FFS complex field source", "header": "\n".join(s for s in lines if s.strip().startswith("//")),
-            "data_type_farfield": bool(re.search(r"(?is)data\s*type[^\n]*\n\s*farfield", text)),
-            "declared_phi_theta_counts": counts, "sample_count": len(fields),
-            "counts_match": counts is not None and counts[0] * counts[1] == len(fields),
-            "frequency_raw_hz": frequencies, "frequency_ghz": [v / 1e9 for v in frequencies],
-            "angular_order": "phi, theta", "finite_field_components": finite, "angles_valid": angles,
-            "quantity": "complex Etheta and Ephi field components, not gain", "units": "native FFS field-source normalization",
-            "source_reuse_tested": False}
+    return {
+        "format": "native FFS complex field source",
+        "header": "\n".join(s for s in lines if s.strip().startswith("//")),
+        "data_type_farfield": bool(re.search(r"(?is)data\s*type[^\n]*\n\s*farfield", text)),
+        "declared_phi_theta_counts": counts,
+        "sample_count": len(fields),
+        "counts_match": counts is not None and counts[0] * counts[1] == len(fields),
+        "frequency_raw_hz": frequencies,
+        "frequency_ghz": [v / 1e9 for v in frequencies],
+        "angular_order": "phi, theta",
+        "finite_field_components": finite,
+        "angles_valid": angles,
+        "quantity": "complex Etheta and Ephi field components, not gain",
+        "units": "native FFS field-source normalization",
+        "source_reuse_tested": False,
+    }
 
 
 def farfield_grid(path, expected_quantity):
     table = ascii_table(path)
     header = table["header"]
-    columns = re.findall(r"([^\[\],;\t]+?)\s*\[([^\]]+)\]", header.splitlines()[-1] if header else "")
+    columns = re.findall(
+        r"([^\[\],;\t]+?)\s*\[([^\]]+)\]", header.splitlines()[-1] if header else ""
+    )
     # Search each header line because a frequency comment can follow column names.
     for line in header.splitlines():
         candidate = re.findall(r"([^\[\],;\t]+?)\s*\[([^\]]+)\]", line)
         if len(candidate) >= 3 and "theta" in candidate[0][0].lower():
             columns = candidate
             break
-    if len(columns) < 3 or "theta" not in columns[0][0].lower() or "phi" not in columns[1][0].lower():
+    if (
+        len(columns) < 3
+        or "theta" not in columns[0][0].lower()
+        or "phi" not in columns[1][0].lower()
+    ):
         raise Incomplete("Farfield angular definitions are not proven by the header")
     if not all("deg" in columns[i][1].lower() for i in (0, 1)):
         raise Incomplete("Farfield angle units are unverified")
@@ -423,8 +583,11 @@ def farfield_grid(path, expected_quantity):
         "abs(grlz)": "realized_gain",
         "abs(dir.)": "directivity",
     }.get(re.sub(r"\s+", "", name).lower())
-    quantity = "realized_gain" if re.search(r"reali[sz]ed\s*gain", name, re.I) else (
-        "directivity" if "directivity" in name.lower() else native_quantity or "unknown")
+    quantity = (
+        "realized_gain"
+        if re.search(r"reali[sz]ed\s*gain", name, re.IGNORECASE)
+        else ("directivity" if "directivity" in name.lower() else native_quantity or "unknown")
+    )
     if quantity != expected_quantity:
         raise Incomplete(f"Expected {expected_quantity}, original header proves {quantity}: {name}")
     if unit.strip().lower() not in {"dbi", "linear", "1"}:
@@ -434,8 +597,11 @@ def farfield_grid(path, expected_quantity):
         if len(row) < 3 or not 0 <= row[0] <= 180 or not 0 <= row[1] <= 360:
             raise Incomplete("Angular grid is not theta 0..180 and phi 0..360")
         key = (row[0], row[1] % 360)
-        value = row[2] if unit.strip().lower() == "dbi" else (
-            10 * math.log10(row[2]) if row[2] > 0 else -math.inf)
+        value = (
+            row[2]
+            if unit.strip().lower() == "dbi"
+            else (10 * math.log10(row[2]) if row[2] > 0 else -math.inf)
+        )
         if key in grid:
             seam += 1
             if abs(grid[key] - value) > 1e-5:
@@ -445,16 +611,26 @@ def farfield_grid(path, expected_quantity):
     theta, phi = sorted({k[0] for k in grid}), sorted({k[1] for k in grid})
     if len(theta) < 3 or len(phi) < 2 or len(grid) != len(theta) * len(phi):
         raise Incomplete("Farfield grid is incomplete")
-    dt = [b - a for a, b in zip(theta, theta[1:])]
-    dp = [b - a for a, b in zip(phi, phi[1:])] + [360 + phi[0] - phi[-1]]
+    dt = [b - a for a, b in pairwise(theta)]
+    dp = [b - a for a, b in pairwise(phi)] + [360 + phi[0] - phi[-1]]
     if theta[0] != 0 or theta[-1] != 180 or max(dt) - min(dt) > 1e-6 or max(dp) - min(dp) > 1e-6:
         raise Incomplete("Farfield sphere coverage or step is incomplete")
     if conflicts:
         raise Stop("Farfield seam duplicates disagree")
-    return {"quantity": quantity, "unit": unit, "theta": theta, "phi": phi, "grid": grid,
-            "step_theta": dt[0], "step_phi": dp[0], "seam_duplicates": seam,
-            "pole_samples": sum(t in (0, 180) for t, p in grid), "sample_count": len(grid),
-            "header": header, "delimiter": table["delimiter"]}
+    return {
+        "quantity": quantity,
+        "unit": unit,
+        "theta": theta,
+        "phi": phi,
+        "grid": grid,
+        "step_theta": dt[0],
+        "step_phi": dp[0],
+        "seam_duplicates": seam,
+        "pole_samples": sum(t in (0, 180) for t, p in grid),
+        "sample_count": len(grid),
+        "header": header,
+        "delimiter": table["delimiter"],
+    }
 
 
 def dipole_physics(grid):
@@ -466,9 +642,8 @@ def dipole_physics(grid):
     maximum = max(cut)
     crossing = []
     for a, b, va, vb in zip(theta, theta[1:], cut, cut[1:]):
-        if (va >= maximum - 3) != (vb >= maximum - 3):
-            if math.isfinite(va) and math.isfinite(vb):
-                crossing.append(a + (b - a) * (maximum - 3 - va) / (vb - va))
+        if (va >= maximum - 3) != (vb >= maximum - 3) and math.isfinite(va) and math.isfinite(vb):
+            crossing.append(a + (b - a) * (maximum - 3 - va) / (vb - va))
     hpbw = crossing[1] - crossing[0] if len(crossing) == 2 else None
     pole = max(values[(t, p)] for t in (0, 180) for p in phi)
     usable = []
@@ -479,12 +654,21 @@ def dipole_physics(grid):
         ideal = abs(math.cos(math.pi / 2 * math.cos(radians)) / math.sin(radians))
         if ideal > 0:
             usable.append(abs((v - maximum) - 20 * math.log10(ideal)))
-    return {"peak_dbi": peak, "hpbw_deg": hpbw, "broadside_peak_db": broadside,
-            "max_theta_distance_deg": max(abs(t - 90) for (t, p), v in values.items() if v >= peak - 1e-6),
-            "axial_suppression_db": broadside - pole if broadside is not None else None,
-            "azimuth_ripple_db": max(values[(90, p)] for p in phi) - min(values[(90, p)] for p in phi) if 90 in theta else None,
-            "shape_max_error_db_above_minus20": max(usable) if usable else None,
-            "shape_samples": len(usable), "pole_limit_ideal": 0}
+    return {
+        "peak_dbi": peak,
+        "hpbw_deg": hpbw,
+        "broadside_peak_db": broadside,
+        "max_theta_distance_deg": max(
+            abs(t - 90) for (t, p), v in values.items() if v >= peak - 1e-6
+        ),
+        "axial_suppression_db": broadside - pole if broadside is not None else None,
+        "azimuth_ripple_db": max(values[(90, p)] for p in phi) - min(values[(90, p)] for p in phi)
+        if 90 in theta
+        else None,
+        "shape_max_error_db_above_minus20": max(usable) if usable else None,
+        "shape_samples": len(usable),
+        "pole_limit_ideal": 0,
+    }
 
 
 def sphere_mean(grid):

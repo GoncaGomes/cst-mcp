@@ -1492,12 +1492,11 @@ class CSTSession:
 
         # An explicit monitor must not fall back to a different monitor at the
         # same frequency, including a different excitation-port suffix.
-        candidates = farfield_tree_candidates(
-            None if monitor_name else frequency_ghz, monitor_name
-        )
+        candidates = farfield_tree_candidates(None if monitor_name else frequency_ghz, monitor_name)
         if frequency_ghz is not None:
             candidates = [
-                tree for tree in candidates
+                tree
+                for tree in candidates
                 if (tree_frequency := extract_frequency_ghz(tree)) is None
                 or math.isclose(tree_frequency, frequency_ghz, rel_tol=0, abs_tol=1e-9)
             ]
