@@ -12,7 +12,7 @@ Read local CST Python/VBA help and complex saved results without opening CST.
 | `cst_search_help` | Full-text search of the installed official CST Python/VBA help (offline; does not start CST). Every query word must appear in the topic's… |
 | `cst_read_help` | Read a paginated official local CST help topic returned by cst_search_help. No GUI or solver. |
 | `cst_list_saved_results` | List exact result tree paths and run IDs from a saved, unpacked, completed .cst file using cst.results. No connection or CST GUI is requi… |
-| `cst_read_saved_result` | Read a complete complex 1D curve by exact tree path and run_id from a completed saved .cst, without opening CST. Raw real/imag are preser… |
+| `cst_read_saved_result` | Read a complete complex 1D curve or native 0D scalar by exact tree path and run ID. A scalar without a native x-axis retains `x=[]`, `n=1` and `native_result_type="0D"`. No coordinate or unit is invented. |
 
 ### Explicit connection (2)
 
@@ -119,7 +119,7 @@ Metals, dielectrics, and advanced material models.
 | `cst_create_material` | Create a new material with electromagnetic properties in CST Studio. Specify relative permittivity (epsilon), relative permeability (mu),… |
 | `cst_create_lossy_metal` | Create a lossy metal material in CST Studio. Lossy metals model finite conductivity skin-effect losses, essential for accurate loss calcu… |
 | `cst_create_anisotropic_material` | Create an anisotropic material with per-axis permittivity, permeability, and loss tangent values. Used for crystals, metamaterials, and c… |
-| `cst_load_material` | Load a material from the CST material library by its library name. The material is added to the project under the given name. |
+| `cst_load_material` | Import all properties from a native CST `.mtd` library definition under the requested project name. Optionally select a library directory with `library_path`. |
 | `cst_list_materials` | List available materials from the bundled material database. Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. Ret… |
 | `cst_assign_material` | Assign a material to an existing solid in CST Studio. The solid is specified as 'Component:SolidName'. |
 | `cst_get_material_info` | Get electromagnetic properties of a material from the bundled database. Returns epsilon_r, mu_r, conductivity, loss tangent, and usage no… |
@@ -132,13 +132,43 @@ Metals, dielectrics, and advanced material models.
 | `cst_create_cole_cole_material` | Create a Cole-Cole dispersive material. Generalisation of the Debye model with a distribution parameter alpha (0-1) that broadens the rel… |
 | `cst_list_ferrite_materials` | List available ferrite materials from the bundled database. Returns name, permittivity, saturation magnetisation, linewidth, loss tangent… |
 
+`cst_load_material` requires `name` (the destination project material name) and
+`library_name` (a single native library entry name, such as `Copper (annealed)`,
+without the `.mtd` extension). The optional string `library_path` selects the
+directory containing native `.mtd` files, rather than an individual file.
+Otherwise, the directory is `client.config.cst_path / "Library" / "Materials"`.
+If the installation path is unavailable, configure `CST_PATH` or supply
+`library_path`.
+
+The tool reads `<library_name>.mtd` and imports the complete `[Definition]`
+section in command order, including frequency regimes, units, electromagnetic,
+thermal, mechanical, and appearance properties. Later metadata sections are
+excluded. A single `Material` history block starts with `.Reset`, the requested
+`.Name`, and `.Folder ""`, then includes the native commands and their terminating
+`.Create`. Source identity settings cannot override the requested name.
+Missing or unreadable files and malformed or unsupported definitions return
+errors without a fallback material. The block uses the existing VBA execution
+route and preserves its execution errors and offline status.
+
+```json
+{"name": "DipoleCopper", "library_name": "Copper (annealed)"}
+```
+
+```json
+{
+  "name": "DipoleCopper",
+  "library_name": "Copper (annealed)",
+  "library_path": "C:\\Program Files (x86)\\CST Studio Suite 2025\\Library\\Materials"
+}
+```
+
 ### Ports & excitations (8)
 
 Waveguide, discrete, plane wave, Floquet…
 
 | Tool | What it does |
 |------|--------------|
-| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Defines a port face on the boundary of the simulation domain for guided-wave excitation.… |
+| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Optional `port_on_bound` defaults to `true`. Set it to `false` with `coordinates="Free"` to preserve the supplied normal coordinate inside the domain. CST ignores this setting for picked ports. `mode_number` is the number of calculated modes. |
 | `cst_add_discrete_port` | Add a discrete (lumped) port between two points. Used for circuit-level excitation with a defined impedance. |
 | `cst_add_lumped_element` | Add a lumped R, L, C, or RLC element between two points. Value is in ohms for R, henries for L, farads for C. |
 | `cst_add_plane_wave` | Add a plane wave excitation source. Defines an incident plane wave with given direction and polarization for scattering / RCS analysis. |
@@ -169,7 +199,7 @@ Mesh type, density, refinement, adaptive meshing.
 | `cst_set_mesh_type` | Set the mesh type for the simulation. Hexahedral is used for time-domain, Tetrahedral for frequency-domain, Surface for integral-equation… |
 | `cst_set_mesh_density` | Set global mesh density parameters controlling automatic mesh generation. Higher cells_per_wavelength gives finer mesh and better accurac… |
 | `cst_add_mesh_refinement` | Add local mesh refinement to a specific solid. This creates finer mesh around critical geometry features like feed points, gaps, or thin … |
-| `cst_set_adaptive_mesh` | Configure adaptive mesh refinement. When enabled, the solver runs multiple passes, refining the mesh in regions of high field gradient un… |
+| `cst_set_adaptive_mesh` | Configure time-domain adaptive mesh refinement, the maximum pass count, and the linear complex S-parameter difference threshold (0 to 1). |
 | `cst_get_mesh_info` | Get current mesh statistics and settings. In connected mode this queries the live mesh data; in offline mode it returns the VBA to retrie… |
 | `cst_get_mesh_quality` | Extract mesh quality metrics including total cells, aspect ratios, and cells per wavelength. In connected mode this queries actual mesh s… |
 | `cst_set_pml_properties` | Configure PML (Perfectly Matched Layer) absorbing boundary properties. Controls the number of absorbing layers and the target reflection … |
@@ -182,13 +212,54 @@ Time domain, frequency domain, eigenmode, IE…
 | Tool | What it does |
 |------|--------------|
 | `cst_configure_time_domain_solver` | Configure the time domain (transient) solver. This is CST's flagship solver for broadband simulations — it excites the structure with a p… |
-| `cst_configure_frequency_domain_solver` | Configure the frequency domain solver. Best for narrowband problems, resonant structures, and when field distributions at specific freque… |
+| `cst_configure_frequency_domain_solver` | Configure CST 2025 volume-mesh frequency-domain methods, native sampling intervals, adaptation, monitor samples and impedance normalization. Does not start a solve. |
 | `cst_configure_eigenmode_solver` | Configure the eigenmode solver. Computes resonant frequencies and field distributions of cavity structures. Used for filter design, reson… |
 | `cst_configure_integral_equation_solver` | Configure the integral equation (IE) solver. Best for electrically large, open-boundary problems like antenna placement on vehicles, RCS … |
 | `cst_get_solver_info` | Get current solver configuration and status. In connected mode this queries the active solver settings; in offline mode it describes expe… |
 | `cst_configure_eigenmode_advanced` | Advanced eigenmode solver configuration for higher-order modes. Use this for waveguide mode analysis, cavity resonator design, and filter… |
 | `cst_configure_ie_solver_advanced` | Advanced Integral Equation solver configuration for electrically large structures. Provides control over preconditioner, MLFMM accelerati… |
 | `cst_configure_multilayer_solver` | Configure the solver for planar multilayer structures. Optimised for antenna-on-PCB, frequency selective surfaces (FSS), and radome analy… |
+
+#### Frequency-domain configuration
+
+`cst_configure_frequency_domain_solver` retains required `f_min` and `f_max` in
+the project's frequency unit, conventionally GHz. It sets the global interval
+through the documented `Solver.FrequencyRange` route. It does not call
+`FDSolver.FrequencyMin`, `FrequencyMax`, `Accuracy`, `Samples` or `SweepType`.
+
+| Argument | Default | Native mapping |
+| --- | --- | --- |
+| `accuracy` | 1e-6 | `AccuracyTet` or `AccuracyHex`, residual target from 1e-12 to 1e-3 |
+| `samples` | 1001 | At least 2, interpreted according to the sweep table below |
+| `sweep_type` | `Interpolated` | `SetMethod` sweep selection |
+| `mesh_type` | `Tetrahedral` | `Tetrahedral` or `Hexahedral` volume mesh in `SetMethod` |
+| `adaptive_mesh` | true | `MeshAdaptionTet` or `MeshAdaptionHex`, plus the interval adaptation flag |
+| `include_monitor_frequencies` | true | `AddMonitorSamples`, which can add solved frequencies |
+| `normalize_to_fixed_impedance` | true | Emits `AutoNormImpedance=False` when true |
+| `fixed_impedance` | 50 | Positive `NormingImpedance` in ohms |
+
+| Exposed sweep | Native method | Sampling semantics |
+| --- | --- | --- |
+| `Discrete` | `Discrete samples only` | `AddSampleInterval` with `Equidistant` and the requested solved-sample count. Broadband interpolation is disabled. |
+| `Interpolated` | `Fast reduced order model` | Tetrahedral only. `Automatic` interval sampling uses `samples` as the solved-sample cap. `SetNumberOfResultDataSamples` sets the interpolated output count. |
+| `General purpose` | `General purpose` | Either volume mesh. `Automatic` interval sampling uses `samples` as the solved-sample cap. `SetNumberOfResultDataSamples` sets the interpolated output count. |
+
+All choices call `ResetSampleIntervals("all")` before adding their interval.
+Automatic frequency sampling is distinct from adaptive mesh refinement.
+Interpolated output points are not independently solved frequency samples.
+Enabled monitor frequencies can increase the total number of solved samples.
+Native execution errors and offline responses are preserved.
+
+The installed CST 2025 FDSolver help describes `AutoNormImpedance=False` as using
+the stimulation-port impedance and says `NormingImpedance` is considered when
+the flag is true. The rectangular patch baseline explicitly requests false and
+`NormingImpedance=50` with a 50 ohm discrete port. The exposed normalization
+option emits that requested flag convention. Do not infer actual normalization
+from it alone. Validate the native curve against the 50 ohm Touchstone export.
+
+The documented source is
+`Online Help/mergedProjects/VBA_3D/special_vbasolver/special_vbasolver_fdsolver_object.htm`
+in the selected CST 2025 installation.
 
 ### Simulation control (7)
 
@@ -213,12 +284,12 @@ S-parameters, far-field, VSWR, gain, Smith, bandwidth…
 | `cst_get_s_parameters` | Extract S-parameter results from a completed CST simulation. Returns S-parameter data (magnitude, phase, real/imaginary) for the specifie… |
 | `cst_get_farfield` | Get far-field radiation pattern results from a completed CST simulation at a specific frequency. Returns gain, directivity, radiation eff… |
 | `cst_add_field_monitor` | Add a field monitor at a specific frequency to the CST project. Field monitors must be defined before running a simulation to capture fie… |
-| `cst_get_impedance` | Get input impedance (Z-parameters) for a port from a completed CST simulation. Returns real and imaginary impedance vs frequency. Useful … |
+| `cst_get_impedance` | Return complex impedance: `mode=input` (default) derives Zin from Spp using `z0` (default 50 ohms) with other ports matched; `mode=z_parameter` reads native Zpp with other ports open-circuited. Includes source and assumptions. |
 | `cst_get_vswr` | Get Voltage Standing Wave Ratio (VSWR) for a port from a completed CST simulation. VSWR indicates impedance matching quality: 1.0 is perf… |
 | `cst_get_gain` | Get antenna gain at a specific frequency from a completed CST simulation. Returns peak gain in dBi and the direction (theta, phi) of maxi… |
 | `cst_get_efficiency` | Get antenna radiation efficiency from a completed CST simulation at a specific frequency. Returns total efficiency (including mismatch), … |
 | `cst_list_results` | List all available results in the CST result tree. Optionally specify a subtree path to narrow the listing. Useful for discovering what s… |
-| `cst_export_result` | Export a simulation result to a file (CSV, Touchstone, or text). Specify the result tree path and desired output format. Useful for post-… |
+| `cst_export_result` | Export results as CSV, Touchstone or text. E/H field CSV/TXT exports use configurable `field_samples` (`x`, `y`, `z`; default 32 each), and report the sampling settings used. |
 | `cst_get_result_summary` | Get a summary of all key simulation results from a completed CST simulation. Returns an overview of S-parameters, gain, efficiency, and i… |
 | `cst_get_s_parameter_phase` | Extract S-parameter phase response from a completed CST simulation. Returns the phase of the specified S-parameter vs frequency. Optional… |
 | `cst_get_group_delay` | Compute group delay from S-parameter phase for a port pair. Group delay is defined as tau = -d(phase)/d(2*pi*f) and represents the signal… |

@@ -9,6 +9,7 @@ from pathlib import Path
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
+from cst_mcp.material_library import load_material_vba
 from cst_mcp.validators import (
     ValidationError,
     validate_name,
@@ -162,8 +163,9 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_load_material",
         description=(
-            "Load a material from the CST material library by its library name. "
-            "The material is added to the project under the given name."
+            "Load a native CST .mtd material definition and all its properties under "
+            "the given project name. Uses CST_PATH/Library/Materials by default, "
+            "or the directory supplied as library_path."
         ),
         inputSchema={
             "type": "object",
@@ -175,6 +177,13 @@ TOOLS: list[Tool] = [
                 "library_name": {
                     "type": "string",
                     "description": "Name in the CST library (e.g. 'Copper (annealed)')",
+                },
+                "library_path": {
+                    "type": "string",
+                    "description": (
+                        "Directory containing native .mtd material files. "
+                        "Overrides the configured CST installation's Library/Materials directory."
+                    ),
                 },
             },
             "required": ["name", "library_name"],
@@ -786,7 +795,12 @@ def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
     library_name = args["library_name"]
 
-    vba = VBABuilder("Material").call_with_args("LoadMaterial", library_name, mat_name).build()
+    vba = load_material_vba(
+        mat_name,
+        library_name,
+        cst_path=client.config.cst_path,
+        library_path=args.get("library_path"),
+    )
 
     result = client.execute_vba(vba)
     return [

@@ -1483,19 +1483,35 @@ class CSTSession:
         filepath: str | Path | None = None,
         monitor_name: str | None = None,
     ) -> dict[str, Any]:
-        """Export farfield data via tree ASCIIExport with aggressive path discovery."""
+        """Export farfield data without substituting a requested monitor or frequency."""
         from cst_mcp.execution.farfield import (
+            extract_frequency_ghz,
             farfield_tree_candidates,
             parse_farfield_pattern_csv,
         )
 
-        candidates = farfield_tree_candidates(frequency_ghz, monitor_name)
-        # Enrich from disk discovery
+        # An explicit monitor must not fall back to a different monitor at the
+        # same frequency, including a different excitation-port suffix.
+        candidates = farfield_tree_candidates(None if monitor_name else frequency_ghz, monitor_name)
+        if frequency_ghz is not None:
+            candidates = [
+                tree
+                for tree in candidates
+                if (tree_frequency := extract_frequency_ghz(tree)) is None
+                or math.isclose(tree_frequency, frequency_ghz, rel_tol=0, abs_tol=1e-9)
+            ]
         discovered = self.discover_farfield_monitors().get("monitors") or []
-        for mon in discovered:
-            for c in mon.get("tree_candidates") or []:
-                if c not in candidates:
-                    candidates.insert(0, c)
+        if not monitor_name:
+            for mon in discovered:
+                mon_frequency = mon.get("frequency_ghz")
+                if frequency_ghz is not None and (
+                    mon_frequency is None
+                    or not math.isclose(mon_frequency, frequency_ghz, rel_tol=0, abs_tol=1e-9)
+                ):
+                    continue
+                for tree in mon.get("tree_candidates") or []:
+                    if tree not in candidates:
+                        candidates.append(tree)
 
         out = (
             Path(filepath)

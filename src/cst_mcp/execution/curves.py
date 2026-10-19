@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import math
 from itertools import pairwise
+from numbers import Number
 from typing import Any
 
 
@@ -20,9 +21,18 @@ def read_curve(
         project = cst.results.ProjectFile(project_path, allow_interactive=allow_interactive)
         module = project.get_3d()
         item = module.get_result_item(tree_path, run_id)
-        x = [float(v) for v in item.get_xdata()]
-        values = [complex(v) for v in item.get_ydata()]
-        if not x or len(x) != len(values):
+        # CST can return a scalar axis for a single native result sample.
+        # Preserve that actual sample without inventing a coordinate or unit.
+        x_data, y_data = item.get_xdata(), item.get_ydata()
+        x_samples = [] if x_data is None else [x_data] if isinstance(x_data, Number) else x_data
+        y_samples = [y_data] if isinstance(y_data, Number) else y_data
+        x = [float(v) for v in x_samples]
+        values = [complex(v) for v in y_samples]
+        scalar_result = not x and isinstance(y_data, Number)
+        if scalar_result:
+            if len(values) != 1:
+                raise ValueError("Scalar native result must contain exactly one value")
+        elif not x or len(x) != len(values):
             raise ValueError("Empty or mismatched result axes")
         if not all(math.isfinite(v) for v in x):
             raise ValueError("Non-finite x samples")
@@ -34,7 +44,8 @@ def read_curve(
             "project_path": project_path,
             "tree_path": tree_path,
             "run_id": run_id,
-            "n": len(x),
+            "n": len(values),
+            "native_result_type": "0D" if scalar_result else "1D",
             "x": x,
             "real": [v.real for v in values],
             "imag": [v.imag for v in values],
@@ -86,6 +97,37 @@ def format_curve(data: dict, fmt: str = "real_imag", unwrap: bool = False) -> di
         )
     else:
         return {"status": "error", "message": f"Unsupported curve format: {fmt}"}
+    return out
+
+
+def input_impedance(data: dict, z0: float = 50) -> dict:
+    """Convert Spp to driving-point impedance with the other ports matched."""
+    if data.get("status") != "ok":
+        return dict(data)
+    out = derived_s(data, "cst_get_smith_chart_data", {"z0": z0})
+    real = out.pop("impedance_real")
+    imag = out.pop("impedance_imag")
+    if not all(v is None or math.isfinite(v) for v in [*real, *imag]):
+        raise ValueError("Derived impedance exceeds the finite numeric range")
+    out.update(
+        real=real,
+        imag=imag,
+        y=[None if r is None else [r, i] for r, i in zip(real, imag)],
+        format="real_imag",
+        data_type="input_impedance",
+        unit="ohm",
+        source="derived_from_s_parameters",
+        source_api=data.get("source"),
+        source_tree_path=data.get("tree_path"),
+        source_title=data.get("title"),
+        title="Input impedance",
+        ylabel="Input impedance / ohm",
+        impedance_mode="input",
+        formula="Zin = z0 * (1 + Spp) / (1 - Spp)",
+        assumption="z0 must match the scalar real reference impedance of the source S-parameters",
+        other_ports="Terminated in their S-parameter reference impedances",
+        singular_value="null when abs(1-Spp) <= 1e-15",
+    )
     return out
 
 

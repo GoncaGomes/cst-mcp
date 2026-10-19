@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from cst_mcp.config import CSTConfig
 from cst_mcp.execution.farfield import (
     build_farfield_metrics_vba,
     discover_farfield_from_project_dir,
@@ -15,6 +16,7 @@ from cst_mcp.execution.farfield import (
     parse_farfield_metrics_kv,
     parse_farfield_summary_text,
 )
+from cst_mcp.session import CSTSession
 
 
 def test_extract_frequency():
@@ -105,6 +107,53 @@ def test_discover_from_project_dir(tmp_path: Path):
     found = discover_farfield_from_project_dir(str(proj))
     assert found
     assert found[0]["frequency_ghz"] == 2.45
+
+
+@pytest.mark.parametrize(
+    "frequency,monitor,expected_tree",
+    [
+        (1, None, r"Farfields\farfield (f=1) [1]"),
+        (1, "farfield (f=1)", r"Farfields\farfield (f=1) [1]"),
+        (1.05, None, None),
+        (1, "missing monitor", None),
+        (1, "farfield (f=1) [2]", None),
+        (1, "farfield (f=1.1)", None),
+        (None, "farfield (f=0.9)", r"Farfields\farfield (f=0.9) [1]"),
+        (None, None, r"Farfields\farfield (f=0.9) [1]"),
+    ],
+)
+def test_farfield_export_respects_requested_frequency_and_monitor(
+    tmp_path, monkeypatch, frequency, monitor, expected_tree
+):
+    session = CSTSession(CSTConfig(work_dir=tmp_path))
+    monitors = [
+        {
+            "monitor_name": f"farfield (f={f:g})",
+            "frequency_ghz": f,
+            "tree_candidates": farfield_tree_candidates(f),
+        }
+        for f in (0.9, 1, 1.1)
+    ]
+    available = {m["tree_candidates"][0] for m in monitors}
+    attempted = []
+    monkeypatch.setattr(session, "discover_farfield_monitors", lambda: {"monitors": monitors})
+
+    def export(tree, path):
+        attempted.append(tree)
+        if tree not in available:
+            return {"status": "error", "message": "tree path not found", "tree_path": tree}
+        Path(path).write_text("theta,phi,gain\n90,0,2\n", encoding="utf-8")
+        return {"status": "exported", "path": path, "tree_path": tree}
+
+    monkeypatch.setattr(session, "export_tree_csv", export)
+    result = session.export_farfield_ascii(frequency, monitor_name=monitor)
+    if expected_tree is None:
+        assert result["status"] == "error"
+        assert not (set(attempted) & available)
+    else:
+        assert result["status"] == "exported"
+        assert result["tree_path"] == expected_tree
+        assert attempted == [expected_tree]
 
 
 def test_farfield_vba_uses_only_documented_cst2026_farfieldplot_methods():
@@ -205,7 +254,8 @@ async def test_export_farfield_connected_csv_uses_silent_documented_path():
 
 
 @pytest.mark.asyncio
-async def test_export_farfield_ffs_tries_port_suffixed_tree_names():
+@pytest.mark.parametrize("monitor", [None, "farfield (f=2.4)", r"Farfields\farfield (f=2.4)"])
+async def test_export_farfield_ffs_tries_port_suffixed_tree_names(monitor):
     """Live CST 2026: the TD farfield item is 'farfield (f=2.4) [1]'."""
     import json as _json
     from types import SimpleNamespace
@@ -224,7 +274,12 @@ async def test_export_farfield_ffs_tries_port_suffixed_tree_names():
         (
             await import_export.handle(
                 "cst_export_farfield",
-                {"file_path": "C:/x/ff.ffs", "frequency": 2.4, "format": "ffs"},
+                {
+                    "file_path": "C:/x/ff.ffs",
+                    "frequency": 2.4,
+                    "format": "ffs",
+                    **({"monitor_name": monitor} if monitor else {}),
+                },
                 client,
             )
         )[0].text
@@ -232,6 +287,52 @@ async def test_export_farfield_ffs_tries_port_suffixed_tree_names():
     assert out["status"] == "executed"
     assert out["tree_path"] == r"Farfields\farfield (f=2.4)[1]"
     assert out["tried_paths"][0] == r"Farfields\farfield (f=2.4) [1]" and len(codes) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "frequency,monitor,succeeds",
+    [
+        (2.4, "farfield (f=2.4) [1]", True),
+        (2.4, "farfield (f=2.4) [2]", False),
+        (2.4, "missing monitor", False),
+        (2.4, "farfield (f=2.5)", False),
+        (2.5, None, False),
+    ],
+)
+async def test_export_farfield_ffs_respects_monitor_frequency_and_excitation(
+    frequency, monitor, succeeds
+):
+    import json as _json
+    from types import SimpleNamespace
+
+    from cst_mcp.tools import import_export
+
+    codes = []
+
+    def silent(code, *, history_fallback):
+        assert history_fallback is False
+        codes.append(code)
+        available = r'SelectTreeItem("Farfields\farfield (f=2.4) [1]")'
+        return (
+            {"status": "executed"}
+            if available in code
+            else {"status": "error", "message": "not found"}
+        )
+
+    client = SimpleNamespace(connected=True, execute_vba_silent=silent)
+    arguments = {"file_path": "C:/x/ff.ffs", "frequency": frequency, "format": "ffs"}
+    if monitor:
+        arguments["monitor_name"] = monitor
+    out = _json.loads(
+        (await import_export.handle("cst_export_farfield", arguments, client))[0].text
+    )
+    assert out["status"] == ("executed" if succeeds else "error")
+    if succeeds:
+        assert out["tree_path"] == r"Farfields\farfield (f=2.4) [1]"
+        assert len(codes) == 1
+    else:
+        assert all(r'SelectTreeItem("Farfields\farfield (f=2.4) [1]")' not in c for c in codes)
 
 
 # Header + first rows of a live CST 2026 ASCIIExport (patch antenna, 2.4 GHz).

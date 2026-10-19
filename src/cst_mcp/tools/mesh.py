@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 from mcp.types import TextContent, Tool
 
@@ -104,7 +105,7 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_set_adaptive_mesh",
         description=(
-            "Configure adaptive mesh refinement. When enabled, the solver runs multiple "
+            "Configure time-domain adaptive mesh refinement. When enabled, the solver runs multiple "
             "passes, refining the mesh in regions of high field gradient until the result "
             "converges within the specified threshold."
         ),
@@ -118,12 +119,21 @@ TOOLS: list[Tool] = [
                 },
                 "max_passes": {
                     "type": "integer",
-                    "description": "Maximum number of adaptive mesh refinement passes (default 3)",
+                    "description": (
+                        "Maximum adaptive refinement passes, at least 2 when enabled "
+                        "(default 3). Not applied when disabled."
+                    ),
                     "default": 3,
                 },
                 "threshold": {
                     "type": "number",
-                    "description": "Convergence threshold in dB — stop when S-parameter change is below this (default 0.02)",
+                    "description": (
+                        "Maximum linear magnitude of the complex S-parameter difference "
+                        "between successive passes, from 0 to 1 (default 0.02). "
+                        "Not applied when disabled."
+                    ),
+                    "minimum": 0,
+                    "maximum": 1,
                     "default": 0.02,
                 },
             },
@@ -255,8 +265,13 @@ def _set_mesh_type(arguments: dict, client: CSTClient) -> list[TextContent]:
     mesh_type = arguments.get("mesh_type", "")
     validate_enum_value(mesh_type, MeshType, "mesh_type")
 
+    native_mesh_type = {
+        "Hexahedral": "PBA",
+        "Hexahedral TLM": "HexahedralTLM",
+    }.get(mesh_type, mesh_type)
+
     vba = VBABuilder("Mesh")
-    vba.set("MeshType", mesh_type)
+    vba.set("MeshType", native_mesh_type)
     script = vba.build()
 
     result = client.execute_vba(script)
@@ -312,11 +327,17 @@ def _add_mesh_refinement(arguments: dict, client: CSTClient) -> list[TextContent
     validate_name(component, "component")
     validate_name(solid, "solid")
     validate_positive(refinement_factor, "refinement_factor")
+    if not math.isfinite(refinement_factor):
+        raise ValueError("refinement_factor must be finite")
 
-    vba = VBABuilder("MeshAdaption3D")
-    vba.set("Name", f"{component}:{solid}")
-    vba.set_number("RefinementFactor", refinement_factor)
-    vba.call("SetLocalRefinement")
+    vba = VBABuilder("Solid").call_with_args(
+        "SetMeshRefinement",
+        f"{component}:{solid}",
+        "False",
+        "1",
+        "True",
+        str(refinement_factor),
+    )
     script = vba.build()
 
     result = client.execute_vba(script)
@@ -333,18 +354,28 @@ def _set_adaptive_mesh(arguments: dict, client: CSTClient) -> list[TextContent]:
 
     max_passes = max(max_passes, 1)
     validate_range(max_passes, 1, 100, "max_passes")
-    validate_positive(threshold, "threshold")
+    validate_range(threshold, 0, 1, "threshold")
+    if not math.isfinite(threshold):
+        raise ValueError("threshold must be finite")
 
-    vba = VBABuilder("MeshAdaption3D")
-    vba.set_bool("Enabled", enabled)
-    vba.set_number("MaxPasses", max_passes)
-    vba.set_number("ConvergenceThreshold", threshold)
-    script = vba.build()
+    solver = VBABuilder("Solver").set_bool("MeshAdaption", enabled)
+    script = solver.build()
+    if enabled:
+        validate_range(max_passes, 2, 100, "max_passes")
+        vba = VBABuilder("MeshAdaption3D").set("SetType", "Time")
+        vba.set_number("MinPasses", 2)
+        vba.set_number("MaxPasses", max_passes)
+        vba.set_number("MaxDeltaS", threshold)
+        script = vba.build() + "\n" + script
 
     result = client.execute_vba(script)
     result["enabled"] = enabled
     result["max_passes"] = max_passes
     result["threshold"] = threshold
+    if not enabled:
+        result["notes"] = [
+            "max_passes and threshold are not applied when adaptive meshing is disabled."
+        ]
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
