@@ -788,9 +788,20 @@ print(json.dumps(out))
             for name in sorted(MANDATORY):
                 self.check(name, "not_executed", reason="Future user live execution required")
             if mismatches or any(c["verdict"] == "failed" for c in self.checks):
-                raise Stop("Preflight schema or installation checks failed")
+                raise Stop(self.prerequisite_failure())
         elif mismatches or any(c["verdict"] == "failed" for c in self.checks):
-            raise Stop("Schema or installation prerequisites failed before connecting")
+            raise Stop(self.prerequisite_failure())
+
+    def prerequisite_failure(self):
+        failed = [c["name"] for c in self.checks if c["verdict"] == "failed"]
+        return (
+            "Prerequisites failed before connecting: "
+            + "; ".join(failed)
+            + ". For numpy/matplotlib dependencies, use: uv run --extra figures "
+            + r"capabilities_test\04_antenna_simulation\run_dipole.py --preflight"
+            + ". Inspect protocol/import_probe.json and protocol/planned_manifest.json "
+            + "for installation versus schema failures."
+        )
 
     def file_state(self):
         return {

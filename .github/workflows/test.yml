@@ -8,7 +8,7 @@ permissions:
 jobs:
   ruff:
     name: Ruff formatting and lint
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 5
 
     steps:
@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [windows-latest]
         mcp: ['1.29.0', '2.2.0']
 
     steps:

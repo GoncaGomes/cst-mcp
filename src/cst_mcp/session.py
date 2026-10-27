@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from cst_mcp.config import CSTConfig
+from cst_mcp.controller_target import ControllerBinding
 from cst_mcp.dialog_handler import EducationNoticeWatcher
 from cst_mcp.vba_safety import vba_escape
 
@@ -36,6 +37,7 @@ class CSTSession:
         self._de: Any = None
         self._project: Any = None
         self._project_path: str | None = None
+        self._controller_binding: ControllerBinding | None = None
         self._last_error: str | None = None
         self._last_solver_error: str | None = None
         # Set by start_solver (async start) until a wait confirms the finish:
@@ -100,7 +102,10 @@ class CSTSession:
             return None
         try:
             pids = []
-            for item in list(lister() or []):
+            observed = lister()
+            if observed is None:
+                return None
+            for item in list(observed):
                 try:
                     pids.append(int(item))
                 except (TypeError, ValueError):
@@ -159,6 +164,8 @@ class CSTSession:
                 "message": f"Unknown connect mode {mode!r}; use one of {list(self.CONNECT_MODES)}",
             }
         if self.is_connected:
+            if mode == "new":
+                return {"status": "error", "message": "Already connected; new instance refused."}
             return {
                 "status": "connected",
                 "message": "Already connected",
@@ -261,7 +268,7 @@ class CSTSession:
                 open_projects = list(self._de.get_open_projects() or [])
             except Exception:
                 logger.debug("Handled error in session.connect", exc_info=True)
-            if open_projects and self._project is None:
+            if mode != "new" and open_projects and self._project is None:
                 active = None
                 try:
                     if self._de.has_active_project():
@@ -356,35 +363,19 @@ class CSTSession:
 
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            # Prefer a fresh unique path if target already exists (CST often refuses overwrite)
             target = Path(path)
             if target.exists():
-                alt = target.with_name(f"{target.stem}_{int(time.time())}{target.suffix}")
-                path = str(alt)
+                return {
+                    "status": "error",
+                    "message": "Destination already exists; choose explicitly.",
+                }
 
             factory = getattr(self._de, factory_name)
             project = factory()
-            try:
-                project.save(path)
-            except Exception as save_exc:
-                # Last resort: unique suffix
-                logger.debug("Handled error in session.new_project", exc_info=True)
-                stem = Path(path)
-                alt = stem.with_name(f"{stem.stem}_{int(time.time())}{stem.suffix}")
-                try:
-                    project.save(str(alt))
-                    path = str(alt)
-                except Exception:
-                    logger.debug("Handled error in session.new_project", exc_info=True)
-                    try:
-                        project.close()
-                    except Exception:
-                        logger.debug("Handled error in session.new_project", exc_info=True)
-                    return {
-                        "status": "error",
-                        "message": f"Failed to save project: {save_exc}",
-                        "path": path,
-                    }
+            self._project = project
+            # On failure the outer handler retains the live handle. Do not
+            # retry another destination, close/discard or claim rollback.
+            project.save(path)
             self._project = project
             self._project_path = path
             return {"status": "created", "path": path, "type": project_type}
@@ -1340,6 +1331,9 @@ class CSTSession:
             }
 
         out = Path(out_dir) if out_dir else (self.config.work_dir / "exports" / "views")
+        from cst_mcp.controller_target import guarded_view_export
+
+        guarded = guarded_view_export.get()
         out.mkdir(parents=True, exist_ok=True)
         # Quiet mode often yields blank identical screenshots — disable for export
         quiet_restored = False
@@ -1390,7 +1384,7 @@ class CSTSession:
         for view in views:
             script = view_scripts.get(view)
             path = out / f"view_{view}.png"
-            if path.exists():
+            if path.exists() and not guarded:
                 try:
                     path.unlink()
                 except OSError:
@@ -1408,9 +1402,13 @@ class CSTSession:
                     ]
                 )
             wrapped = f"Sub Main()\n{script}\nEnd Sub\n"
-            run = self.run_vba_silent(wrapped)
+            run = (
+                self.run_vba_silent(wrapped, history_fallback=False)
+                if guarded
+                else self.run_vba_silent(wrapped)
+            )
             # If reserved view failed, try rotate-based fallback once
-            if run.get("status") != "executed" or not path.exists():
+            if not guarded and (run.get("status") != "executed" or not path.exists()):
                 fallback = "\n".join(
                     [
                         *_STRUCTURE_VIEW_PREAMBLE,
@@ -1441,6 +1439,9 @@ class CSTSession:
                     "error": run.get("message"),
                 }
             )
+            if guarded and (run.get("status") != "executed" or not path.exists()):
+                # Preserve possible partial effects; no retry or next view after failure.
+                break
 
         if quiet_restored:
             try:
@@ -1456,7 +1457,17 @@ class CSTSession:
             if r.get("exists") and r.get("path")
         }
         return {
-            "status": "ok" if ok_any else "error",
+            "status": (
+                "error"
+                if guarded
+                and (
+                    len(results) != len(views)
+                    or any(r.get("status") != "executed" or not r.get("exists") for r in results)
+                )
+                else "ok"
+                if ok_any
+                else "error"
+            ),
             "out_dir": str(out),
             "images": results,
             "distinct_file_sizes": len({s for s in distinct_sizes if s}),

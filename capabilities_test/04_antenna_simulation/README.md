@@ -49,17 +49,17 @@ No inline script environment or nested virtual environment is created.
 Safe implementation verification:
 
 ```powershell
-uv run capabilities_test\04_antenna_simulation\run_dipole.py --preflight
-uv run capabilities_test\04_antenna_simulation\run_dipole.py --preflight --cst-path "C:\Program Files (x86)\CST Studio Suite 2025"
-uv run --extra dev -m pytest capabilities_test\04_antenna_simulation\test_run_dipole.py
+uv run --extra figures capabilities_test\04_antenna_simulation\run_dipole.py --preflight
+uv run --extra figures capabilities_test\04_antenna_simulation\run_dipole.py --preflight --cst-path "C:\Program Files (x86)\CST Studio Suite 2025"
+uv run --extra dev --extra figures -m pytest capabilities_test\04_antenna_simulation\test_run_dipole.py
 ```
 
 The following commands are for the USER's later live validation. They must not
 be executed as part of implementing this battery:
 
 ```powershell
-uv run capabilities_test\04_antenna_simulation\run_dipole.py
-uv run capabilities_test\04_antenna_simulation\run_dipole.py --solver-timeout-s 1800
+uv run --extra figures capabilities_test\04_antenna_simulation\run_dipole.py
+uv run --extra figures capabilities_test\04_antenna_simulation\run_dipole.py --solver-timeout-s 1800
 ```
 
 Both live commands have the same default solver budget of 1800 seconds.
@@ -349,10 +349,10 @@ is required. Default installation selection is CST 2025, with the dipole options
 `--cst-path` and `--cst-version` also supported.
 
 ```powershell
-uv run capabilities_test\04_antenna_simulation\run_patch.py
-uv run capabilities_test\04_antenna_simulation\run_patch.py --preflight
-uv run capabilities_test\04_antenna_simulation\run_patch.py --solver-timeout-s 1800
-uv run capabilities_test\04_antenna_simulation\run_patch.py --resume
+uv run --extra figures capabilities_test\04_antenna_simulation\run_patch.py
+uv run --extra figures capabilities_test\04_antenna_simulation\run_patch.py --preflight
+uv run --extra figures capabilities_test\04_antenna_simulation\run_patch.py --solver-timeout-s 1800
+uv run --extra figures capabilities_test\04_antenna_simulation\run_patch.py --resume
 ```
 
 Initial implementation review was static. Subsequent user-authorized live runs
@@ -570,9 +570,9 @@ retain the existing selection behavior. Paths resolve from the script location.
 No dependencies, environment, inline metadata or lockfile are added.
 
 ```powershell
-uv run capabilities_test\04_antenna_simulation\run_wr90.py
-uv run capabilities_test\04_antenna_simulation\run_wr90.py --preflight
-uv run capabilities_test\04_antenna_simulation\run_wr90.py --solver-timeout-s 1800
+uv run --extra figures capabilities_test\04_antenna_simulation\run_wr90.py
+uv run --extra figures capabilities_test\04_antenna_simulation\run_wr90.py --preflight
+uv run --extra figures capabilities_test\04_antenna_simulation\run_wr90.py --solver-timeout-s 1800
 ```
 
 Initial implementation review was static. A subsequent user-authorized live run
