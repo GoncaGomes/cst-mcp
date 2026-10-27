@@ -31,6 +31,10 @@ probe response, so the paired Controller refuses before launch. The protocol doe
 not replace central recovery: unresolved incidents block all new Controller work
 and replacement transports until explicit local human reconciliation. No recovery
 channel, replay, process-close shortcut or cross-restart identity proof is added.
+CAD and structure-view export operations are refused on the Controller route until
+their output/overwrite destinations have a reviewed guard. The session owns one
+typed `ControllerBinding` containing held objects, connection/project identity,
+the supported instance check and readback acquisition order.
 
 `tests/test_controller_target.py` exercises real registry/wrappers with controlled
 CST API objects. These are offline tests, not native CST effect/lifetime evidence.

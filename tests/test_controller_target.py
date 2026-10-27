@@ -28,7 +28,8 @@ def test_create_refuses_existing_destination_without_factory_or_suffix(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_registry_select_reads_live_filename_not_cached_request(tmp_path):
+@pytest.mark.parametrize("action", ["create", "open"])
+async def test_registry_select_reads_live_filename_not_cached_request(tmp_path, action):
     import json
 
     from mcp.types import CallToolRequestParams, RequestParamsMeta
@@ -43,20 +44,27 @@ async def test_registry_select_reads_live_filename_not_cached_request(tmp_path):
             callbacks[name] = callback
 
     path = tmp_path / "exact.cst"
-    path.write_text("controlled existing file")
+    if action == "open":
+        path.write_text("controlled existing file")
     saved = []
-    live = SimpleNamespace(filename=lambda: str(path), save=lambda p: saved.append(p))
+
+    def save(p):
+        saved.append(p)
+        path.write_text("controlled saved file")
+
+    live = SimpleNamespace(filename=lambda: str(path), save=save)
     client = CSTClient(CSTConfig())
-    client._de = SimpleNamespace(pid=lambda: 42, open_project=lambda p: live)
-    client._controller_connection = "controlled-connection"
-    client._controller_pid = 42
-    client._controller_instances = lambda: [42]
-    client._controller_de = client._de
+    client._de = SimpleNamespace(pid=lambda: 42, open_project=lambda p: live, new_mws=lambda: live)
+    from cst_mcp.controller_target import ControllerBinding
+
+    client._controller_binding = ControllerBinding(
+        "controlled-connection", client._de, 42, lambda: [42]
+    )
     registry = ToolRegistry()
     registry.add_module(project.TOOLS, project.handle)
     registry.bind(Server(), client)
     request = CallToolRequestParams(
-        name="cst_open_project",
+        name="cst_open_project" if action == "open" else "cst_create_project",
         arguments={"path": str(path)},
         meta=RequestParamsMeta(
             cst_controller={
@@ -72,6 +80,9 @@ async def test_registry_select_reads_live_filename_not_cached_request(tmp_path):
     assert data["controller"]["path"] == str(path.resolve()).lower()
     assert data["controller"]["source"] == "held-project.filename"
     assert data["controller"]["connection"] == "controlled-connection"
+    if action == "create":
+        assert saved == [str(path)]
+        saved.clear()
     # A changed API filename must fail before the next operation, even though
     # the session's cached requested path still contains the authorized target.
     live.filename = lambda: str(tmp_path / "wrong.cst")

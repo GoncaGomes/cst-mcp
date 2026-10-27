@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from cst_mcp.config import CSTConfig
+from cst_mcp.controller_target import ControllerBinding
 from cst_mcp.dialog_handler import EducationNoticeWatcher
 from cst_mcp.vba_safety import vba_escape
 
@@ -36,6 +37,7 @@ class CSTSession:
         self._de: Any = None
         self._project: Any = None
         self._project_path: str | None = None
+        self._controller_binding: ControllerBinding | None = None
         self._last_error: str | None = None
         self._last_solver_error: str | None = None
         # Set by start_solver (async start) until a wait confirms the finish:

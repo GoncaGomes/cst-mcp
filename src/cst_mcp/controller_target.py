@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -65,30 +66,43 @@ def destination(value: str, *, exists: bool = False) -> str:
     return os.path.normcase(str(resolved))
 
 
-def live(client: Any) -> dict[str, Any]:
-    if (
-        not client.has_project
-        or client._project is not client._controller_project
-        or client._de is not client._controller_de
-    ):
-        raise ValueError("Held live project is unavailable or changed.")
-    filename = client._project.filename()
-    if not isinstance(filename, str) or not filename:
-        raise ValueError("Live project filename support is unavailable.")
-    pid = client._de_pid(client._de)
-    if pid is None or pid != client._controller_pid:
-        raise ValueError("Controller connection changed.")
-    lister = client._controller_instances
-    pids = lister()
-    if pids is None or set(pids) != {pid}:
-        raise ValueError("Conflicting CST instance detected, or instance check unavailable.")
-    return {
-        "version": 1,
-        "connection": client._controller_connection,
-        "project": client._controller_project_id,
-        "path": destination(filename, exists=True),
-        "source": "held-project.filename",
-    }
+@dataclass
+class ControllerBinding:
+    """Session-owned live object identity and acquisition order; never persisted."""
+
+    connection: str
+    environment: Any
+    pid: int
+    instances: Callable[[], list[int] | None]
+    project: Any = None
+    project_id: str | None = None
+    sequence: int = 0
+
+    def check_connection(self, client: Any) -> None:
+        if (
+            not client.connected
+            or client._de is not self.environment
+            or client._de_pid(client._de) != self.pid
+        ):
+            raise ValueError("Controller connection changed.")
+        observed = self.instances()
+        if observed is None or set(observed) != {self.pid}:
+            raise ValueError("Conflicting CST instance detected, or instance check unavailable.")
+
+    def readback(self, client: Any) -> dict[str, Any]:
+        self.check_connection(client)
+        if not client.has_project or self.project is None or client._project is not self.project:
+            raise ValueError("Held live project is unavailable or changed.")
+        filename = self.project.filename()
+        if not isinstance(filename, str) or not filename:
+            raise ValueError("Live project filename support is unavailable.")
+        return {
+            "version": 1,
+            "connection": self.connection,
+            "project": self.project_id,
+            "path": destination(filename, exists=True),
+            "source": "held-project.filename",
+        }
 
 
 async def invoke(
@@ -117,6 +131,8 @@ async def invoke(
         if expected.path is None:
             raise ValueError("Expected destination is required.")
         target = destination(expected.path)
+        binding = client._controller_binding
+        instances = None
         if stage == "launch":
             if name != "cst_connect" or args != {"mode": "new"} or client.connected:
                 raise ValueError("Explicit disconnected new-instance launch required.")
@@ -127,21 +143,12 @@ async def invoke(
                 raise ValueError(
                     "CST must be closed; conflicting instance or unknown instance check."
                 )
-            client._controller_instances = lambda: client._running_de_pids(cst.interface)
+            instances = lambda: client._running_de_pids(cst.interface)
         else:
-            if expected.connection != getattr(client, "_controller_connection", None):
+            if binding is None or expected.connection != binding.connection:
                 raise ValueError("Expected Controller connection does not match.")
             if stage == "select":
-                pid = client._de_pid(client._de)
-                if (
-                    not client.connected
-                    or client._de is not client._controller_de
-                    or pid != client._controller_pid
-                    or client._controller_instances() != [pid]
-                ):
-                    raise ValueError(
-                        "Connection or single-instance condition changed before selection."
-                    )
+                binding.check_connection(client)
                 if name not in {"cst_create_project", "cst_open_project"} or client.has_project:
                     raise ValueError("Select requires an empty Controller-owned session.")
                 if destination(args["path"], exists=name == "cst_open_project") != target:
@@ -149,13 +156,15 @@ async def invoke(
                 if name == "cst_create_project" and Path(target).exists():
                     raise ValueError("Creation destination already exists.")
             elif stage == "bound":
-                observed = live(client)
+                observed = binding.readback(client)
                 if observed["path"] != target or observed["project"] != expected.project:
                     raise ValueError("Expected actual target does not match live project.")
                 if name in {
                     "cst_connect",
                     "cst_open_project",
                     "cst_create_project",
+                    "cst_export_cad",
+                    "cst_export_structure_views",
                 } or name.startswith("cst_workflow"):
                     raise ValueError(
                         "Lifecycle/workflow operation requires a separate reviewed route."
@@ -182,33 +191,33 @@ async def invoke(
                 pid is None
                 or client.has_project
                 or payload.get("open_projects") != 0
-                or client._controller_instances() != [pid]
+                or instances is None
+                or instances() != [pid]
             ):
                 raise ValueError(
                     "New instance has unexpected project/instance state; inspect locally."
                 )
-            client._controller_connection = str(uuid.uuid4())
-            client._controller_pid = pid
-            client._controller_de = client._de
+            binding = ControllerBinding(str(uuid.uuid4()), client._de, pid, instances)
+            client._controller_binding = binding
             evidence = {
                 "version": 1,
-                "connection": client._controller_connection,
+                "connection": binding.connection,
                 "stage": "launch",
             }
         elif name in {"cst_close_project", "cst_disconnect"}:
-            client._controller_connection = None
+            client._controller_binding = None
             evidence = {"version": 1, "stage": "invalidated"}
         else:
             if stage == "select":
-                client._controller_project = client._project
-                client._controller_project_id = str(uuid.uuid4())
-            evidence = live(client)
+                binding.project = client._project
+                binding.project_id = str(uuid.uuid4())
+            evidence = binding.readback(client)
             if evidence["path"] != target:
                 raise ValueError(
                     "Actual destination differs from selected target; inspect locally."
                 )
-        client._controller_sequence = getattr(client, "_controller_sequence", 0) + 1
-        evidence["sequence"] = client._controller_sequence
+        binding.sequence += 1
+        evidence["sequence"] = binding.sequence
         payload["controller"] = evidence
         return [TextContent(type="text", text=json.dumps(payload))]
     except Exception:  # noqa: BLE001 - sanitize arbitrary vendor errors at the protocol boundary
