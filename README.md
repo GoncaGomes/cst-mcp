@@ -51,6 +51,15 @@ The `dev` and `figures` extras cover the current offline test dependencies.
 They include pytest, Ruff, NumPy and Matplotlib.
 The runtime dependencies include MCP SDK `>=1.29,<3`, AnyIO and jsonschema.
 
+With uv, include the optional plotting dependencies when checking antenna runners:
+
+```powershell
+uv run --extra figures capabilities_test\04_antenna_simulation\run_dipole.py --preflight
+```
+
+Missing NumPy or Matplotlib is an installation prerequisite failure, not a schema mismatch.
+This preflight does not authorize a native workflow run.
+
 Use the virtual environment interpreter explicitly.
 You do not need to activate the environment.
 The installed executable is `.\.venv\Scripts\cst-studio-mcp.exe`.

@@ -11,11 +11,19 @@ import json
 import os
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from mcp.types import TextContent
+
+
+class ControllerRefusal(ValueError):
+    """Safe, fixed diagnostic; vendor exception text must never be exposed."""
+
+
+guarded_view_export: ContextVar[bool] = ContextVar("guarded_view_export", default=False)
 
 
 @dataclass(frozen=True)
@@ -32,37 +40,41 @@ class ExpectedTarget:
             or type(value.get("version")) is not int
             or value["version"] != 1
         ):
-            raise ValueError("Unsupported Controller target protocol.")
+            raise ControllerRefusal("Unsupported Controller target protocol.")
         stage = value.get("stage")
-        if stage not in {"probe", "launch", "select", "bound"}:
-            raise ValueError("Unknown Controller stage.")
+        if stage not in {"probe", "launch", "connection", "select", "bound"}:
+            raise ControllerRefusal("Unknown Controller stage.")
         path, connection, project = value.get("path"), value.get("connection"), value.get("project")
-        if stage != "probe" and (not isinstance(path, str) or not path):
-            raise ValueError("Expected destination is required.")
-        if stage in {"select", "bound"} and (not isinstance(connection, str) or not connection):
-            raise ValueError("Expected connection is required.")
+        if stage in {"select", "bound"} and (not isinstance(path, str) or not path):
+            raise ControllerRefusal("Expected destination is required at project selection.")
+        if stage in {"connection", "select", "bound"} and (
+            not isinstance(connection, str) or not connection
+        ):
+            raise ControllerRefusal("Expected connection is required.")
         if stage == "bound" and (not isinstance(project, str) or not project):
-            raise ValueError("Expected live project is required.")
+            raise ControllerRefusal(
+                "Expected live project is required; select and verify a project."
+            )
         return cls(stage, path, connection, project)
 
 
 def destination(value: str, *, exists: bool = False) -> str:
     path = Path(value)
     if not path.is_absolute() or path.suffix.lower() != ".cst":
-        raise ValueError("An absolute .cst destination is required.")
+        raise ControllerRefusal("An absolute .cst destination is required.")
     if path.name.rstrip(" .") != path.name or ":" in path.name or path.is_reserved():
-        raise ValueError("Ambiguous Windows destination names are refused.")
+        raise ControllerRefusal("Ambiguous Windows destination names are refused.")
     parent = path.parent.resolve(strict=True)
     resolved = path.resolve(strict=exists)
     if resolved.parent != parent or (resolved.exists() and not resolved.is_file()):
-        raise ValueError("Destination alias or directory conflict.")
+        raise ControllerRefusal("Destination alias or directory conflict.")
     if resolved.exists() and resolved.stat().st_nlink != 1:
-        raise ValueError("Hard-link project aliases are refused.")
+        raise ControllerRefusal("Hard-link project aliases are refused.")
     for entry in parent.iterdir():
         if entry.suffix.lower() == ".cst" and os.path.normcase(str(entry)) != os.path.normcase(
             str(path)
         ):
-            raise ValueError("Each project requires its own dedicated directory.")
+            raise ControllerRefusal("Each project requires its own dedicated directory.")
     return os.path.normcase(str(resolved))
 
 
@@ -84,18 +96,25 @@ class ControllerBinding:
             or client._de is not self.environment
             or client._de_pid(client._de) != self.pid
         ):
-            raise ValueError("Controller connection changed.")
+            raise ControllerRefusal("Controller connection changed; re-establish prerequisites.")
         observed = self.instances()
         if observed is None or set(observed) != {self.pid}:
-            raise ValueError("Conflicting CST instance detected, or instance check unavailable.")
+            raise ControllerRefusal(
+                "Conflicting CST instance detected, or instance check unavailable."
+            )
 
     def readback(self, client: Any) -> dict[str, Any]:
         self.check_connection(client)
         if not client.has_project or self.project is None or client._project is not self.project:
-            raise ValueError("Held live project is unavailable or changed.")
-        filename = self.project.filename()
+            raise ControllerRefusal(
+                "Held live project is unavailable or changed; select and verify a project."
+            )
+        reader = getattr(self.project, "filename", None)
+        if not callable(reader):
+            raise ControllerRefusal("Live project filename support is unavailable.")
+        filename = reader()
         if not isinstance(filename, str) or not filename:
-            raise ValueError("Live project filename support is unavailable.")
+            raise ControllerRefusal("Live project filename support is unavailable.")
         return {
             "version": 1,
             "connection": self.connection,
@@ -105,18 +124,98 @@ class ControllerBinding:
         }
 
 
+def output_destination(value: Any) -> str:
+    """Require a known existing parent and a plain, non-project output file."""
+    if not isinstance(value, str) or not value:
+        raise ControllerRefusal("Export requires an explicit absolute output destination.")
+    path = Path(value)
+    if not path.is_absolute() or not path.suffix or path.suffix.lower() == ".cst":
+        raise ControllerRefusal("Export requires an absolute non-project output file.")
+    for part in (path, *path.parents):
+        if part == part.parent:
+            continue
+        if (
+            part.name.rstrip(" .") != part.name
+            or ":" in part.name
+            or part.is_reserved()
+            or part.is_symlink()
+            or getattr(part, "is_junction", lambda: False)()
+        ):
+            raise ControllerRefusal("Ambiguous or linked export destinations are refused.")
+    if not path.parent.is_dir():
+        raise ControllerRefusal("Export parent directory must already exist; choose a destination.")
+    if path.exists() and (not path.is_file() or path.stat().st_nlink != 1):
+        raise ControllerRefusal("Export destination has a directory or hard-link conflict.")
+    return os.path.normcase(str(path.resolve()))
+
+
+def export_arguments(name: str, args: dict, context: dict) -> dict:
+    """Guard actual handler filenames; replacement grants come only from the app."""
+    if name in {"cst_export_cad", "cst_export_project"}:
+        extensions = {
+            "stl": {".stl"},
+            "sat": {".sat"},
+            "stp": {".stp", ".step"},
+            "igs": {".igs", ".iges"},
+            "obj": {".obj"},
+            "nas": {".nas"},
+        }
+        key = "path" if name == "cst_export_project" else "file_path"
+        path = output_destination(args.get(key))
+        if Path(path).suffix.lower() not in extensions.get(args.get("format"), set()):
+            raise ControllerRefusal("CAD output extension must match the requested format.")
+        outputs = [path]
+        args = {**args, key: path}
+    else:
+        out = args.get("out_dir")
+        if not isinstance(out, str) or not out or not Path(out).is_absolute():
+            raise ControllerRefusal(
+                "Structure views require an explicit absolute output directory."
+            )
+        views = args.get("views") or ["perspective", "front", "top", "left", "right"]
+        supported = {
+            "perspective",
+            "front",
+            "back",
+            "top",
+            "bottom",
+            "left",
+            "right",
+            "xy",
+            "xz",
+            "yz",
+        }
+        if any(view not in supported for view in views) or len(set(views)) != len(views):
+            raise ControllerRefusal("Unsupported or duplicate structure view; choose named views.")
+        outputs = [output_destination(str(Path(out) / f"view_{view}.png")) for view in views]
+        args = {**args, "out_dir": str(Path(outputs[0]).parent), "views": views}
+    replacements = context.get("replace_outputs", [])
+    if not isinstance(replacements, list):
+        raise ControllerRefusal("Replacement authorization must list exact output paths.")
+    authorized = {output_destination(value) for value in replacements}
+    if not authorized.issubset(outputs):
+        raise ControllerRefusal("Replacement authorization does not match actual export outputs.")
+    if any(Path(path).exists() and path not in authorized for path in outputs):
+        raise ControllerRefusal(
+            "Export output already exists; explicit replacement authorization required."
+        )
+    return args
+
+
 async def invoke(
     handler: Any, name: str, args: dict, client: Any, context: dict
 ) -> list[TextContent]:
     """Validate immediately before the actual handler and read back after it."""
     from cst_mcp.tools.registry import err
 
+    export_token = guarded_view_export.set(False)
+    payload = None
     try:
         expected = ExpectedTarget.parse(context)
         stage = expected.stage
         if stage == "probe":
             if name != "cst_connection_status":
-                raise ValueError("Probe must be read-only connection status.")
+                raise ControllerRefusal("Probe must be read-only connection status.")
             return [
                 TextContent(
                     type="text",
@@ -128,45 +227,52 @@ async def invoke(
                     ),
                 )
             ]
-        if expected.path is None:
-            raise ValueError("Expected destination is required.")
-        target = destination(expected.path)
+        target = destination(expected.path) if stage in {"select", "bound"} else None
         binding = client._controller_binding
         instances = None
         if stage == "launch":
             if name != "cst_connect" or args != {"mode": "new"} or client.connected:
-                raise ValueError("Explicit disconnected new-instance launch required.")
+                raise ControllerRefusal("Explicit disconnected new-instance launch required.")
             import cst.interface  # type: ignore[import-not-found] - vendor library is optional offline
 
             before = client._running_de_pids(cst.interface)
             if before != []:
-                raise ValueError(
+                raise ControllerRefusal(
                     "CST must be closed; conflicting instance or unknown instance check."
                 )
             instances = lambda: client._running_de_pids(cst.interface)
         else:
             if binding is None or expected.connection != binding.connection:
-                raise ValueError("Expected Controller connection does not match.")
-            if stage == "select":
+                raise ControllerRefusal("Expected Controller connection does not match.")
+            if stage == "connection":
+                binding.check_connection(client)
+                if name != "cst_connection_status":
+                    raise ControllerRefusal(
+                        "Select and verify an exact project before project operations."
+                    )
+                if binding.project is not None or client.has_project:
+                    raise ControllerRefusal(
+                        "Connection-only status requires an unselected instance; "
+                        "use the expected bound project for selected-project status."
+                    )
+            elif stage == "select":
                 binding.check_connection(client)
                 if name not in {"cst_create_project", "cst_open_project"} or client.has_project:
-                    raise ValueError("Select requires an empty Controller-owned session.")
+                    raise ControllerRefusal("Select requires an empty Controller-owned session.")
                 if destination(args["path"], exists=name == "cst_open_project") != target:
-                    raise ValueError("Selection destination does not match.")
+                    raise ControllerRefusal("Selection destination does not match.")
                 if name == "cst_create_project" and Path(target).exists():
-                    raise ValueError("Creation destination already exists.")
+                    raise ControllerRefusal("Creation destination already exists.")
             elif stage == "bound":
                 observed = binding.readback(client)
                 if observed["path"] != target or observed["project"] != expected.project:
-                    raise ValueError("Expected actual target does not match live project.")
+                    raise ControllerRefusal("Expected actual target does not match live project.")
                 if name in {
                     "cst_connect",
                     "cst_open_project",
                     "cst_create_project",
-                    "cst_export_cad",
-                    "cst_export_structure_views",
                 } or name.startswith("cst_workflow"):
-                    raise ValueError(
+                    raise ControllerRefusal(
                         "Lifecycle/workflow operation requires a separate reviewed route."
                     )
                 if (
@@ -174,13 +280,16 @@ async def invoke(
                     and args.get("path") is not None
                     and destination(args["path"]) != target
                 ):
-                    raise ValueError("Save destination does not match selected project.")
+                    raise ControllerRefusal("Save destination does not match selected project.")
                 if name == "cst_save_project":
                     # Never use the legacy cached requested destination for a
                     # no-argument save; dispatch the checked actual destination.
                     args = {**args, "path": target}
+                if name in {"cst_export_cad", "cst_export_project", "cst_export_structure_views"}:
+                    args = export_arguments(name, args, context)
+                    guarded_view_export.set(name == "cst_export_structure_views")
             else:
-                raise ValueError("Unknown Controller stage.")
+                raise ControllerRefusal("Unknown Controller stage.")
         content = await handler(name, args, client)
         payload = json.loads(content[0].text)
         if payload.get("status") in {"error", "offline", "busy", "timeout"}:
@@ -194,7 +303,7 @@ async def invoke(
                 or instances is None
                 or instances() != [pid]
             ):
-                raise ValueError(
+                raise ControllerRefusal(
                     "New instance has unexpected project/instance state; inspect locally."
                 )
             binding = ControllerBinding(str(uuid.uuid4()), client._de, pid, instances)
@@ -203,6 +312,16 @@ async def invoke(
                 "version": 1,
                 "connection": binding.connection,
                 "stage": "launch",
+            }
+        elif stage == "connection":
+            binding.check_connection(client)
+            if binding.project is None and client.has_project:
+                raise ControllerRefusal("Unexpected held project; no project was adopted.")
+            evidence = {
+                "version": 1,
+                "connection": binding.connection,
+                "stage": "connection",
+                "project": None,
             }
         elif name in {"cst_close_project", "cst_disconnect"}:
             client._controller_binding = None
@@ -213,14 +332,24 @@ async def invoke(
                 binding.project_id = str(uuid.uuid4())
             evidence = binding.readback(client)
             if evidence["path"] != target:
-                raise ValueError(
+                raise ControllerRefusal(
                     "Actual destination differs from selected target; inspect locally."
                 )
         binding.sequence += 1
         evidence["sequence"] = binding.sequence
         payload["controller"] = evidence
         return [TextContent(type="text", text=json.dumps(payload))]
+    except ControllerRefusal as exc:
+        return err(
+            str(exc),
+            **({"operation_response": payload, "execution_state": "unknown"} if payload else {}),
+        )
     except Exception:  # noqa: BLE001 - sanitize arbitrary vendor errors at the protocol boundary
         # Native errors can contain arbitrary filenames/content. Recovery owns
         # the incident; never retry, close another instance or claim rollback.
-        return err("Controller live target check failed; inspect instance/destination locally.")
+        return err(
+            "Controller live target check failed; inspect instance/destination locally.",
+            **({"operation_response": payload, "execution_state": "unknown"} if payload else {}),
+        )
+    finally:
+        guarded_view_export.reset(export_token)

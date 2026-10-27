@@ -228,6 +228,43 @@ def test_preflight_protocol_uses_only_disabled_status_and_paginates(tmp_path):
             asyncio.run(runner.request(session, tool, {}))
 
 
+@pytest.mark.parametrize("preflight", [False, True])
+def test_missing_figure_dependencies_named_not_misreported_as_schema_failure(tmp_path, preflight):
+    runner = make_runner(tmp_path, preflight)
+    runner.phase = "installation"
+    runner.check("import numpy", False)
+    runner.check("import matplotlib.pyplot", False)
+    session = AsyncMock()
+    session.initialize.return_value = {"serverInfo": {"name": "offline fixture"}}
+    session.list_tools.return_value = {
+        "tools": [
+            {
+                "name": name,
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        key: {}
+                        for item in dipole.MANIFEST
+                        if item["tool"] == name
+                        for key in item["arguments"]
+                    },
+                },
+            }
+            for name in sorted({item["tool"] for item in dipole.MANIFEST})
+        ]
+    }
+    session.call_tool.return_value = response({"mode": "offline", "project_open": False})
+    with pytest.raises(Stop) as failure:
+        asyncio.run(runner.protocol(session))
+    message = str(failure.value)
+    assert "import numpy" in message
+    assert "import matplotlib.pyplot" in message
+    assert "uv run --extra figures" in message
+    assert "complete planned manifest schemas" not in message
+    assert runner.metadata["schema_discrepancies"] == []
+    assert session.call_tool.await_count == (1 if preflight else 0)
+
+
 def test_replacement_is_fixed_scoped_and_preflight_preserves_live(tmp_path):
     live = tmp_path / "dipole"
     prepare_outputs(live, tmp_path, False)

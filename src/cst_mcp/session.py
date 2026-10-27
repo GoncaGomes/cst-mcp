@@ -1331,6 +1331,9 @@ class CSTSession:
             }
 
         out = Path(out_dir) if out_dir else (self.config.work_dir / "exports" / "views")
+        from cst_mcp.controller_target import guarded_view_export
+
+        guarded = guarded_view_export.get()
         out.mkdir(parents=True, exist_ok=True)
         # Quiet mode often yields blank identical screenshots — disable for export
         quiet_restored = False
@@ -1381,7 +1384,7 @@ class CSTSession:
         for view in views:
             script = view_scripts.get(view)
             path = out / f"view_{view}.png"
-            if path.exists():
+            if path.exists() and not guarded:
                 try:
                     path.unlink()
                 except OSError:
@@ -1399,9 +1402,13 @@ class CSTSession:
                     ]
                 )
             wrapped = f"Sub Main()\n{script}\nEnd Sub\n"
-            run = self.run_vba_silent(wrapped)
+            run = (
+                self.run_vba_silent(wrapped, history_fallback=False)
+                if guarded
+                else self.run_vba_silent(wrapped)
+            )
             # If reserved view failed, try rotate-based fallback once
-            if run.get("status") != "executed" or not path.exists():
+            if not guarded and (run.get("status") != "executed" or not path.exists()):
                 fallback = "\n".join(
                     [
                         *_STRUCTURE_VIEW_PREAMBLE,
@@ -1432,6 +1439,9 @@ class CSTSession:
                     "error": run.get("message"),
                 }
             )
+            if guarded and (run.get("status") != "executed" or not path.exists()):
+                # Preserve possible partial effects; no retry or next view after failure.
+                break
 
         if quiet_restored:
             try:
@@ -1447,7 +1457,17 @@ class CSTSession:
             if r.get("exists") and r.get("path")
         }
         return {
-            "status": "ok" if ok_any else "error",
+            "status": (
+                "error"
+                if guarded
+                and (
+                    len(results) != len(views)
+                    or any(r.get("status") != "executed" or not r.get("exists") for r in results)
+                )
+                else "ok"
+                if ok_any
+                else "error"
+            ),
             "out_dir": str(out),
             "images": results,
             "distinct_file_sizes": len({s for s in distinct_sizes if s}),
