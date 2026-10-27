@@ -100,7 +100,10 @@ class CSTSession:
             return None
         try:
             pids = []
-            for item in list(lister() or []):
+            observed = lister()
+            if observed is None:
+                return None
+            for item in list(observed):
                 try:
                     pids.append(int(item))
                 except (TypeError, ValueError):
@@ -159,6 +162,8 @@ class CSTSession:
                 "message": f"Unknown connect mode {mode!r}; use one of {list(self.CONNECT_MODES)}",
             }
         if self.is_connected:
+            if mode == "new":
+                return {"status": "error", "message": "Already connected; new instance refused."}
             return {
                 "status": "connected",
                 "message": "Already connected",
@@ -261,7 +266,7 @@ class CSTSession:
                 open_projects = list(self._de.get_open_projects() or [])
             except Exception:
                 logger.debug("Handled error in session.connect", exc_info=True)
-            if open_projects and self._project is None:
+            if mode != "new" and open_projects and self._project is None:
                 active = None
                 try:
                     if self._de.has_active_project():
@@ -356,35 +361,19 @@ class CSTSession:
 
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            # Prefer a fresh unique path if target already exists (CST often refuses overwrite)
             target = Path(path)
             if target.exists():
-                alt = target.with_name(f"{target.stem}_{int(time.time())}{target.suffix}")
-                path = str(alt)
+                return {
+                    "status": "error",
+                    "message": "Destination already exists; choose explicitly.",
+                }
 
             factory = getattr(self._de, factory_name)
             project = factory()
-            try:
-                project.save(path)
-            except Exception as save_exc:
-                # Last resort: unique suffix
-                logger.debug("Handled error in session.new_project", exc_info=True)
-                stem = Path(path)
-                alt = stem.with_name(f"{stem.stem}_{int(time.time())}{stem.suffix}")
-                try:
-                    project.save(str(alt))
-                    path = str(alt)
-                except Exception:
-                    logger.debug("Handled error in session.new_project", exc_info=True)
-                    try:
-                        project.close()
-                    except Exception:
-                        logger.debug("Handled error in session.new_project", exc_info=True)
-                    return {
-                        "status": "error",
-                        "message": f"Failed to save project: {save_exc}",
-                        "path": path,
-                    }
+            self._project = project
+            # On failure the outer handler retains the live handle. Do not
+            # retry another destination, close/discard or claim rollback.
+            project.save(path)
             self._project = project
             self._project_path = path
             return {"status": "created", "path": path, "type": project_type}

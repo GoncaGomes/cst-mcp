@@ -288,7 +288,9 @@ class ToolRegistry:
             logger.info("CST_TOOLSETS exposes %d of %d tools", len(tools), len(self._tools))
         categories = dict(self._categories)
 
-        async def call_tool(name: str, arguments: dict[str, Any] | None) -> CallToolResult:
+        async def call_tool(
+            name: str, arguments: dict[str, Any] | None, controller: Any = None
+        ) -> CallToolResult:
             args = arguments or {}
             handler = handlers.get(name)
             if handler is None:
@@ -302,7 +304,12 @@ class ToolRegistry:
             logger.info("tool call: %s", name)
             tool = by_name[name]
             try:
-                content = await worker.run(_invoke(handler, name, args, client))
+                if controller is not None:
+                    from cst_mcp.controller_target import invoke
+
+                    content = await worker.run(invoke(handler, name, args, client, controller))
+                else:
+                    content = await worker.run(_invoke(handler, name, args, client))
                 return _call_result(content, is_error=_content_is_error(content), tool=tool)
             except Exception as exc:
                 logger.exception("Handler crash on %s", name)
@@ -331,7 +338,12 @@ class ToolRegistry:
                             err(f"Input validation error: {exc.message}"),
                             is_error=True,
                         )
-                return await call_tool(params.name, params.arguments)
+                metadata = params.meta or {}
+                if not isinstance(metadata, dict):
+                    metadata = metadata.model_dump()
+                return await call_tool(
+                    params.name, params.arguments, metadata.get("cst_controller")
+                )
 
             server.add_request_handler("tools/list", PaginatedRequestParams, list_tools_v2)
             server.add_request_handler("tools/call", CallToolRequestParams, call_tool_v2)

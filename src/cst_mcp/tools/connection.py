@@ -50,6 +50,10 @@ async def handle(name, arguments, client):
         if mode not in ("any", "new"):
             return err(f"Unknown mode {mode!r}; use 'any' or 'new'.")
         if client.connected:
+            if mode == "new":
+                return err(
+                    "New-instance request refused: already connected; no instance was closed."
+                )
             pid = None
             try:
                 pid = client._de_pid(getattr(client, "_de", None))
