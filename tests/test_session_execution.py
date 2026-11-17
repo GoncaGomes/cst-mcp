@@ -480,8 +480,8 @@ def test_connect_any_reports_preexisting_de_and_open_projects(monkeypatch) -> No
 
     class Factory:
         @staticmethod
-        def connect_to_any_or_new():
-            calls.append("any_or_new")
+        def connect(pid):
+            calls.append(("connect", pid))
             return de
 
         @staticmethod
@@ -489,8 +489,11 @@ def test_connect_any_reports_preexisting_de_and_open_projects(monkeypatch) -> No
             raise AssertionError("mode='any' must not start a new DE explicitly")
 
     _install_fake_interface(monkeypatch, Factory, running=[33984])
-    result = CSTSession(config=_connect_config()).connect()
-    assert calls == ["any_or_new"]
+    session = CSTSession(config=_connect_config())
+    result = session.connect()
+    assert calls == [("connect", 33984)]
+    assert session._project is user_project
+    assert result["project_path"] == r"C:\user\antenna.cst"
     assert result["status"] == "connected" and result["mode"] == "any"
     assert result["de_pid"] == 33984
     assert result["newly_started"] is False
@@ -506,7 +509,7 @@ def test_connect_any_detects_newly_started_de(monkeypatch) -> None:
 
     class Factory:
         @staticmethod
-        def connect_to_any_or_new():
+        def new():
             return de
 
     _install_fake_interface(monkeypatch, Factory, running=[])

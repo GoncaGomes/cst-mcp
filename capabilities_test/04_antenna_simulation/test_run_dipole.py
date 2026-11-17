@@ -120,12 +120,14 @@ def test_touchstone_validation_allows_frequency_rounding_only(
         assert check["obtained"]["max_complex_s11_difference"] == 0
 
 
-def test_bandwidth_multiple_intervals_and_truncated_edges():
+@pytest.mark.parametrize("magnitude_offset", [0.0, 1e-12])
+def test_bandwidth_multiple_intervals_and_truncated_edges(magnitude_offset):
     # -20 dB means magnitude 0.1, crossings at 1.5, 2.5, 3.5, 4.5.
-    bands = bandwidth([1, 2, 3, 4, 5], [0.05, 0.15, 0.05, 0.15, 0.05], -20)
-    assert [(b["f_lower_ghz"], b["f_upper_ghz"]) for b in bands] == pytest.approx(
-        [(1, 1.5), (2.5, 3.5), (4.5, 5)]
-    )
+    # Tiny input perturbations must still receive approximate edge comparisons.
+    magnitudes = [value + magnitude_offset for value in [0.05, 0.15, 0.05, 0.15, 0.05]]
+    bands = bandwidth([1, 2, 3, 4, 5], magnitudes, -20)
+    assert [b["f_lower_ghz"] for b in bands] == pytest.approx([1, 2.5, 4.5])
+    assert [b["f_upper_ghz"] for b in bands] == pytest.approx([1.5, 3.5, 5])
     assert [(b["lower_truncated"], b["upper_truncated"]) for b in bands] == [
         (True, False),
         (False, False),

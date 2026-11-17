@@ -5,6 +5,10 @@ The [project README](../README.md) is the repository entry point.
 
 ## Current instructions
 
+- [Configuration and troubleshooting](CONFIGURATION.md) covers environment variables,
+  Python compatibility, connection safety and education notice handling.
+- [First project and modeling examples](USAGE.md) walks through an isolated project
+  and supported parameter-driven geometry inputs.
 - [Agent setup and acceptance](AGENT_SETUP.md) covers installation, stdio configuration and checks.
 - [Markdown tool reference](TOOLS.md) describes the tool catalog.
   Confirm current input contracts through MCP tool discovery.
@@ -27,7 +31,7 @@ Automated readbacks establish only the properties measured by each scenario.
 The latest boolean operations summary is preflight.
 An earlier documented live invocation completed successfully.
 The errors stage has a completed live report with nine passing cases.
-See [validation status](../README.md#validation-status) for the full overview.
+See the [API assessment](API_REVIEW.md) for the full validation overview.
 
 ## Current assessments
 

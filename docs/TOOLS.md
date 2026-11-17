@@ -20,7 +20,7 @@ Attach to CST explicitly; disconnect without closing user projects.
 
 | Tool | What it does |
 |------|--------------|
-| `cst_connect` | Explicitly attach to a CST Design Environment (DE). Disabled mode never connects. mode='any' (default) uses connect_to_any_or_new(): it a… |
+| `cst_connect` | Explicitly attach to a running DE or start one (`any`), or start an isolated DE (`new`). Both modes handle only the recognized education notice for the target PID on supported Windows APIs. Disabled mode never connects. |
 | `cst_disconnect` | Detach this MCP session without closing CST, projects, or a running solver. |
 
 ### Workflows (start here) (8)

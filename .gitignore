@@ -24,3 +24,5 @@ _scratch/
 # Upstream snapshot kept local only
 _reference/
 
+skills-lock.json
+.agents

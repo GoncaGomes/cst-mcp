@@ -12,6 +12,7 @@ import math
 import re
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -146,12 +147,78 @@ class CSTSession:
                 paths.append(repr(ref))
         return paths
 
+    @staticmethod
+    def _connect_with_education_notice(
+        operation: Callable[[], Any],
+        *,
+        target_pid: int | None = None,
+        target_pid_getter: Callable[[], int | None] | None = None,
+    ) -> Any:
+        """Observe only this attempt's authoritative PID while the vendor call blocks."""
+        watcher: EducationNoticeWatcher | None = None
+        try:
+            if sys.platform == "win32":
+                if target_pid is None and target_pid_getter is None:
+                    logger.warning(
+                        "Automatic education notice handling skipped: this CST API cannot "
+                        "provide an authoritative target PID before connection. "
+                        "Dismiss the notice manually if connection blocks."
+                    )
+                else:
+                    try:
+                        watcher = EducationNoticeWatcher(
+                            timeout_s=60.0,
+                            target_pid=target_pid,
+                            target_pid_getter=target_pid_getter,
+                        )
+                        watcher.start()
+                    except Exception:
+                        logger.warning(
+                            "Could not start education notice observer; check Windows UI "
+                            "Automation/comtypes support and dismiss the notice manually "
+                            "if connection blocks",
+                            exc_info=True,
+                        )
+            return operation()
+        finally:
+            if watcher is not None:
+                try:
+                    if not watcher.stop():
+                        logger.warning(
+                            "Education notice observer is still running after the stop request"
+                        )
+                except Exception:
+                    logger.warning("Could not stop education notice observer", exc_info=True)
+
+    @classmethod
+    def _start_design_environment(cls, factory: Any) -> Any:
+        """Share PID publication and observer lifecycle for both modes' startup path."""
+        startup_args: dict[str, Any] = {}
+        pid_getter = None
+        if sys.platform == "win32" and hasattr(factory, "ProcessInfo"):
+            try:
+                process_info = factory.ProcessInfo()
+                startup_args["process_info"] = process_info
+                pid_getter = lambda: int(process_info.pid or 0) or None
+            except Exception:
+                logger.warning(
+                    "CST ProcessInfo unavailable; starting without automatic education "
+                    "notice handling",
+                    exc_info=True,
+                )
+        startup = getattr(factory, "new", None)
+        if not callable(startup):
+            startup = factory
+        return cls._connect_with_education_notice(
+            lambda: startup(**startup_args), target_pid_getter=pid_getter
+        )
+
     def connect(self, mode: str = "any") -> dict[str, Any]:
         """Connect to a Design Environment.
 
         ``mode="any"`` (default, backwards compatible) attaches to any running
         DE -- possibly one the user opened interactively -- or starts a new one
-        when none is running (``connect_to_any_or_new``).  ``mode="new"``
+        when none is running.  ``mode="new"``
         always starts a fresh DE via ``DesignEnvironment.new()`` and never
         attaches to an existing DE or project.  The result always reports the
         attached PID (when the binding exposes ``pid()``), whether the DE was
@@ -200,58 +267,31 @@ class CSTSession:
             before = self._running_de_pids(cst.interface)
             newly_started: bool | None
             if mode == "new":
-                if mode == "new":
-                    watcher: EducationNoticeWatcher | None = None
-                    startup_args: dict[str, Any] = {}
-
-                    if sys.platform == "win32" and hasattr(factory, "ProcessInfo"):
-                        process_info = factory.ProcessInfo()
-                        startup_args["process_info"] = process_info
-
-                        watcher = EducationNoticeWatcher(
-                            timeout_s=60.0,
-                            target_pid_getter=lambda: int(process_info.pid) or None,
-                        )
-
-                    try:
-                        if watcher is not None:
-                            watcher.start()
-
-                        if hasattr(factory, "new"):
-                            self._de = factory.new(**startup_args)
-                        else:
-                            self._de = factory(**startup_args)
-
-                    finally:
-                        if watcher is not None:
-                            stopped = watcher.stop()
-                            logger.info(
-                                "Education notice observer stopped: %s",
-                                stopped,
-                            )
-                            if not stopped:
-                                logger.warning(
-                                    "Education notice observer is still running "
-                                    "after the stop request"
-                                )
-
-                    msg = "Started a new Design Environment (mode='new')"
-                    newly_started = True
-
-            elif hasattr(factory, "connect_to_any_or_new"):
-                self._de = factory.connect_to_any_or_new()
+                self._de = self._start_design_environment(factory)
+                msg = "Started a new Design Environment (mode='new')"
+                newly_started = True
+            elif before == []:
+                self._de = self._start_design_environment(factory)
+                msg = "Launched new Design Environment"
+                newly_started = True
+            elif before and callable(getattr(factory, "connect", None)):
+                selected = before[0]
+                # Only a positive PID from the vendor's DE enumeration authorizes clicking.
+                target_pid = selected if isinstance(selected, int) and selected > 0 else None
+                self._de = self._connect_with_education_notice(
+                    lambda: factory.connect(selected), target_pid=target_pid
+                )
+                msg = f"Connected to running DE (pid={selected})"
+                newly_started = False
+            elif callable(getattr(factory, "connect_to_any_or_new", None)):
+                # Legacy APIs may not expose enumeration or explicit PID attachment.
+                self._de = self._connect_with_education_notice(factory.connect_to_any_or_new)
                 msg = "Connected via connect_to_any_or_new() (mode='any')"
                 newly_started = None
             else:
-                running = list(before or [])
-                if running:
-                    self._de = factory.connect(running[0])
-                    msg = f"Connected to running DE (pid={running[0]})"
-                    newly_started = False
-                else:
-                    self._de = factory()
-                    msg = "Launched new Design Environment"
-                    newly_started = True
+                self._de = self._start_design_environment(factory)
+                msg = "Launched new Design Environment"
+                newly_started = True
 
             pid = self._de_pid(self._de)
             if newly_started is None:
