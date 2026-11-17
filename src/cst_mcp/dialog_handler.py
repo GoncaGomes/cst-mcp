@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import platform
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -56,75 +57,6 @@ if _IS_WINDOWS:
     WM_CLOSE = 0x0010
     BM_CLICK = 0x00F5
     GW_OWNER = 4
-
-    def _find_cst_startup_windows() -> list[tuple[int, int, str]]:
-        """Find visible CST startup windows through Win32."""
-        if not _IS_WINDOWS:
-            return []
-
-        windows: list[tuple[int, int, str]] = []
-
-        @WNDENUMPROC
-        def collect(hwnd: int, _: int) -> bool:
-            handle = wintypes.HWND(hwnd)
-
-            if user32.IsWindowVisible(handle):
-                title = _get_window_text(handle)
-
-                if title.strip().casefold() == "cst studio suite 2025":
-                    windows.append((hwnd, _get_window_pid(handle), title))
-
-            return True
-
-        user32.EnumWindows(collect, 0)
-        return windows
-
-    def _get_education_ok_pattern(
-        automation: Any,
-        uia_module: Any,
-        window: Any,
-        expected_pid: int,
-    ) -> Any:
-        """Get the unique OK action for the expected education notice."""
-        if window.CurrentProcessId != expected_pid:
-            return None
-
-        elements = window.FindAll(
-            uia_module.TreeScope_Descendants,
-            automation.CreateTrueCondition(),
-        )
-        buttons = []
-
-        for index in range(elements.Length):
-            element = elements.GetElement(index)
-
-            if (
-                element.CurrentControlType == uia_module.UIA_ButtonControlTypeId
-                and (element.CurrentName or "").strip().casefold() == "ok"
-            ):
-                buttons.append(element)
-
-        if len(buttons) != 1:
-            return None
-
-        button = buttons[0]
-        if not button.CurrentIsEnabled or button.CurrentProcessId != expected_pid:
-            return None
-
-        pattern = button.GetCurrentPattern(uia_module.UIA_InvokePatternId)
-        if not pattern:
-            return None
-
-        invoke_pattern = pattern.QueryInterface(uia_module.IUIAutomationInvokePattern)
-
-        # Revalidate the notice after locating its button.
-        title = window.CurrentName or ""
-        full_text = _read_uia_text(automation, uia_module, window)
-
-        if window.CurrentProcessId != expected_pid or not _is_education_notice(title, full_text):
-            return None
-
-        return invoke_pattern
 
     def _get_window_text(hwnd: int) -> str:
         length = user32.GetWindowTextLengthW(hwnd)
@@ -240,13 +172,19 @@ def _is_cst_main_window(title: str) -> bool:
     return any(kw in t for kw in _CST_MAIN_WINDOW_KEYWORDS)
 
 
+def _is_education_notice_title(title: str) -> bool:
+    """Match the exact suite title with any four-digit version year."""
+    return (
+        re.fullmatch(r"cst studio suite [0-9]{4}", " ".join(title.casefold().split())) is not None
+    )
+
+
 def _is_education_notice(title: str, full_text: str) -> bool:
     """Identify the CST education notice by its title and message."""
-    normalized_title = title.strip().casefold()
     normalized_text = " ".join(full_text.casefold().split())
 
     return (
-        normalized_title == "cst studio suite 2025"
+        _is_education_notice_title(title)
         and "education version" in normalized_text
         and "this software is licensed for non-commercial use only" in normalized_text
     )
@@ -282,6 +220,77 @@ def _read_uia_text(
             texts.append(text)
 
     return "\n".join(texts)
+
+
+def _find_cst_startup_windows() -> list[tuple[int, int, str]]:
+    """Find visible candidate notice windows through Win32, without authorizing clicks."""
+    if not _IS_WINDOWS:
+        return []
+
+    windows: list[tuple[int, int, str]] = []
+
+    @WNDENUMPROC
+    def collect(hwnd: int, _: int) -> bool:
+        handle = wintypes.HWND(hwnd)
+        if user32.IsWindowVisible(handle):
+            title = _get_window_text(handle)
+            if _is_education_notice_title(title):
+                windows.append((hwnd, _get_window_pid(handle), title))
+        return True
+
+    user32.EnumWindows(collect, 0)
+    return windows
+
+
+def _get_education_ok_pattern(
+    automation: Any,
+    uia_module: Any,
+    window: Any,
+    expected_pid: int,
+) -> Any:
+    """Get the unique OK action for the expected education notice."""
+    if window.CurrentProcessId != expected_pid:
+        return None
+
+    elements = window.FindAll(
+        uia_module.TreeScope_Descendants,
+        automation.CreateTrueCondition(),
+    )
+    buttons = []
+
+    for index in range(elements.Length):
+        element = elements.GetElement(index)
+        if (
+            element.CurrentControlType == uia_module.UIA_ButtonControlTypeId
+            and (element.CurrentName or "").strip().casefold() == "ok"
+        ):
+            buttons.append(element)
+
+    if len(buttons) != 1:
+        return None
+
+    button = buttons[0]
+    if not button.CurrentIsEnabled or button.CurrentProcessId != expected_pid:
+        return None
+
+    pattern = button.GetCurrentPattern(uia_module.UIA_InvokePatternId)
+    if not pattern:
+        return None
+
+    invoke_pattern = pattern.QueryInterface(uia_module.IUIAutomationInvokePattern)
+
+    # Revalidate the notice and button after locating the action.
+    full_text = _read_uia_text(automation, uia_module, window)
+    title = window.CurrentName or ""
+    if (
+        window.CurrentProcessId != expected_pid
+        or not _is_education_notice(title, full_text)
+        or not button.CurrentIsEnabled
+        or button.CurrentProcessId != expected_pid
+    ):
+        return None
+
+    return invoke_pattern
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +464,7 @@ class DialogWatcher:
 
 
 class EducationNoticeWatcher:
-    """Observe the education notice during a single CST startup."""
+    """Observe only the targeted education notice during one connection attempt."""
 
     def __init__(
         self,
@@ -493,7 +502,7 @@ class EducationNoticeWatcher:
             raise RuntimeError("UI Automation requires Windows and comtypes")
 
         if self._thread is not None or self._stop_event.is_set():
-            raise RuntimeError("Create a new watcher for each startup")
+            raise RuntimeError("Create a new watcher for each connection attempt")
 
         self._deadline = time.monotonic() + self._timeout_s
         self._thread = threading.Thread(
@@ -504,7 +513,7 @@ class EducationNoticeWatcher:
         self._thread.start()
 
     def _wait_for_target_pid(self) -> int | None:
-        """Wait for the PID published by the current CST startup."""
+        """Wait for the authoritative PID published by the current CST startup."""
         if self._target_pid_getter is None:
             return self._target_pid
 
@@ -538,24 +547,28 @@ class EducationNoticeWatcher:
             initialized = True
             self._observe_uia()
         except Exception:
-            logger.exception("Education notice observer failed")
+            logger.exception(
+                "Education notice observer failed; check UI Automation support and dismiss "
+                "the notice manually if connection blocks"
+            )
         finally:
             if initialized:
-                _comtypes.CoUninitialize()
+                try:
+                    _comtypes.CoUninitialize()
+                except Exception:
+                    logger.warning(
+                        "Could not release education notice COM resources", exc_info=True
+                    )
 
     def _observe_uia(self) -> None:
         from comtypes.client import CreateObject, GetModule
 
         target_pid = self._wait_for_target_pid()
 
-        if self._target_pid_getter is not None and target_pid is None:
+        if target_pid is None:
             return
 
-        if target_pid is not None:
-            logger.info(
-                "Observing education notice for startup PID %s",
-                target_pid,
-            )
+        logger.info("Observing education notice for connection PID %s", target_pid)
 
         uia_module = GetModule("UIAutomationCore.dll")
         automation = CreateObject(
@@ -576,7 +589,7 @@ class EducationNoticeWatcher:
                 first_scan = False
 
             for hwnd, pid, title in candidates:
-                if target_pid is not None and pid != target_pid:
+                if pid != target_pid:
                     continue
                 if self._stop_event.is_set() or time.monotonic() >= self._deadline:
                     return
@@ -605,10 +618,6 @@ class EducationNoticeWatcher:
                     if matched:
                         logger.info("Education notice detected")
 
-                        # Without a target PID, keep observation-only mode.
-                        if target_pid is None:
-                            return
-
                         pattern = _get_education_ok_pattern(
                             automation,
                             uia_module,
@@ -625,7 +634,15 @@ class EducationNoticeWatcher:
                         # End observation before invoking, preventing retries
                         # if the invocation raises an exception.
                         self._stop_event.set()
-                        pattern.Invoke()
+                        try:
+                            pattern.Invoke()
+                        except Exception:
+                            logger.warning(
+                                "Education notice OK invocation failed; not retrying because "
+                                "the action may already have taken effect",
+                                exc_info=True,
+                            )
+                            return
                         logger.info(
                             "Education notice OK invoked: pid=%s",
                             pid,
