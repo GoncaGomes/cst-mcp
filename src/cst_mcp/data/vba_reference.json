@@ -266,7 +266,7 @@
       "category": "boundary",
       "description": "Set boundary conditions for the simulation domain (open, PEC, PMC, periodic, etc.).",
       "methods": [
-        {"name": "Xmin", "args": "type: String", "description": "Boundary at Xmin: \"open\", \"open (add space)\", \"electric\", \"magnetic\", \"periodic\", \"expanded open\", \"conducting wall\", \"unit cell\""},
+        {"name": "Xmin", "args": "type: String", "description": "Boundary at Xmin: \"open\", \"electric\", \"magnetic\", \"periodic\", \"expanded open\", \"conducting wall\", \"unit cell\""},
         {"name": "Xmax", "args": "type: String", "description": "Boundary at Xmax"},
         {"name": "Ymin", "args": "type: String", "description": "Boundary at Ymin"},
         {"name": "Ymax", "args": "type: String", "description": "Boundary at Ymax"},
@@ -278,7 +278,7 @@
         {"name": "ApplyInAllDirections", "args": "flag: Boolean", "description": "Apply same BC to all directions"},
         {"name": "OpenAddSpaceFactor", "args": "factor: Double", "description": "Factor for 'open (add space)' distance"}
       ],
-      "example": "With Boundary\n  .Xmin \"open (add space)\"\n  .Xmax \"open (add space)\"\n  .Ymin \"open (add space)\"\n  .Ymax \"open (add space)\"\n  .Zmin \"electric\"\n  .Zmax \"open (add space)\"\n  .Xsymmetry \"none\"\n  .Ysymmetry \"none\"\n  .Zsymmetry \"none\"\nEnd With"
+      "example": "With Boundary\n  .Xmin \"expanded open\"\n  .Xmax \"expanded open\"\n  .Ymin \"expanded open\"\n  .Ymax \"expanded open\"\n  .Zmin \"electric\"\n  .Zmax \"expanded open\"\n  .Xsymmetry \"none\"\n  .Ysymmetry \"none\"\n  .Zsymmetry \"none\"\nEnd With"
     },
     "Background": {
       "category": "boundary",

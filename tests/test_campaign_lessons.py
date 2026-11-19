@@ -282,6 +282,15 @@ def test_port_on_open_face_with_structure_is_error():
         and "PML" in issue["message"]
         and "PortOnBound False" in issue["fix"]
     )
+    assert "expanded open" in issue["fix"] and "open (add space)" not in issue["fix"]
+
+
+@pytest.mark.parametrize("boundary_type", ["expanded open", "open (add space)"])
+def test_check_setup_recognizes_added_space_boundary_labels(boundary_type):
+    rep = model_checks.check_setup(
+        {"x_min": boundary_type}, [{"orientation": "xmin", "port_on_bound": True}]
+    )
+    assert [issue["code"] for issue in rep["issues"]] == ["port_on_bound_with_added_space"]
 
 
 def test_expanded_open_with_internal_port_is_clean():
@@ -316,6 +325,17 @@ def test_check_model_setup_tool_and_set_boundary_warning():
     assert res["warnings"][0]["code"] == "waveguide_port_on_open_boundary"
     res, _ = run(boundaries, "cst_set_boundary", {f: "expanded open" for f in model_checks.FACES})
     assert "warnings" not in res
+
+
+def test_set_boundary_requires_expanded_open_for_added_space():
+    faces = dict.fromkeys(model_checks.FACES, "expanded open")
+    res, client = run(boundaries, "cst_set_boundary", {**faces, "x_min": "open (add space)"})
+    assert res["status"] == "error"
+    assert "Invalid boundary type 'open (add space)' for x_min" in res["message"]
+    assert not client.executed
+
+    _, client = run(boundaries, "cst_set_boundary", faces)
+    assert '.Xmin "expanded open"' in [line.strip() for line in client.executed[-1].splitlines()]
 
 
 # --------------------------------------------------------------------------- 4. SMA connector
