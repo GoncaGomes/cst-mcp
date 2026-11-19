@@ -43,7 +43,7 @@ PML_EXTENSION = (
     "efficiency/gain unreliable and S11 artificially broadband."
 )
 PORT_FIX = (
-    "Use 'expanded open' (or 'open (add space)') on this face and feed through a closed "
+    "Use 'expanded open' on this face and feed through a closed "
     "structure (coax/SMA, e.g. cst_add_sma_edge_connector) with an internal waveguide port "
     "(PortOnBound False) on the coax back face; verify with cst_check_power_balance."
 )

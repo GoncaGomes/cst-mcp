@@ -13,7 +13,6 @@ from cst_mcp.vba_builder import VBABuilder
 
 _BOUNDARY_TYPES = [
     "open",
-    "open (add space)",
     "electric",
     "magnetic",
     "periodic",
