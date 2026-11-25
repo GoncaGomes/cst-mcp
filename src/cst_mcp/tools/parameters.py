@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 from collections.abc import Callable
 from typing import Any
 
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.validators import validate_name, validate_positive
+from cst_mcp.validators import validate_name, validate_parameter_name, validate_positive
 from cst_mcp.vba_builder import VBAScript, _escape_vba_string
 
 # ---------------------------------------------------------------------------
@@ -40,7 +39,12 @@ TOOLS: list[Tool] = [
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Parameter name (e.g. 'patch_length', 'substrate_h').",
+                    "description": (
+                        "Parameter name (e.g. 'patch_length', 'substrate_h'): letters, digits "
+                        "and underscores, starting with a letter or underscore. CST refuses VBA "
+                        "constant names in any case (Pi, True, False, Empty, Null, Nothing, "
+                        "vbCrLf and the other vb* constants); use e.g. 'pi_c' instead."
+                    ),
                 },
                 "value": {
                     "description": (
@@ -625,14 +629,10 @@ TOOLS: list[Tool] = [
 # VBA generation helpers
 # ---------------------------------------------------------------------------
 
-# CST parameter identifiers (stricter than validate_name: no spaces/dots).
-_PARAM_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-
 
 def _param_name(name: Any) -> str:
-    if not isinstance(name, str) or not _PARAM_NAME_RE.fullmatch(name):
-        raise ValueError(f"Invalid CST parameter name: {name!r}")
-    return name
+    # Stricter than validate_name (no spaces or dots) and not a VBA constant such as Pi.
+    return validate_parameter_name(name)
 
 
 def _vba_number(value: Any, label: str) -> str:
