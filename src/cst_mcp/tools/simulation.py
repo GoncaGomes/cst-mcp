@@ -434,7 +434,7 @@ def _finished_payload(client: CSTClient, pending: dict | None) -> dict[str, Any]
         warning = (
             "The solve started by cst_run_simulation_async was never seen running "
             f"within {_WAIT_START_GRACE_S:g} s: it either finished very quickly or did "
-            "not start. Check run_info / cst_get_messages before reading results."
+            "not start. Check run_info / cst_read_project_log before reading results."
         )
     else:
         warning = (

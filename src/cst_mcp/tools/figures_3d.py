@@ -500,7 +500,7 @@ async def handle(name, arguments, client):
                     {
                         "status": "no_results",
                         "message": "No farfield results on disk for this project. Add a farfield monitor "
-                        "(cst_add_farfield_monitor), run cst_run_simulation_async + cst_wait_for_simulation, then "
+                        "(cst_add_field_monitor, monitor_type 'Farfield'), run cst_run_simulation_async + cst_wait_for_simulation, then "
                         "retry connected; or pass data_file.",
                         "disk_results": [],
                     }

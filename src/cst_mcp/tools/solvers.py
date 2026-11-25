@@ -682,6 +682,7 @@ def _get_solver_info(arguments: dict, client: CSTClient) -> list[TextContent]:
         ("number_of_ports", "Solver.GetNumberOfPorts"),
         ("stimulation_port", "Solver.GetStimulationPort"),
         ("last_solver_time_s", "Solver.GetLastSolverTime"),
+        ("frequency_unit", 'Units.GetUnit("Frequency")'),
     ]
     script = client.build_query_vba(fields) if hasattr(client, "build_query_vba") else ""
 
@@ -702,8 +703,8 @@ def _get_solver_info(arguments: dict, client: CSTClient) -> list[TextContent]:
                         result[key] = float(value.replace(",", "."))
                     except ValueError:
                         result[key] = value
-            if "fmin" in result or "fmax" in result:
-                result["frequency_unit"] = "project frequency unit (as set by cst_set_units)"
+            if ("fmin" in result or "fmax" in result) and not result.get("frequency_unit"):
+                result["frequency_unit"] = "unknown (read it with cst_get_units)"
             if query.get("errors"):
                 result["unavailable"] = query["errors"]
     else:
