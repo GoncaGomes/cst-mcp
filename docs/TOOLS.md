@@ -1,4 +1,4 @@
-## Full tool catalog (192 tools)
+## Full tool catalog (193 tools)
 
 This file is the Markdown tool reference for the complete registered tool catalog.
 MCP tool discovery supplies the active schemas for the configured toolsets.
@@ -53,9 +53,9 @@ Create, open, save projects and check CST connection.
 | `cst_export_project` | Export the current CST project or its geometry to another format such as STL, STEP, IGES, SAT, OBJ, or NASTRAN. |
 | `cst_connection_status` | Get the current CST Studio connection status, including mode (connected/offline), CST availability, version, and work directory. |
 
-### Geometry (13)
+### Geometry (14)
 
-3D shapes: bricks, cylinders, spheres, extrusions, wires…
+3D shapes: bricks, cylinders, spheres, extrusions, wires… and measured solid bounds
 
 | Tool | What it does |
 |------|--------------|
@@ -72,6 +72,7 @@ Create, open, save projects and check CST connection.
 | `cst_create_face_from_curves` | Create a planar sheet consisting of one face from exactly one qualified closed planar curve reference (curvegroup:curveitem) in CST Studio. CST reports native geometric errors. Connected curve items may be included by CST. |
 | `cst_create_ecylinder` | Create an elliptical cylinder in CST Studio. |
 | `cst_create_polygon_extrude` | Polygon extrusion with numeric/mixed CST expressions and independent profile/hole winding evaluation on every rebuild. |
+| `cst_get_solid_bounds` | Read-only, no history: measured loose bounding box (an outer bound from CST), material and volume of named solids, in project units. |
 
 Both extrusion tools support expressions in height, every profile/hole coordinate
 and the active-axis offset. Inactive symbolic offsets are rejected. Double-valued
