@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import sys
 import time
@@ -438,13 +439,20 @@ class CSTSession:
     def save_project(self, path: str | None = None) -> dict[str, Any]:
         if not self.has_project:
             return {"status": "error", "message": "No project open"}
-        save_path = path or self._project_path
+        # The live filename is authoritative; the cached path covers fakes and older APIs.
+        current = self._safe_filename(self._project) or self._project_path
         try:
-            if save_path:
-                self._project.save(save_path)
-                self._project_path = save_path
+            if path and not self._same_path(path, current):
+                # Save As. CST refuses an existing destination (allow_overwrite=False),
+                # which protects files belonging to another project.
+                self._project.save(path)
+                self._project_path = path
             else:
+                # Project.save() with no path saves to the current filename. Passing the
+                # current path explicitly makes CST refuse with "path already exists".
                 self._project.save()
+                if current:
+                    self._project_path = current
             return {"status": "saved", "path": self._project_path}
         except Exception as exc:  # noqa: BLE001
             return {"status": "error", "message": str(exc)}
@@ -1977,6 +1985,17 @@ class CSTSession:
         if hasattr(project_ref, "model3d"):
             return project_ref
         return design_environment.get_open_project(project_ref)
+
+    @staticmethod
+    def _same_path(a: str, b: str | None) -> bool:
+        """True when two paths name the same file (case, separators, ``..`` normalised)."""
+        if not b:
+            return False
+
+        def norm(p: str) -> str:
+            return os.path.normcase(os.path.abspath(os.path.expanduser(p)))
+
+        return norm(a) == norm(b)
 
     @staticmethod
     def _safe_filename(project: Any) -> str | None:
