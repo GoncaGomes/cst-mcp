@@ -121,8 +121,12 @@ TOOLS: list[Tool] = [
             "properties": {
                 "accuracy": {
                     "type": "number",
-                    "description": "Solver accuracy / residual target (default 1e-6)",
+                    "description": "Relative residual target, a plain number in [1e-12, 1e-3] "
+                    "(default 1e-6). Not dB: the time-domain solver's accuracy is in dB "
+                    "(e.g. -40); this one is not.",
                     "default": 1e-6,
+                    "minimum": 1e-12,
+                    "maximum": 1e-3,
                 },
                 "f_min": {
                     "type": "number",
@@ -192,8 +196,10 @@ TOOLS: list[Tool] = [
                 },
                 "accuracy": {
                     "type": "number",
-                    "description": "Solver accuracy target (default 1e-6)",
+                    "description": "Relative accuracy target, a positive number, not dB "
+                    "(default 1e-6)",
                     "default": 1e-6,
+                    "exclusiveMinimum": 0,
                 },
                 "f_min": {
                     "type": "number",
@@ -216,8 +222,10 @@ TOOLS: list[Tool] = [
             "properties": {
                 "accuracy": {
                     "type": "number",
-                    "description": "Iterative solver residual target (default 1e-3)",
+                    "description": "Relative iterative-solver residual target, a positive "
+                    "number, not dB (default 1e-3)",
                     "default": 1e-3,
+                    "exclusiveMinimum": 0,
                 },
                 "max_iterations": {
                     "type": "integer",
@@ -261,8 +269,10 @@ TOOLS: list[Tool] = [
                 },
                 "accuracy": {
                     "type": "number",
-                    "description": "Solver accuracy target (default 1e-6)",
+                    "description": "Relative accuracy target, a positive number, not dB "
+                    "(default 1e-6)",
                     "default": 1e-6,
+                    "exclusiveMinimum": 0,
                 },
                 "solver_order": {
                     "type": "integer",
@@ -285,8 +295,10 @@ TOOLS: list[Tool] = [
             "properties": {
                 "accuracy": {
                     "type": "number",
-                    "description": "Iterative solver residual target (default 1e-3)",
+                    "description": "Relative iterative-solver residual target, a positive "
+                    "number, not dB (default 1e-3)",
                     "default": 1e-3,
+                    "exclusiveMinimum": 0,
                 },
                 "max_iterations": {
                     "type": "integer",
