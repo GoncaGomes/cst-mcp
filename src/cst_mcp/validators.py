@@ -207,6 +207,61 @@ def validate_name(name: str, label: str = "name") -> str:
     return name
 
 
+# CST refuses a parameter named after a constant of its VBA engine (WinWrap Basic):
+# StoreParameter "Pi", ... fails with "Invalid parameter name 'Pi'. (The parameter name
+# must not be a VBA constant name.)". VBA names are case-insensitive, so the set is
+# lower case and lookups fold case.
+_VBA_CONSTANTS = """
+# Language constants
+Pi True False Empty Null Nothing
+# Strings and characters
+vbCr vbLf vbCrLf vbNewLine vbTab vbBack vbFormFeed vbVerticalTab vbNullChar vbNullString
+vbObjectError
+# Comparison and string conversion
+vbBinaryCompare vbTextCompare vbDatabaseCompare vbUseCompareOption vbUpperCase vbLowerCase
+vbProperCase vbWide vbNarrow vbKatakana vbHiragana vbUnicode vbFromUnicode
+# VarType values
+vbEmpty vbNull vbInteger vbLong vbLongLong vbSingle vbDouble vbCurrency vbDate vbString vbObject
+vbError vbBoolean vbVariant vbDataObject vbDecimal vbByte vbUserDefinedType vbArray
+# MsgBox buttons, icons and results
+vbOK vbCancel vbAbort vbRetry vbIgnore vbYes vbNo vbOKOnly vbOKCancel vbAbortRetryIgnore
+vbYesNoCancel vbYesNo vbRetryCancel vbCritical vbQuestion vbExclamation vbInformation
+vbDefaultButton1 vbDefaultButton2 vbDefaultButton3 vbApplicationModal vbSystemModal
+# Tristate, dates and weekdays
+vbTrue vbFalse vbUseDefault vbGeneralDate vbLongDate vbShortDate vbLongTime vbShortTime
+vbUseSystem vbUseSystemDayOfWeek vbSunday vbMonday vbTuesday vbWednesday vbThursday vbFriday
+vbSaturday vbFirstJan1 vbFirstFourDays vbFirstFullWeek
+# File attributes, window styles, CallByName and colours
+vbNormal vbReadOnly vbHidden vbSystem vbVolume vbDirectory vbArchive vbHide vbNormalFocus
+vbMinimizedFocus vbMaximizedFocus vbNormalNoFocus vbMinimizedNoFocus vbMethod vbGet vbLet vbSet
+vbBlack vbRed vbGreen vbYellow vbBlue vbMagenta vbCyan vbWhite
+"""
+VBA_CONSTANT_NAMES: frozenset[str] = frozenset(
+    word.lower()
+    for line in _VBA_CONSTANTS.splitlines()
+    if not line.startswith("#")
+    for word in line.split()
+)
+
+_PARAMETER_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def validate_parameter_name(name: object) -> str:
+    """Validate a CST parameter name: an identifier that is not a VBA constant."""
+    if not isinstance(name, str) or not _PARAMETER_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"Invalid CST parameter name: {name!r}. Use letters, digits and underscores, "
+            "starting with a letter or underscore."
+        )
+    if name.lower() in VBA_CONSTANT_NAMES:
+        raise ValueError(
+            f"Invalid CST parameter name: {name!r} is a VBA constant name (names are "
+            f"case-insensitive), which CST does not allow. Choose another name, "
+            f"e.g. '{name}_c'."
+        )
+    return name
+
+
 def validate_component_path(path: str) -> str:
     """Validate a component:solid path like 'Antenna:Patch'."""
     if not path:

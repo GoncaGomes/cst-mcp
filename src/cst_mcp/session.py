@@ -20,6 +20,7 @@ from typing import Any, ClassVar
 from cst_mcp.config import CSTConfig
 from cst_mcp.controller_target import ControllerBinding
 from cst_mcp.dialog_handler import EducationNoticeWatcher
+from cst_mcp.validators import validate_parameter_name
 from cst_mcp.vba_safety import vba_escape
 
 logger = logging.getLogger(__name__)
@@ -816,8 +817,7 @@ class CSTSession:
     def _parameter_vba(params: dict[str, float | str]) -> str:
         lines: list[str] = []
         for name, value in params.items():
-            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-                raise ValueError(f"Invalid CST parameter name: {name!r}")
+            validate_parameter_name(name)
             if isinstance(value, float) and not math.isfinite(value):
                 raise ValueError(f"Parameter {name!r} must be finite")
             raw_value = str(value)
