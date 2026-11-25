@@ -1,4 +1,4 @@
-## Full tool catalog (193 tools)
+## Full tool catalog (195 tools)
 
 This file is the Markdown tool reference for the complete registered tool catalog.
 MCP tool discovery supplies the active schemas for the configured toolsets.
@@ -38,7 +38,7 @@ One-shot helpers for common tasks. New users should start here.
 | `cst_discover_farfield_monitors` | Discover farfield monitors from the project Result folder and tree-path heuristics. Uzak alan monitörlerini disk + path sezgisiyle listeler. |
 | `cst_get_farfield_metrics` | Read antenna metrics after a solve: S11 + radiation/total efficiency from 1D Results, plus max realized gain via official FarfieldPlot.Ge… |
 
-### Project & connection (8)
+### Project & connection (10)
 
 Create, open, save projects and check CST connection.
 
@@ -49,6 +49,8 @@ Create, open, save projects and check CST connection.
 | `cst_save_project` | Save the currently open CST project. Optionally provide a new path to 'Save As'. |
 | `cst_close_project` | Close the currently open CST project and release its resources. |
 | `cst_project_info` | Get information about the currently open CST project, including connection mode, project path, and status. |
+| `cst_get_units` | Read the project length, frequency, time and temperature units and their SI factors (read-only, no model history). |
+| `cst_set_units` | Set any of the project length, frequency, time and temperature units, then read them back. Set them before building; existing values are not converted. |
 | `cst_project_tree` | List items in the CST project navigation tree. Optionally specify a subtree path such as 'Components', 'Materials', 'Ports', 'Monitors', … |
 | `cst_export_project` | Export the current CST project or its geometry to another format such as STL, STEP, IGES, SAT, OBJ, or NASTRAN. |
 | `cst_connection_status` | Get the current CST Studio connection status, including mode (connected/offline), CST availability, version, and work directory. |

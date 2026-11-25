@@ -1,7 +1,8 @@
 """Project management tools for CST Studio MCP server.
 
-Provides 8 tools for creating, opening, saving, closing, inspecting,
-navigating, exporting, and checking connection status of CST projects.
+Provides tools for creating, opening, saving, closing, inspecting,
+navigating and exporting CST projects, reading and setting the project units,
+and checking connection status.
 """
 
 from __future__ import annotations
@@ -17,6 +18,16 @@ from cst_mcp.types import ExportFormat, ProjectType
 from cst_mcp.validators import ValidationError, validate_file_path
 from cst_mcp.vba_builder import VBABuilder, VBAScript, _escape_vba_string
 from cst_mcp.vba_safety import validate_file_path as vba_path
+from cst_mcp.vba_safety import vba_string_literal
+
+# Units.SetUnit dimensions and their admissible, case-sensitive unit strings
+# (CST 2025 VBA help, "Units Object").
+_UNIT_CHOICES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "length": ("Length", ("nm", "um", "mm", "cm", "m", "mil", "in", "ft")),
+    "frequency": ("Frequency", ("Hz", "kHz", "MHz", "GHz", "THz", "PHz")),
+    "time": ("Time", ("fs", "ps", "ns", "us", "ms", "s")),
+    "temperature": ("Temperature", ("degC", "K", "degF")),
+}
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -110,6 +121,59 @@ TOOLS: list[Tool] = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    ),
+    Tool(
+        name="cst_get_units",
+        description=(
+            "Read the units of the open project: length, frequency, time and temperature "
+            "(e.g. mm, GHz, ns, K), plus the factors that convert length, frequency and time "
+            "to SI. Every coordinate, dimension and frequency the other tools take is in these "
+            "units. Read-only: a VBA query through output capture that adds no model-history "
+            "entry. Refused while a solver is running or its state is unknown."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    ),
+    Tool(
+        name="cst_set_units",
+        description=(
+            "Set the project units with CST's Units.SetUnit, for any of length, frequency, "
+            "time and temperature (omitted ones are left unchanged), then read them back. "
+            "Set units on a new project before building: this tool does not convert "
+            "coordinates, parameter values or solver settings that already exist. Adds one "
+            "model-history entry ('define units')."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "length": {
+                    "type": "string",
+                    "enum": list(_UNIT_CHOICES["length"][1]),
+                    "description": "Length unit (case-sensitive).",
+                },
+                "frequency": {
+                    "type": "string",
+                    "enum": list(_UNIT_CHOICES["frequency"][1]),
+                    "description": "Frequency unit (case-sensitive).",
+                },
+                "time": {
+                    "type": "string",
+                    "enum": list(_UNIT_CHOICES["time"][1]),
+                    "description": "Time unit (case-sensitive).",
+                },
+                "temperature": {
+                    "type": "string",
+                    "enum": list(_UNIT_CHOICES["temperature"][1]),
+                    "description": "Temperature unit (case-sensitive).",
+                },
+            },
+            "required": [],
+            "minProperties": 1,
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -403,6 +467,106 @@ def _build_export_vba(path: str, fmt: str) -> str:
     return script.build()
 
 
+# Unit-to-SI factors, used when Units.GetUnit is unavailable but the factor is.
+_FACTOR_UNITS: dict[str, dict[float, str]] = {
+    "length": {
+        1e-9: "nm",
+        1e-6: "um",
+        1e-3: "mm",
+        1e-2: "cm",
+        1.0: "m",
+        2.54e-5: "mil",
+        0.0254: "in",
+        0.3048: "ft",
+    },
+    "frequency": {1.0: "Hz", 1e3: "kHz", 1e6: "MHz", 1e9: "GHz", 1e12: "THz", 1e15: "PHz"},
+    "time": {1e-15: "fs", 1e-12: "ps", 1e-9: "ns", 1e-6: "us", 1e-3: "ms", 1.0: "s"},
+}
+_TO_SI_QUERIES = {
+    "length": "Units.GetGeometryUnitToSI()",
+    "frequency": "Units.GetFrequencyUnitToSI()",
+    "time": "Units.GetTimeUnitToSI()",
+}
+
+
+def _units_query_fields() -> list[tuple[str, str]]:
+    fields = [
+        (key, f'Units.GetUnit("{dimension}")') for key, (dimension, _) in _UNIT_CHOICES.items()
+    ]
+    fields += [(f"{key}_to_si", expr) for key, expr in _TO_SI_QUERIES.items()]
+    return fields
+
+
+def _unit_for_factor(key: str, factor: float) -> str | None:
+    for si, unit in _FACTOR_UNITS[key].items():
+        if abs(factor - si) <= 1e-9 * si:
+            return unit
+    return None
+
+
+def _parse_units(values: dict[str, str], errors: dict[str, str]) -> dict:
+    """Shape a units query into ``{"units", "to_si", "unavailable"}``."""
+    to_si: dict[str, float] = {}
+    for key in _TO_SI_QUERIES:
+        text = values.get(f"{key}_to_si")
+        if text is None:
+            continue
+        try:
+            # CStr follows the Windows locale, which may use a decimal comma.
+            to_si[key] = float(text.strip().replace(",", "."))
+        except ValueError:
+            errors.setdefault(f"{key}_to_si", f"unreadable factor {text!r}")
+    units: dict[str, str] = {}
+    for key in _UNIT_CHOICES:
+        unit = (values.get(key) or "").strip()
+        if not unit and key in to_si:
+            unit = _unit_for_factor(key, to_si[key]) or ""
+        if unit:
+            units[key] = unit
+    result: dict = {"units": units, "to_si": to_si}
+    missing = {k: v for k, v in errors.items() if k.removesuffix("_to_si") not in units}
+    if missing:
+        result["unavailable"] = missing
+    return result
+
+
+def _read_units(client: CSTClient) -> dict:
+    query = client.query_values(_units_query_fields())
+    if query.get("status") != "ok":
+        return query
+    parsed = _parse_units(dict(query.get("values", {})), dict(query.get("errors", {})))
+    return {
+        "status": "ok" if parsed["units"] else "error",
+        **parsed,
+        "source": "Units.GetUnit / Units.Get*UnitToSI via output capture (no model history)",
+    }
+
+
+def _set_units_request(arguments: dict) -> dict[str, str]:
+    requested: dict[str, str] = {}
+    for key, value in arguments.items():
+        if key not in _UNIT_CHOICES:
+            raise ValueError(f"Unknown unit dimension {key!r}; use {sorted(_UNIT_CHOICES)}")
+        allowed = _UNIT_CHOICES[key][1]
+        if value not in allowed:
+            raise ValueError(f"Invalid {key} unit {value!r}; must be one of {list(allowed)}")
+        requested[key] = value
+    if not requested:
+        raise ValueError(f"Give at least one of {sorted(_UNIT_CHOICES)}")
+    return requested
+
+
+def _build_set_units_vba(requested: dict[str, str]) -> str:
+    lines = ["With Units"]
+    for key, unit in requested.items():
+        dimension = _UNIT_CHOICES[key][0]
+        lines.append(
+            f"  .SetUnit {vba_string_literal(dimension, key)}, {vba_string_literal(unit, key)}"
+        )
+    lines.append("End With")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Common tree items returned in offline mode
 # ---------------------------------------------------------------------------
@@ -647,6 +811,47 @@ def _handle_impl(name: str, arguments: dict, client: CSTClient) -> list[TextCont
                 ),
             }
         )
+
+    # ------------------------------------------------------------------
+    # cst_get_units
+    # ------------------------------------------------------------------
+    if name == "cst_get_units":
+        if client.connected and not client.has_project:
+            return _text({"status": "error", "message": "No project open"})
+        result = _read_units(client)
+        if result.get("status") == "offline":
+            result["message"] = "Not connected; units are only read from a live CST project."
+        return _text(result)
+
+    # ------------------------------------------------------------------
+    # cst_set_units
+    # ------------------------------------------------------------------
+    if name == "cst_set_units":
+        requested = _set_units_request(arguments)
+        vba = _build_set_units_vba(requested)
+        if client.connected and not client.has_project:
+            return _text({"status": "error", "message": "No project open"})
+        result = client.execute_vba(vba, history_label="define units")
+        result["requested"] = requested
+        if result.get("status") != "executed" or result.get("execution_state") == "unknown":
+            return _text(result)
+        readback = _read_units(client)
+        if readback.get("status") != "ok":
+            result["readback"] = readback
+            result["warning"] = "Units were set but could not be read back; call cst_get_units."
+            return _text(result)
+        result["units"] = readback["units"]
+        result["to_si"] = readback["to_si"]
+        mismatched = {
+            key: {"requested": unit, "read_back": readback["units"].get(key)}
+            for key, unit in requested.items()
+            if readback["units"].get(key) != unit
+        }
+        if mismatched:
+            result["status"] = "error"
+            result["message"] = "CST reports different units than requested."
+            result["mismatched"] = mismatched
+        return _text(result)
 
     # ------------------------------------------------------------------
     # cst_connection_status
