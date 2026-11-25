@@ -56,7 +56,7 @@ async def test_registry_select_reads_live_filename_not_cached_request(tmp_path, 
         path.write_text("controlled existing file")
     saved = []
 
-    def save(p):
+    def save(p=None):  # CST: no path saves to the current filename
         saved.append(p)
         path.write_text("controlled saved file")
 
@@ -198,9 +198,9 @@ def controlled_client(tmp_path):
     path = tmp_path / "exact.cst"
     saved, history = [], []
 
-    def save(value):
+    def save(value=None):  # CST: no path saves to the current filename
         saved.append(value)
-        Path(value).write_text("controlled project")
+        Path(value or path).write_text("controlled project")
 
     live = SimpleNamespace(
         filename=lambda: str(path),
@@ -290,7 +290,8 @@ async def test_separate_selection_successive_operations_and_save(tmp_path, monke
     assert saved == []  # selection never grants an automatic later save
     result, data = await call("cst_save_project", {}, context)
     assert not is_error(result)
-    assert saved == [os.path.normcase(str(path.resolve()))]
+    # The checked target is the live project's own path, so it is saved in place.
+    assert saved == [None]
     assert data["controller"]["sequence"] == 6
 
 

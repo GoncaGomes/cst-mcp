@@ -362,7 +362,9 @@ def _handle_run_simulation(
 
     selection = _select_solver(solver_type, client)
     if selection is not None and selection.get("status") not in {"executed", "offline"}:
-        result = selection
+        # Copy: the selection is attached to the response below, and reusing the same
+        # dict would make it contain itself ("Circular reference detected" in json.dumps).
+        result = dict(selection)
     else:
         result = (
             client.start_solver(timeout_s=timeout_s)
