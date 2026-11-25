@@ -1,13 +1,16 @@
 """Geometry creation tools for CST Studio Suite.
 
 Provides 13 MCP tools for creating 3D shapes, curves, and extruded profiles
-in CST Studio by generating VBA scripts via VBABuilder.
+in CST Studio by generating VBA scripts via VBABuilder, plus a read-only
+measured-bounds query (``cst_get_solid_bounds``).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 from collections.abc import Callable
 
 from mcp.types import TextContent, Tool
@@ -35,6 +38,13 @@ def _expression_field(description: str, **settings) -> dict:
         ),
         **settings,
     )
+
+
+# 'Component:Solid', nested components joined by '/'. Quotes and further colons are
+# never part of a CST shape name; line breaks are rejected separately.
+_SOLID_NAME_PATTERN = r'^[^:"]+:[^:"]+$'
+_SOLID_NAME_RE = re.compile(_SOLID_NAME_PATTERN)
+_MAX_BOUNDS_SOLIDS = 100
 
 
 TOOLS: list[Tool] = [
@@ -523,7 +533,229 @@ TOOLS: list[Tool] = [
             "required": ["component", "name", "points", "height"],
         },
     ),
+    # 14. Measured bounds readback (read-only)
+    Tool(
+        name="cst_get_solid_bounds",
+        description=(
+            "Read back where existing solids actually are: for each named solid, the "
+            "axis-aligned bounding box in global coordinates and project length units, its "
+            "material and (optionally) its volume. Use it after building to check offsets, "
+            "contact between parts and layer placement instead of re-deriving coordinates. "
+            "Read-only: a VBA query through output capture that adds no model-history entry. "
+            "The box comes from CST's Solid.GetLooseBoundingBoxOfShape, which guarantees the "
+            "whole solid lies inside it but may be larger than the solid (for example around "
+            "curved faces); treat it as an outer bound. Unknown names are reported per solid. "
+            "Refused while a solver is running or its state is unknown."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "solids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 300,
+                        "pattern": _SOLID_NAME_PATTERN,
+                    },
+                    "minItems": 1,
+                    "maxItems": _MAX_BOUNDS_SOLIDS,
+                    "description": (
+                        "Full solid names as 'Component:Solid', e.g. 'substrate:board'. "
+                        "Nested components use '/', e.g. 'antenna/feed:pin'."
+                    ),
+                },
+                "include_volume": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Also return Solid.GetVolume for each solid.",
+                },
+            },
+            "required": ["solids"],
+            "additionalProperties": False,
+        },
+    ),
 ]
+
+# ---------------------------------------------------------------------------
+# Solid bounds readback
+# ---------------------------------------------------------------------------
+
+_BOUNDS_NOTE = (
+    "Loose bounding box from Solid.GetLooseBoundingBoxOfShape: the solid is guaranteed to lie "
+    "inside it, but it may be larger than the solid, e.g. around curved faces."
+)
+
+
+def _solid_bounds_names(arguments: dict) -> list[str]:
+    raw = arguments.get("solids")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("solids must be a non-empty list of 'Component:Solid' names")
+    if len(raw) > _MAX_BOUNDS_SOLIDS:
+        raise ValueError(f"solids accepts at most {_MAX_BOUNDS_SOLIDS} names")
+    names: list[str] = []
+    for i, name in enumerate(raw):
+        if not isinstance(name, str) or not _SOLID_NAME_RE.fullmatch(name):
+            raise ValueError(
+                f"solids[{i}] must be a full solid name 'Component:Solid' "
+                f"(nested components use '/'), got {name!r}"
+            )
+        _q(name, f"solids[{i}]")  # Rejects line breaks and NUL.
+        if name not in names:
+            names.append(name)
+    return names
+
+
+_BOX_VARS = ("mcpX1", "mcpX2", "mcpY1", "mcpY2", "mcpZ1", "mcpZ2")
+
+
+def _solid_bounds_vba(names: list[str], include_volume: bool) -> str:
+    """VBA printing ``<index><TAB><kind><TAB>...`` lines; one failure never aborts the rest.
+
+    Every ``Debug.Print`` starts its own line so output capture redirects it to the file.
+    """
+    lines = [
+        "Dim mcpFound As Boolean",
+        "Dim mcpX1 As Double, mcpX2 As Double, mcpY1 As Double, mcpY2 As Double",
+        "Dim mcpZ1 As Double, mcpZ2 As Double",
+        "Dim mcpText As String",
+        "On Error Resume Next",
+        "Err.Clear",
+        "mcpText = CStr(Units.GetGeometryUnitToSI())",
+        "If Err.Number = 0 Then",
+        '  Debug.Print "unit" & vbTab & mcpText',
+        "End If",
+    ]
+    for i, name in enumerate(names):
+        literal = _vba_string_literal(name, f"solids[{i}]")
+        key = f'"{i}" & vbTab & '
+        box = " & vbTab & ".join(f"CStr({v})" for v in _BOX_VARS)
+        lines += [
+            "Err.Clear",
+            "mcpFound = False",
+            f"mcpFound = Solid.GetLooseBoundingBoxOfShape({literal}, {', '.join(_BOX_VARS)})",
+            "If Err.Number <> 0 Then",
+            f'  Debug.Print {key}"error" & vbTab & Err.Description',
+            "ElseIf Not mcpFound Then",
+            f'  Debug.Print {key}"missing"',
+            "Else",
+            f'  Debug.Print {key}"box" & vbTab & {box}',
+            "  Err.Clear",
+            f"  mcpText = Solid.GetMaterialNameForShape({literal})",
+            "  If Err.Number = 0 Then",
+            f'    Debug.Print {key}"material" & vbTab & mcpText',
+            "  End If",
+        ]
+        if include_volume:
+            lines += [
+                "  Err.Clear",
+                f"  mcpText = CStr(Solid.GetVolume({literal}))",
+                "  If Err.Number = 0 Then",
+                f'    Debug.Print {key}"volume" & vbTab & mcpText',
+                "  Else",
+                f'    Debug.Print {key}"volume_error" & vbTab & Err.Description',
+                "  End If",
+            ]
+        lines.append("End If")
+    return "\n".join(lines)
+
+
+def _vba_float(text: str) -> float:
+    # CStr follows the Windows locale, which may use a decimal comma.
+    value = float(text.strip().replace(",", "."))
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite value {text!r}")
+    return value
+
+
+def _parse_solid_bounds(output: str, names: list[str], include_volume: bool) -> dict:
+    from cst_mcp.tools.drawing import _unit_from_factor
+
+    unit: str | None = None
+    unit_to_si: float | None = None
+    rows: dict[int, dict[str, list[str]]] = {}
+    for line in output.splitlines():
+        parts = line.rstrip("\r").split("\t")
+        if parts[0] == "unit" and len(parts) > 1:
+            try:
+                unit_to_si = _vba_float(parts[1])
+                unit = _unit_from_factor(unit_to_si)
+            except ValueError:
+                pass
+        elif parts[0].isdigit() and len(parts) >= 2:
+            rows.setdefault(int(parts[0]), {})[parts[1]] = parts[2:]
+
+    solids: list[dict] = []
+    for i, name in enumerate(names):
+        row = rows.get(i, {})
+        entry: dict = {"name": name}
+        if "box" in row:
+            try:
+                x1, x2, y1, y2, z1, z2 = (_vba_float(v) for v in row["box"][:6])
+            except ValueError as exc:
+                entry.update(found=True, error=f"Unreadable bounding box from CST: {exc}")
+                solids.append(entry)
+                continue
+            entry.update(
+                found=True,
+                bounds={"x": [x1, x2], "y": [y1, y2], "z": [z1, z2]},
+                size=[x2 - x1, y2 - y1, z2 - z1],
+            )
+            if "material" in row:
+                entry["material"] = "\t".join(row["material"]).strip()
+            if include_volume:
+                try:
+                    entry["volume"] = _vba_float(row["volume"][0])
+                except (KeyError, IndexError, ValueError):
+                    detail = "\t".join(row.get("volume_error", [])).strip()
+                    entry["volume_error"] = detail or "CST returned no volume"
+        elif "missing" in row:
+            entry.update(
+                found=False,
+                error="Solid not found. Use the full 'Component:Solid' name "
+                "(nested components use '/').",
+            )
+        else:
+            detail = "\t".join(row.get("error", [])).strip()
+            entry.update(found=False, error=detail or "CST returned no result for this solid")
+        solids.append(entry)
+
+    failed = [s["name"] for s in solids if "bounds" not in s]
+    result: dict = {
+        "status": "error" if failed else "ok",
+        "unit": unit,
+        "unit_to_si": unit_to_si,
+        "bounds_kind": "loose",
+        "note": _BOUNDS_NOTE,
+        "solids": solids,
+        "source": "VBA query via output capture (no model history)",
+    }
+    if include_volume:
+        result["volume_unit"] = f"{unit}^3" if unit else None
+    if failed:
+        result["message"] = f"No bounds for: {', '.join(failed)}"
+    return result
+
+
+def _get_solid_bounds(arguments: dict, client: CSTClient) -> dict:
+    names = _solid_bounds_names(arguments)
+    include_volume = arguments.get("include_volume", True)
+    if not isinstance(include_volume, bool):
+        raise ValueError("include_volume must be a boolean")  # noqa: TRY004 - handler catches ValueError
+    script = _solid_bounds_vba(names, include_volume)
+    if not client.connected:
+        return {
+            "status": "offline",
+            "vba": script,
+            "message": "Not connected; bounds are only measured on a live CST project.",
+        }
+    if not client.has_project:
+        return {"status": "error", "message": "No project open"}
+    captured = client.capture_vba_output(script)
+    if captured.get("status") != "ok":
+        return captured
+    return _parse_solid_bounds(str(captured.get("output", "")), names, include_volume)
+
 
 # ---------------------------------------------------------------------------
 # VBA generation helpers
@@ -1251,6 +1483,13 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
     Generates VBA via VBABuilder, executes through the CSTClient, and
     returns the result wrapped in TextContent.
     """
+    if name == "cst_get_solid_bounds":
+        try:
+            result = _get_solid_bounds(arguments, client)
+        except ValueError as e:
+            result = {"status": "error", "message": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
     builder_fn = _HANDLERS.get(name)
     if builder_fn is None:
         return [
