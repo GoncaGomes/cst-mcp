@@ -718,7 +718,7 @@ class CSTSession:
                 "execution_state": "unknown",
                 "message": str(exc),
                 "note": "The start call timed out but no running solver was reported; "
-                "check cst_get_messages / dialogs before retrying.",
+                "check cst_read_project_log / dialogs before retrying.",
             }
         return {"status": "completed", "what": what, "elapsed_s": round(time.monotonic() - t0, 2)}
 

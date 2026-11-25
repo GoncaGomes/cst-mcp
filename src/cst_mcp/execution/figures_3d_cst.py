@@ -233,8 +233,8 @@ def acquire(
             disk = []
         if monitors is not None and not ff:
             guidance = (
-                "No farfield monitor is defined. Add one (cst_add_farfield_monitor at the design "
-                "frequency), then run cst_run_simulation_async and cst_wait_for_simulation, and call "
+                "No farfield monitor is defined. Add one (cst_add_field_monitor with monitor_type "
+                "'Farfield' at the design frequency), then run cst_run_simulation_async and cst_wait_for_simulation, and call "
                 "cst_plot_farfield again."
             )
         else:
