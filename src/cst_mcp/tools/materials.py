@@ -9,8 +9,19 @@ from pathlib import Path
 
 from mcp.types import TextContent, Tool
 
+from cst_mcp.config import DEFAULT_VERSION
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.material_library import load_material_vba
+from cst_mcp.material_library import (
+    LibraryEntryNotFound,
+    is_loadable_library_name,
+    library_cst_version,
+    library_directory,
+    library_entry_names,
+    library_name_matches,
+    load_material_vba,
+    read_library_material,
+    similar_library_names,
+)
 from cst_mcp.validators import (
     ValidationError,
     validate_name,
@@ -167,7 +178,10 @@ TOOLS: list[Tool] = [
         description=(
             "Load a native CST .mtd material definition and all its properties under "
             "the given project name. Uses CST_PATH/Library/Materials by default, "
-            "or the directory supplied as library_path."
+            "or the directory supplied as library_path. library_name is the .mtd file name "
+            "without extension, as cst_list_library_materials returns it (e.g. "
+            "'Rogers RT-duroid 5870 (lossy)', not 'Rogers RT/duroid 5870'); an unknown name "
+            "returns up to five close library names in 'similar'."
         ),
         inputSchema={
             "type": "object",
@@ -178,7 +192,9 @@ TOOLS: list[Tool] = [
                 },
                 "library_name": {
                     "type": "string",
-                    "description": "Name in the CST library (e.g. 'Copper (annealed)')",
+                    "description": (
+                        "Native .mtd file name without extension (e.g. 'Copper (annealed)')"
+                    ),
                 },
                 "library_path": {
                     "type": "string",
@@ -192,9 +208,54 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="cst_list_library_materials",
+        description=(
+            "List the native CST material library entries that cst_load_material loads, "
+            "read from the .mtd files on disk (no CST connection, no model history). Each "
+            "entry gives library_name exactly as cst_load_material accepts it, and the "
+            "file's type, epsilon_r, mu_r, conductivity (S/m), tan_d with tan_d_freq (Hz) "
+            "and tan_d_model, and dispersion_model, with MCP 12's field names; a value the "
+            "file does not give is null with the reason in 'unavailable'. The result names "
+            "the library directory and the CST version it belongs to. filter matches every "
+            "word case-insensitively, ignoring punctuation ('FR4', 'RT/duroid 5870', 'copper')."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "description": "Words that must all occur in the entry name",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Most entries to return, in name order (default 50)",
+                },
+                "include_properties": {
+                    "type": "boolean",
+                    "description": "Read each entry's properties (default true); false lists names",
+                },
+                "library_path": {
+                    "type": "string",
+                    "description": (
+                        "Directory containing native .mtd material files. "
+                        "Overrides the configured CST installation's Library/Materials directory."
+                    ),
+                },
+            },
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
         name="cst_list_materials",
         description=(
-            "List available materials from the bundled material database. "
+            "List materials from the reference database bundled with this MCP server. "
+            "These are not CST library entries: names are not .mtd names and values can "
+            "differ from CST's (use cst_list_library_materials for the CST library and "
+            "cst_get_project_materials for the open project). "
             "Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. "
             "Returns name, key EM properties, and usage notes for each material."
         ),
@@ -234,9 +295,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_get_material_info",
         description=(
-            "Get electromagnetic properties of a material from the bundled "
-            "database. Returns epsilon_r, mu_r, conductivity, loss tangent, "
-            "and usage notes."
+            "Get electromagnetic properties of a material from the reference database "
+            "bundled with this MCP server, not the CST library or the project; values can "
+            "differ from CST's (use cst_list_library_materials for CST library values). "
+            "Returns epsilon_r, mu_r, conductivity, loss tangent, and usage notes."
         ),
         inputSchema={
             "type": "object",
@@ -614,6 +676,9 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         if name == "cst_load_material":
             return _handle_load_material(arguments, client)
 
+        if name == "cst_list_library_materials":
+            return _handle_list_library_materials(arguments, client)
+
         if name == "cst_list_materials":
             return _handle_list_materials(arguments)
 
@@ -830,13 +895,27 @@ def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
     mat_name = validate_name(args["name"], "material name")
     library_name = args["library_name"]
 
-    vba = load_material_vba(
-        mat_name,
-        library_name,
-        cst_path=client.config.cst_path,
-        library_path=args.get("library_path"),
-    )
+    library_path = args.get("library_path")
+    try:
+        vba = load_material_vba(
+            mat_name,
+            library_name,
+            cst_path=client.config.cst_path,
+            library_path=library_path,
+        )
+    except LibraryEntryNotFound as exc:
+        payload: dict = {
+            "tool": "cst_load_material",
+            "status": "error",
+            "message": str(exc),
+            "library_name": library_name,
+            "similar": exc.similar,
+        }
+        if exc.directory is not None:
+            payload["library_directory"] = str(exc.directory)
+        return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 
+    directory = library_directory(client.config.cst_path, library_path)
     result = client.execute_vba(vba)
     return [
         TextContent(
@@ -846,6 +925,8 @@ def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
                     "tool": "cst_load_material",
                     "material": mat_name,
                     "library_name": library_name,
+                    "library_directory": str(directory),
+                    "library_cst_version": library_cst_version(directory),
                     "vba": vba,
                     **result,
                 },
@@ -853,6 +934,130 @@ def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
             ),
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# Native library listing (cst_list_library_materials)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_LIBRARY_RESULTS = 50
+_MAX_LIBRARY_RESULTS = 1000
+_MAX_LIBRARY_FILTER = 100
+_LIBRARY_SOURCE = "Native .mtd files read from disk (no CST connection, no model history)"
+_LIBRARY_NOTES = [
+    "Values are the file's own [Definition] settings, never the bundled database.",
+    (
+        "Where a file has several .FrqType blocks, the hf block is reported, then all; "
+        "frequency_blocks lists them all."
+    ),
+    (
+        "conductivity is in S/m and tan_d_freq in Hz. With dispersion_model 'general' "
+        "(fitted to tabulated data) or a named model, CST uses that model and epsilon_r "
+        "is only the file's constant value."
+    ),
+    (
+        "Every listed library_name passes the loader's name check; cst_load_material "
+        "validates the full definition when it loads the entry."
+    ),
+]
+
+
+def _library_listing_args(arguments: dict) -> tuple[str | None, int, bool]:
+    query = arguments.get("filter")
+    if query is not None:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("filter must be a non-empty string")
+        if len(query) > _MAX_LIBRARY_FILTER:
+            raise ValueError(f"filter is longer than {_MAX_LIBRARY_FILTER} characters")
+        if not any(c.isalnum() for c in query):
+            raise ValueError("filter must contain at least one letter or digit")
+    limit = arguments.get("max_results", _DEFAULT_LIBRARY_RESULTS)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise TypeError("max_results must be an integer")
+    if not 1 <= limit <= _MAX_LIBRARY_RESULTS:
+        raise ValueError(f"max_results must be between 1 and {_MAX_LIBRARY_RESULTS}")
+    properties = arguments.get("include_properties", True)
+    if not isinstance(properties, bool):
+        raise TypeError("include_properties must be true or false")
+    return query, limit, properties
+
+
+def _list_library_materials(arguments: dict, client: CSTClient) -> dict:
+    query, limit, include_properties = _library_listing_args(arguments)
+    library_path = arguments.get("library_path")
+    directory = library_directory(client.config.cst_path, library_path)
+    version = library_cst_version(directory)
+
+    names = library_entry_names(directory)
+    if query is not None:
+        names = [n for n in names if library_name_matches(query, n)]
+    skipped = [
+        {
+            "file": f"{n}.mtd",
+            "reason": "The file name is not a name cst_load_material accepts.",
+        }
+        for n in names
+        if not is_loadable_library_name(n)
+    ]
+    matched = [n for n in names if is_loadable_library_name(n)]
+
+    materials: list[dict] = []
+    for library_name in matched[:limit]:
+        if not include_properties:
+            materials.append({"library_name": library_name})
+            continue
+        try:
+            properties = read_library_material(directory / f"{library_name}.mtd")
+        except ValidationError as exc:
+            skipped.append({"file": f"{library_name}.mtd", "reason": str(exc)})
+            continue
+        materials.append({"library_name": library_name, **properties})
+
+    result: dict = {
+        "status": "ok",
+        "library_directory": str(directory),
+        "cst_version": version,
+        "filter": query,
+        "match_count": len(matched),
+        "returned": len(materials),
+        "truncated": len(matched) > limit,
+        "materials": materials,
+    }
+    if version is None:
+        result["unavailable"] = {
+            "cst_version": "The directory path names no 'CST Studio Suite <year>' install."
+        }
+    elif (
+        library_path is None
+        and client.config.cst_path_detected
+        and version != client.config.version
+    ):
+        result["version_warning"] = (
+            f"CST_VERSION is {client.config.version} (default {DEFAULT_VERSION}), but no "
+            f"install of that version was found, so the nearest install was used: CST "
+            f"{version}. The CST Python API is loaded from that install too. Set CST_VERSION "
+            "or CST_PATH "
+            "to the CST you want."
+        )
+    if skipped:
+        result["skipped"] = skipped
+    if result["truncated"]:
+        result["message"] = (
+            f"Showing {len(materials)} of {len(matched)} entries; narrow the filter or "
+            "raise max_results."
+        )
+    if query is not None and not matched:
+        loadable = [n for n in library_entry_names(directory) if is_loadable_library_name(n)]
+        result["similar"] = similar_library_names(query, loadable)
+        result["message"] = f"No library entry matches {query!r}."
+    result["notes"] = _LIBRARY_NOTES
+    result["source"] = _LIBRARY_SOURCE
+    return result
+
+
+def _handle_list_library_materials(arguments: dict, client: CSTClient) -> list[TextContent]:
+    payload = {"tool": "cst_list_library_materials", **_list_library_materials(arguments, client)}
+    return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 
 
 def _handle_list_materials(args: dict) -> list[TextContent]:

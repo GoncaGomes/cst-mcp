@@ -125,6 +125,8 @@ class CSTConfig:
     work_dir_error: str | None = None
     # Enabled tool categories from CST_TOOLSETS; None exposes every tool.
     toolsets: frozenset[str] | None = None
+    # True when cst_path came from install discovery rather than CST_PATH.
+    cst_path_detected: bool = False
 
     @classmethod
     def from_env(cls) -> CSTConfig:
@@ -170,6 +172,7 @@ class CSTConfig:
             log_level=log_level,
             quiet_mode=quiet,
             connect_mode=connect_mode,
+            cst_path_detected=bool(cst_path) and not cst_raw,
             work_dir_error=work_dir_error,
             toolsets=toolsets,
         )
