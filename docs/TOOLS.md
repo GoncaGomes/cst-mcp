@@ -122,10 +122,11 @@ Metals, dielectrics, and advanced material models.
 | `cst_create_material` | Create a new material with electromagnetic properties in CST Studio. Specify relative permittivity (epsilon), relative permeability (mu),… |
 | `cst_create_lossy_metal` | Create a lossy metal material in CST Studio. Lossy metals model finite conductivity skin-effect losses, essential for accurate loss calcu… |
 | `cst_create_anisotropic_material` | Create an anisotropic material with per-axis permittivity, permeability, and loss tangent values. Used for crystals, metamaterials, and c… |
-| `cst_load_material` | Import all properties from a native CST `.mtd` library definition under the requested project name. Optionally select a library directory with `library_path`. |
-| `cst_list_materials` | List available materials from the bundled material database. Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. Ret… |
+| `cst_load_material` | Import all properties from a native CST `.mtd` library definition under the requested project name. Optionally select a library directory with `library_path`. An unknown `library_name` returns up to five close names in `similar`. |
+| `cst_list_library_materials` | List the native `.mtd` entries `cst_load_material` loads, read from disk: exact `library_name`, type, εr, μr, conductivity, tanδ with its frequency (Hz) and model, dispersion model, and the library directory and CST version. Optional word `filter`, `max_results`, `include_properties`, `library_path`. No CST connection, no history entry. |
+| `cst_list_materials` | Bundled reference database, not the CST library (values can differ from CST's). List available materials from the bundled material database. Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. Ret… |
 | `cst_assign_material` | Assign a material to an existing solid in CST Studio. The solid is specified as 'Component:SolidName'. |
-| `cst_get_material_info` | Get electromagnetic properties of a material from the bundled database. Returns epsilon_r, mu_r, conductivity, loss tangent, and usage no… |
+| `cst_get_material_info` | Bundled reference database, not the CST library. Get electromagnetic properties of a material from the bundled database. Returns epsilon_r, mu_r, conductivity, loss tangent, and usage no… |
 | `cst_get_project_materials` | Read back the materials in the open project as CST reports them (not the bundled database): type, background flag, εr, μr, conductivity and magnetic conductivity per axis; loss tangent, its frequency and dispersion model are `null` with a reason (no CST getter). Optional `names`. Read-only, no history entry. |
 | `cst_delete_material` | Delete a material from the current CST project. |
 | `cst_create_debye_material` | Create a frequency-dependent dielectric material using the Debye relaxation model. Models polar dielectrics where permittivity decreases … |
