@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 
 from mcp.types import TextContent, Tool
@@ -18,6 +19,7 @@ from cst_mcp.validators import (
     validate_range,
 )
 from cst_mcp.vba_builder import VBABuilder, VBAScript
+from cst_mcp.vba_safety import vba_string_literal
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "materials"
 
@@ -245,6 +247,36 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name"],
+        },
+    ),
+    Tool(
+        name="cst_get_project_materials",
+        description=(
+            "Read back the materials defined in the open CST project, as CST reports them "
+            "(not the bundled database). For each material: found, type (normal, lossy_metal, "
+            "pec, anisotropic, other with CST's raw type), whether it is the background "
+            "material, epsilon_r, mu_r and electric conductivity (S/m) per axis, and the "
+            "magnetic conductivity. CST has no getter for the loss tangent, its frequency or "
+            "the dispersion model, so those are always null with the reason in 'unavailable'. "
+            "Read-only: adds no history entry; refused while a solver runs. Optional "
+            "'names' limits the readback to those materials (exact, case-sensitive)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "names": {
+                    "type": "array",
+                    "description": (
+                        "Material names to read back, exactly as in the project (e.g. "
+                        "'Copper (annealed)', 'FR-4 (lossy)'). Default: every material."
+                    ),
+                    "items": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "minItems": 1,
+                    "maxItems": 100,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -590,6 +622,9 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
 
         if name == "cst_get_material_info":
             return _handle_get_material_info(arguments)
+
+        if name == "cst_get_project_materials":
+            return _handle_get_project_materials(arguments, client)
 
         if name == "cst_delete_material":
             return _handle_delete_material(arguments, client)
@@ -1302,6 +1337,305 @@ def _handle_list_ferrite_materials(args: dict) -> list[TextContent]:
                 },
                 indent=2,
             ),
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Project material readback (cst_get_project_materials)
+# ---------------------------------------------------------------------------
+
+_MAX_READBACK_MATERIALS = 100
+_MAX_MATERIAL_NAME = 200
+# Material.GetTypeOfMaterial values (CST 2025 help, Material object) with a stable key.
+_MATERIAL_TYPES = {
+    "normal": "normal",
+    "lossy metal": "lossy_metal",
+    "pec": "pec",
+    "anisotropic": "anisotropic",
+}
+_SOURCE = "VBA query via output capture (no model history)"
+_MATERIAL_NOTES = [
+    "Every value is read from CST; none is taken from the call that created the material.",
+    (
+        "conductivity is the electric conductivity in S/m (Material.GetSigma); "
+        "magnetic_conductivity is CST's SigmaM in Ohm/m."
+    ),
+    (
+        "CST's Material object has setters but no getters for TanD, TanDGiven, TanDFreq, "
+        "TanDModel or the dispersion model, so tan_d, tan_d_freq and dispersion_model are "
+        "always null. A dielectric whose losses are given as tan(delta) may report "
+        "conductivity 0; that does not mean it is lossless."
+    ),
+]
+# A Debug.Print-safe text: no line breaks or tabs to break the line protocol.
+_ERR = 'Replace(Replace(Replace(Err.Description, vbCr, " "), vbLf, " "), vbTab, " ")'
+_SAFE_NAME = 'Replace(Replace(Replace(mcpName, vbCr, " "), vbLf, " "), vbTab, " ")'
+_AXES = ("x", "y", "z")
+
+
+def _readback_material_names(arguments: dict) -> list[str] | None:
+    raw = arguments.get("names")
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("names must be a non-empty list of material names")
+    if len(raw) > _MAX_READBACK_MATERIALS:
+        raise ValueError(f"names accepts at most {_MAX_READBACK_MATERIALS} material names")
+    names: list[str] = []
+    for i, value in enumerate(raw):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"names[{i}] must be a non-empty string")
+        if len(value) > _MAX_MATERIAL_NAME:
+            raise ValueError(f"names[{i}] is longer than {_MAX_MATERIAL_NAME} characters")
+        if "\t" in value:
+            raise ValueError(f"names[{i}] must not contain a tab character")
+        vba_string_literal(value, f"names[{i}]")  # rejects line breaks before any VBA
+        if value not in names:
+            names.append(value)
+    return names
+
+
+def _material_print(key: str, value: str) -> str:
+    """One Debug.Print at line start (output capture only redirects those)."""
+    return f'Debug.Print mcpKey & "{key}" & vbTab & {value}'
+
+
+def _material_report(call: str, key: str, value: str) -> list[str]:
+    """Run ``call`` and print ``key`` with ``value``, or ``key_error`` with CST's message."""
+    indent = "    "
+    return [
+        f"{indent}Err.Clear",
+        f"{indent}{call}",
+        f"{indent}If Err.Number = 0 Then",
+        f"{indent}  {_material_print(key, value)}",
+        f"{indent}Else",
+        f"{indent}  {_material_print(key + '_error', _ERR)}",
+        f"{indent}End If",
+    ]
+
+
+def _material_readback_vba(names: list[str] | None) -> str:
+    """VBA printing tab-separated ``<index><TAB><key><TAB>...`` lines for each material.
+
+    Materials are keyed by their zero-based CST index, so a name with unusual characters
+    cannot break the protocol. ``On Error Resume Next`` keeps one failing getter from
+    hiding the others; each failure is printed as ``<key>_error`` with CST's message.
+    """
+    if names is None:
+        want = "True"
+    else:
+        want = "(" + " Or ".join(f"mcpName = {vba_string_literal(n)}" for n in names) + ")"
+    xyz = "CStr(mcpA) & vbTab & CStr(mcpB) & vbTab & CStr(mcpC)"
+    lines = [
+        "Dim mcpN As Long, mcpI As Long",
+        "Dim mcpA As Double, mcpB As Double, mcpC As Double",
+        "Dim mcpName As String, mcpText As String, mcpKey As String",
+        "Dim mcpBg As Boolean",
+        "On Error Resume Next",
+        "Err.Clear",
+        "mcpN = Material.GetNumberOfMaterials()",
+        "If Err.Number <> 0 Then",
+        f'  Debug.Print "count_error" & vbTab & {_ERR}',
+        "  mcpN = 0",
+        "Else",
+        '  Debug.Print "count" & vbTab & CStr(mcpN)',
+        "End If",
+        "For mcpI = 0 To mcpN - 1",
+        "  Err.Clear",
+        '  mcpName = ""',
+        "  mcpName = Material.GetNameOfMaterialFromIndex(mcpI)",
+        "  If Err.Number <> 0 Then",
+        f'    Debug.Print "material_error" & vbTab & CStr(mcpI) & vbTab & {_ERR}',
+        "  Else",
+        f'    Debug.Print "material" & vbTab & CStr(mcpI) & vbTab & {_SAFE_NAME}',
+        f"  If {want} Then",
+        "    mcpKey = CStr(mcpI) & vbTab",
+        *_material_report("mcpText = Material.GetTypeOfMaterial(mcpName)", "type", "mcpText"),
+        *_material_report(
+            "mcpBg = Material.IsBackgroundMaterial(mcpName)", "background", "CStr(mcpBg)"
+        ),
+        *_material_report("Material.GetEpsilon mcpName, mcpA, mcpB, mcpC", "epsilon", xyz),
+        *_material_report("Material.GetMu mcpName, mcpA, mcpB, mcpC", "mu", xyz),
+        *_material_report("Material.GetSigma mcpName, mcpA, mcpB, mcpC", "sigma", xyz),
+        *_material_report("Material.GetSigmaM mcpName, mcpA, mcpB, mcpC", "sigma_m", xyz),
+        "  End If",
+        "  End If",
+        "Next mcpI",
+    ]
+    return "\n".join(lines)
+
+
+def _material_float(text: str) -> float:
+    # CStr follows the Windows locale, which may use a decimal comma.
+    value = float(text.strip().replace(",", "."))
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite value {text!r}")
+    return value
+
+
+def _material_said(row: dict[str, list[str]], key: str, fallback: str) -> str:
+    detail = "\t".join(row.get(f"{key}_error", [])).strip()
+    return f"CST reported: {detail}" if detail else fallback
+
+
+def _material_axes(
+    entry: dict, row: dict, unavailable: dict, cst_key: str, field: str, getter: str
+) -> None:
+    """Set ``field`` (scalar when isotropic) and ``field_axes`` from a 3-value getter."""
+    entry[field] = None
+    entry[f"{field}_axes"] = None
+    values = row.get(cst_key)
+    try:
+        parsed = [_material_float(v) for v in (values or [])[:3]]
+    except ValueError:
+        parsed = []
+    if len(parsed) != 3:
+        unavailable[field] = _material_said(
+            row, cst_key, f"Unreadable {getter} result" if values else f"{getter} returned nothing"
+        )
+        return
+    entry[f"{field}_axes"] = dict(zip(_AXES, parsed))
+    if parsed[0] == parsed[1] == parsed[2]:
+        entry[field] = parsed[0]
+    else:
+        unavailable[field] = f"Anisotropic: the axes differ; see {field}_axes."
+
+
+def _parse_material(name: str, row: dict[str, list[str]]) -> dict:
+    unavailable: dict[str, str] = {}
+    raw_type = "\t".join(row.get("type", [])).strip() or None
+    kind = _MATERIAL_TYPES.get((raw_type or "").lower(), "other" if raw_type else None)
+    entry: dict = {"name": name, "found": True, "type": kind, "raw_type": raw_type}
+    if raw_type is None:
+        unavailable["type"] = _material_said(row, "type", "CST returned no material type")
+
+    background = "\t".join(row.get("background", [])).strip().lower()
+    entry["background"] = {"true": True, "false": False}.get(background)
+    if entry["background"] is None:
+        unavailable["background"] = _material_said(
+            row, "background", "CST returned no background flag"
+        )
+
+    if kind == "pec":
+        for field in ("epsilon_r", "mu_r", "conductivity", "magnetic_conductivity"):
+            entry[field] = None
+            entry[f"{field}_axes"] = None
+            unavailable[field] = "Not defined for PEC (a perfect electric conductor)."
+    else:
+        _material_axes(entry, row, unavailable, "epsilon", "epsilon_r", "Material.GetEpsilon")
+        _material_axes(entry, row, unavailable, "mu", "mu_r", "Material.GetMu")
+        _material_axes(entry, row, unavailable, "sigma", "conductivity", "Material.GetSigma")
+        _material_axes(
+            entry, row, unavailable, "sigma_m", "magnetic_conductivity", "Material.GetSigmaM"
+        )
+
+    entry.update(tan_d=None, tan_d_freq=None, dispersion_model=None)
+    if kind in {"pec", "lossy_metal"}:
+        reason = f"Not applicable to {raw_type} materials."
+        for field in ("tan_d", "tan_d_freq", "dispersion_model"):
+            unavailable[field] = reason
+    else:
+        unavailable["tan_d"] = "CST has no getter for a material's loss tangent (TanD)."
+        unavailable["tan_d_freq"] = (
+            "CST has no getter for the frequency the loss tangent is given at (TanDFreq)."
+        )
+        unavailable["dispersion_model"] = (
+            "CST has no getter for whether a material is dispersive or for its model."
+        )
+    entry["unavailable"] = unavailable
+    return entry
+
+
+def _parse_material_readback(output: str, requested: list[str] | None) -> dict:
+    count: int | None = None
+    count_error: str | None = None
+    listed: dict[int, str] = {}
+    index_errors: list[str] = []
+    rows: dict[int, dict[str, list[str]]] = {}
+    for line in output.splitlines():
+        parts = line.rstrip("\r").split("\t")
+        head, rest = parts[0].strip(), parts[1:]
+        if head == "count" and rest:
+            try:
+                count = int(rest[0].strip())
+            except ValueError:
+                count_error = f"Unreadable material count from CST: {rest[0]!r}"
+        elif head == "count_error":
+            count_error = "\t".join(rest).strip() or "CST could not count the materials"
+        elif head == "material" and len(rest) >= 2 and rest[0].strip().isdigit():
+            listed[int(rest[0].strip())] = "\t".join(rest[1:])
+        elif head == "material_error" and rest:
+            index_errors.append("\t".join(rest[1:]).strip() or f"material index {rest[0]}")
+        elif head.isdigit() and rest:
+            rows.setdefault(int(head), {})[rest[0]] = rest[1:]
+
+    if count_error is not None:
+        return {
+            "status": "error",
+            "message": f"Could not list the project materials: {count_error}",
+            "source": _SOURCE,
+        }
+
+    names = [listed[i] for i in sorted(listed)]
+    index_of = {listed[i]: i for i in sorted(listed, reverse=True)}
+    materials: list[dict] = []
+    missing: list[str] = []
+    for name in names if requested is None else requested:
+        if name in index_of:
+            materials.append(_parse_material(name, rows.get(index_of[name], {})))
+            continue
+        missing.append(name)
+        similar = [n for n in names if n.lower() == name.lower() or name.lower() in n.lower()]
+        entry: dict = {"name": name, "found": False}
+        if similar:
+            entry["similar"] = similar[:5]
+        materials.append(entry)
+
+    result: dict = {
+        "status": "ok",
+        "material_count": count if count is not None else len(names),
+        "material_names": names,
+        "materials": materials,
+        "notes": _MATERIAL_NOTES,
+        "source": _SOURCE,
+    }
+    if index_errors:
+        result["listing_errors"] = index_errors
+    if missing:
+        result["missing"] = missing
+        result["message"] = f"Not in the project: {', '.join(missing)}"
+    elif not names:
+        result["message"] = "The project has no materials."
+    return result
+
+
+def _get_project_materials(arguments: dict, client: CSTClient) -> dict:
+    requested = _readback_material_names(arguments)
+    script = _material_readback_vba(requested)
+    if not client.connected:
+        return {
+            "status": "offline",
+            "vba": script,
+            "message": "Not connected; materials are only read back from a live CST project.",
+        }
+    if not client.has_project:
+        return {"status": "error", "message": "No project open"}
+    captured = client.capture_vba_output(script)
+    if captured.get("status") != "ok":
+        return captured
+    return _parse_material_readback(str(captured.get("output", "")), requested)
+
+
+def _handle_get_project_materials(args: dict, client: CSTClient) -> list[TextContent]:
+    try:
+        result = _get_project_materials(args, client)
+    except ValueError as e:
+        result = {"status": "error", "message": str(e)}
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps({"tool": "cst_get_project_materials", **result}, indent=2),
         )
     ]
 

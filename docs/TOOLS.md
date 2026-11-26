@@ -126,6 +126,7 @@ Metals, dielectrics, and advanced material models.
 | `cst_list_materials` | List available materials from the bundled material database. Optionally filter by category: 'metals', 'dielectrics', or 'substrates'. Ret… |
 | `cst_assign_material` | Assign a material to an existing solid in CST Studio. The solid is specified as 'Component:SolidName'. |
 | `cst_get_material_info` | Get electromagnetic properties of a material from the bundled database. Returns epsilon_r, mu_r, conductivity, loss tangent, and usage no… |
+| `cst_get_project_materials` | Read back the materials in the open project as CST reports them (not the bundled database): type, background flag, εr, μr, conductivity and magnetic conductivity per axis; loss tangent, its frequency and dispersion model are `null` with a reason (no CST getter). Optional `names`. Read-only, no history entry. |
 | `cst_delete_material` | Delete a material from the current CST project. |
 | `cst_create_debye_material` | Create a frequency-dependent dielectric material using the Debye relaxation model. Models polar dielectrics where permittivity decreases … |
 | `cst_create_lorentz_material` | Create a Lorentz oscillator dispersive material. Models resonant dielectric behaviour near absorption bands: eps(w) = eps_inf + delta_eps… |
