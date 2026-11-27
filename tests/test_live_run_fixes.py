@@ -114,6 +114,8 @@ class FakeProject:
         self._filename = filename
         self.existing = existing or set()
         self.calls: list[str | None] = []
+        # Saving needs an idle solver (MCP 07).
+        self.model3d = SimpleNamespace(is_solver_running=lambda **kw: False)
 
     def filename(self) -> str:
         return self._filename
@@ -182,7 +184,9 @@ def test_live_filename_wins_over_a_stale_cached_path() -> None:
 
 
 def test_save_without_filename_support_uses_cached_path() -> None:
-    project = SimpleNamespace(calls=[])
+    project = SimpleNamespace(
+        calls=[], model3d=SimpleNamespace(is_solver_running=lambda **kw: False)
+    )
     project.save = lambda path="": project.calls.append(path or None)
     client = CSTClient(CSTConfig(connect_mode="disabled"))
     client._de = object()

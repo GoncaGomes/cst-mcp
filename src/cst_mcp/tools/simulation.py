@@ -174,7 +174,9 @@ TOOLS: list[Tool] = [
         description=(
             "Read whether a CST simulation is running and return any solver-run "
             "metadata exposed by the CST Python API. This does not show a dialog "
-            "or change the simulation."
+            "or change the simulation. Returns status 'unresponsive' "
+            "(likely_running=true) when CST times out on the query while a solve "
+            "started by cst_run_simulation_async is pending."
         ),
         inputSchema={
             "type": "object",
@@ -194,7 +196,10 @@ TOOLS: list[Tool] = [
             "started by cst_run_simulation_async was seen running), 'starting' "
             "while a just-launched solve has not begun yet, or 'running' once "
             "max_wait_s (default 45, max 55) has passed; for 'running'/'starting' "
-            "call this tool again. Each CST query's timeout is cut to the remaining "
+            "call this tool again. 'unresponsive' (likely_running=true) means CST "
+            "timed out on the query during a pending async solve: keep calling this "
+            "tool and do not save or change the model; solver_log, when present, is "
+            "the tail of the project's solver log read from disk. Each CST query's timeout is cut to the remaining "
             "budget, so the call returns within about max_wait_s + 2 s. Use after "
             "cst_run_simulation_async. Does not start, stop or change the "
             "simulation. Requires connected mode."
@@ -250,7 +255,10 @@ TOOLS: list[Tool] = [
         description=(
             "Stop and abort a running CST simulation. "
             "Unlike pause, a stopped simulation cannot be resumed — "
-            "it must be restarted from the beginning."
+            "it must be restarted from the beginning. If CST does not acknowledge "
+            "the stop during a pending async solve, returns status 'unresponsive' "
+            "with delivered='unknown': poll cst_wait_for_simulation instead of "
+            "resending it."
         ),
         inputSchema={
             "type": "object",
@@ -506,6 +514,11 @@ async def _handle_wait_for_simulation(arguments: dict, client: CSTClient) -> lis
                     "solver_status": state,
                 }
             )
+        if status == "unresponsive":
+            # CST timed out on the running query while an async solve is pending:
+            # the solver is most likely still busy. Return instead of polling again,
+            # so timed-out calls do not pile up on CST.
+            return _json({**state, "elapsed_s": elapsed(), "polls": polls})
         if status != "ok":
             return _json(
                 {

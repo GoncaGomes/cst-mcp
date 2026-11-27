@@ -46,6 +46,8 @@ class CSTSession:
         # Set by start_solver (async start) until a wait confirms the finish:
         # {"t0": monotonic start time, "seen_running": bool}. It lets
         # cst_wait_for_simulation tell "not started yet" from "finished".
+        # "unresponsive_since"/"unresponsive_message" are added while CST times out
+        # on solver queries during that solve (see :meth:`solver_unresponsive`).
         self._pending_solve: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------
@@ -440,6 +442,11 @@ class CSTSession:
     def save_project(self, path: str | None = None) -> dict[str, Any]:
         if not self.has_project:
             return {"status": "error", "message": "No project open"}
+        # Project.save() takes no timeout: during a solve it can block the CST thread
+        # until the client's request budget runs out, so it needs an idle solver.
+        blocked = self._idle_error()
+        if blocked:
+            return blocked
         # The live filename is authoritative; the cached path covers fakes and older APIs.
         current = self._safe_filename(self._project) or self._project_path
         try:
@@ -884,6 +891,24 @@ class CSTSession:
         return max(1, int(timeout_s))
 
     def _idle_error(self) -> dict[str, Any] | None:
+        unresponsive = self.solver_unresponsive()
+        if unresponsive is not None:
+            # Fail fast: do not spend another CST call (and its timeout) while CST is
+            # not answering during a pending solve. A status or wait call that gets an
+            # answer clears this state.
+            return {
+                "status": "busy",
+                "code": "solver_unresponsive",
+                "running": None,
+                "likely_running": True,
+                "unresponsive_s": unresponsive["unresponsive_s"],
+                "message": (
+                    "Operation refused without contacting CST: a solve started by "
+                    "cst_run_simulation_async is pending and CST stopped answering solver "
+                    "queries. Keep polling cst_wait_for_simulation; retry once it reports "
+                    "the solver finished."
+                ),
+            }
         state = self.is_solver_running(timeout_s=5)
         if state is not False:
             return {
@@ -907,13 +932,85 @@ class CSTSession:
             self._last_solver_error = (
                 None if isinstance(value, bool) else "CST solver state is unknown"
             )
+            if isinstance(value, bool) and self._pending_solve is not None:
+                self._pending_solve.pop("unresponsive_since", None)
+                self._pending_solve.pop("unresponsive_message", None)
             if value is True and self._pending_solve is not None:
                 self._pending_solve["seen_running"] = True
             return value if isinstance(value, bool) else None
         except Exception as exc:
             self._last_solver_error = str(exc)
+            if self._is_timeout_error(exc):
+                self._mark_unresponsive(str(exc))
             logger.debug("is_solver_running failed", exc_info=True)
             return None
+
+    def _mark_unresponsive(self, message: str) -> None:
+        """Record a timed-out CST call during a pending async solve."""
+        if self._pending_solve is None:
+            return
+        self._pending_solve.setdefault("unresponsive_since", time.monotonic())
+        self._pending_solve["unresponsive_message"] = message
+
+    def solver_unresponsive(self) -> dict[str, Any] | None:
+        """The unresponsive record of the pending solve, or ``None``.
+
+        Set when a solver query times out while a solve started by
+        :meth:`start_solver` is pending; cleared when CST answers again or the
+        pending solve ends.
+        """
+        pending = self._pending_solve
+        if pending is None or "unresponsive_since" not in pending:
+            return None
+        return {
+            "unresponsive_s": round(time.monotonic() - float(pending["unresponsive_since"]), 1),
+            "message": str(pending.get("unresponsive_message") or "CST did not answer"),
+        }
+
+    def _solver_log_tail(self, max_chars: int = 1500) -> dict[str, Any] | None:
+        """Tail of the project's solver log file, read from disk without calling CST."""
+        path = self._find_message_output()
+        if not path:
+            return None
+        try:
+            stat = Path(path).stat()
+            with open(path, "rb") as handle:
+                handle.seek(max(0, stat.st_size - max_chars))
+                tail = handle.read().decode("utf-8", errors="replace")
+        except OSError:
+            logger.debug("Reading the solver log failed", exc_info=True)
+            return None
+        return {
+            "path": path,
+            "tail": tail,
+            "modified_s_ago": round(max(0.0, time.time() - stat.st_mtime), 1),
+            "note": (
+                "Read from disk, not from CST. Whether CST updates this file during a "
+                "frequency-domain solve is not verified; compare modified_s_ago between calls."
+            ),
+        }
+
+    def _unresponsive_payload(self, message: str | None = None) -> dict[str, Any]:
+        """``status: unresponsive`` for a timed-out solver call during a pending solve."""
+        unresponsive = self.solver_unresponsive() or {"unresponsive_s": 0.0, "message": ""}
+        out: dict[str, Any] = {
+            "status": "unresponsive",
+            "running": None,
+            "likely_running": True,
+            "unresponsive_s": unresponsive["unresponsive_s"],
+            "message": message or unresponsive["message"] or "CST did not answer",
+            "hint": (
+                "A solve started by cst_run_simulation_async is pending and CST is not "
+                "answering automation calls, which can happen during a long solve (seen "
+                "with the frequency-domain solver). Keep polling cst_wait_for_simulation. "
+                "Do not save, change the model or resend stop in a loop: saves and model "
+                "changes are refused until CST answers again."
+            ),
+        }
+        log = self._solver_log_tail()
+        if log is not None:
+            out["solver_log"] = log
+        return out
 
     @staticmethod
     def _label_run_info(run_info: dict[str, Any], running: bool | None) -> dict[str, Any]:
@@ -952,6 +1049,8 @@ class CSTSession:
         timeout = self._api_timeout(timeout_s)
         try:
             running = self.is_solver_running(timeout_s=timeout)
+            if running is None and self.solver_unresponsive() is not None:
+                return self._unresponsive_payload()
             if running is None:
                 return {
                     "status": "error",
@@ -1094,6 +1193,18 @@ class CSTSession:
                 "result": str(result) if result else "ok",
             }
         except Exception as exc:  # noqa: BLE001
+            if self._is_timeout_error(exc) and self._pending_solve is not None:
+                self._mark_unresponsive(str(exc))
+                out = self._unresponsive_payload(
+                    f"CST did not acknowledge {method_name} within {timeout_s:g} s: {exc}"
+                )
+                out["delivered"] = "unknown"
+                out["note"] = (
+                    "The request may still take effect later. It is not verified whether "
+                    "CST handles it during a frequency-domain solve or only between "
+                    "frequency samples; poll cst_wait_for_simulation rather than resending it."
+                )
+                return out
             return {"status": "error", "message": str(exc)}
 
     def pause_solver(self, timeout_s: float = 30.0) -> dict[str, Any]:
