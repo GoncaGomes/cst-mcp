@@ -111,6 +111,35 @@ def parse_toolsets(raw: str | None) -> frozenset[str] | None:
     return frozenset(selected | {"connection"})
 
 
+DEFAULT_MESH_WARN_CELLS = 5_000_000
+DEFAULT_MESH_MAX_CELLS = 20_000_000
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip().replace("_", ""))
+    except ValueError:
+        value = 0
+    if value <= 0:
+        logger.warning("Ignoring invalid %s=%r; using %d", name, raw, default)
+        return default
+    return value
+
+
+def mesh_cell_limits() -> tuple[int, int]:
+    """Return ``(warn, max)`` estimated hexahedral cell counts for ``cst_set_mesh_density``.
+
+    Read on every call from ``CST_MESH_WARN_CELLS`` and ``CST_MESH_MAX_CELLS``; the warning
+    threshold never exceeds the limit.
+    """
+    max_cells = _positive_int_env("CST_MESH_MAX_CELLS", DEFAULT_MESH_MAX_CELLS)
+    warn_cells = _positive_int_env("CST_MESH_WARN_CELLS", DEFAULT_MESH_WARN_CELLS)
+    return min(warn_cells, max_cells), max_cells
+
+
 @dataclass
 class CSTConfig:
     """Runtime configuration for the MCP server."""

@@ -207,7 +207,7 @@ Mesh type, density, refinement, adaptive meshing.
 | Tool | What it does |
 |------|--------------|
 | `cst_set_mesh_type` | Set the mesh type for the simulation. Hexahedral is used for time-domain, Tetrahedral for frequency-domain, Surface for integral-equation… |
-| `cst_set_mesh_density` | Set global mesh density parameters controlling automatic mesh generation. Higher cells_per_wavelength gives finer mesh and better accurac… |
+| `cst_set_mesh_density` | Set global mesh density: cells per wavelength and `min_cells` (steps along the model bounding box's longest edge, a whole-domain setting; use `cst_add_mesh_refinement` for small features). For the Hex map it returns an estimated cell count (free-space, from the model box and maximum frequency), warns above `CST_MESH_WARN_CELLS` and rejects above `CST_MESH_MAX_CELLS` without changing CST. |
 | `cst_add_mesh_refinement` | Add local mesh refinement to a specific solid. This creates finer mesh around critical geometry features like feed points, gaps, or thin … |
 | `cst_set_adaptive_mesh` | Configure time-domain adaptive mesh refinement, the maximum pass count, and the linear complex S-parameter difference threshold (0 to 1). |
 | `cst_get_mesh_info` | Get current mesh statistics and settings. In connected mode this queries the live mesh data; in offline mode it returns the VBA to retrie… |
