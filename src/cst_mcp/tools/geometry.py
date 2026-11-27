@@ -1,8 +1,8 @@
 """Geometry creation tools for CST Studio Suite.
 
-Provides 13 MCP tools for creating 3D shapes, curves, and extruded profiles
-in CST Studio by generating VBA scripts via VBABuilder, plus a read-only
-measured-bounds query (``cst_get_solid_bounds``).
+Provides MCP tools for creating 3D shapes, curves, extruded profiles and solids
+along curves in CST Studio by generating VBA scripts via VBABuilder, plus a
+read-only measured-bounds query (``cst_get_solid_bounds``).
 """
 
 from __future__ import annotations
@@ -16,7 +16,12 @@ from collections.abc import Callable
 from mcp.types import TextContent, Tool
 
 from cst_mcp.cst_client import CSTClient
-from cst_mcp.validators import validate_name, validate_non_negative, validate_positive
+from cst_mcp.validators import (
+    ValidationError,
+    validate_name,
+    validate_non_negative,
+    validate_positive,
+)
 from cst_mcp.vba_builder import VBABuilder, VBAScript, _format_expression
 from cst_mcp.vba_safety import vba_escape as _q
 from cst_mcp.vba_safety import vba_number as _vba_number
@@ -575,6 +580,96 @@ TOOLS: list[Tool] = [
             "additionalProperties": False,
         },
     ),
+    # 15. Round wire along a curve
+    Tool(
+        name="cst_create_curve_wire",
+        description=(
+            "Make a round solid wire of given radius that follows an existing curve: helix, "
+            "loop, wire spiral, bent feed or any other curved conductor. Build the curve first "
+            "(cst_create_analytical_curve or cst_create_polygon3d, group 'Curves'), then pass "
+            "it as 'Curves:<item>'. Replaces chains of straight cst_create_wire segments. "
+            "The curve may be open or closed but must be one connected path. "
+            "CST uses up the curve item: make the curve again to reuse it. Two history "
+            "entries: a solid-model Wire (Curvewire), then Wire.ConvertToSolidShape with "
+            "KeepWire False, so only the solid Component:name remains. If the conversion "
+            "fails, the tool deletes the wire again. A missing curve is refused before any "
+            "change. Any material. The response includes the new solid's measured bounds "
+            "and volume (same fields as cst_get_solid_bounds)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "curve": {
+                    "type": "string",
+                    "pattern": _SOLID_NAME_PATTERN,
+                    "description": "Curve item as 'curvegroup:curveitem', e.g. 'Curves:helix'",
+                },
+                "component": {"type": "string", "description": "Component of the new solid"},
+                "name": {"type": "string", "description": "Name of the new solid"},
+                "radius": _expression_field("Wire radius (> 0)"),
+                "material": {"type": "string", "description": "Material name", "default": "PEC"},
+                "termination": {
+                    "type": "string",
+                    "enum": ["natural", "rounded", "extended"],
+                    "default": "natural",
+                    "description": "Shape of the wire ends (Wire.Termination)",
+                },
+            },
+            "required": ["curve", "component", "name", "radius"],
+            "additionalProperties": False,
+        },
+    ),
+    # 16. Flat trace along a curve
+    Tool(
+        name="cst_create_trace_from_curve",
+        description=(
+            "Make a flat conductor trace of given width and thickness along an existing curve: "
+            "printed spiral, meander line, curved microstrip or feed line. Build the curve "
+            "first (cst_create_analytical_curve or cst_create_polygon3d, group 'Curves'), "
+            "then pass it as 'Curves:<item>'. The trace is centred on the curve in width and "
+            "grows by 'thickness' along +Z (local W) from the curve, so put the curve at the "
+            "substrate's top Z. CST uses up the curve item: make the curve again to reuse "
+            "it. One history entry (TraceFromCurve). A missing curve is refused before any "
+            "change. The response includes the new solid's measured bounds and volume (same "
+            "fields as cst_get_solid_bounds)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "curve": {
+                    "type": "string",
+                    "pattern": _SOLID_NAME_PATTERN,
+                    "description": "Curve item as 'curvegroup:curveitem', e.g. 'Curves:spiral'",
+                },
+                "component": {"type": "string", "description": "Component of the new solid"},
+                "name": {"type": "string", "description": "Name of the new solid"},
+                "width": _expression_field("Trace width (> 0)"),
+                "thickness": _expression_field("Trace thickness along +Z (> 0)"),
+                "material": {"type": "string", "description": "Material name", "default": "PEC"},
+                "round_start": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Round the first end of the trace",
+                },
+                "round_end": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Round the last end of the trace",
+                },
+                "gap_type": {
+                    "type": "string",
+                    "enum": ["rounded", "extended", "natural"],
+                    "default": "natural",
+                    "description": (
+                        "Shape at the curve's corners (TraceFromCurve.GapType 0/1/2): rounded "
+                        "like arcs, extended like lines, or natural like curve extensions"
+                    ),
+                },
+            },
+            "required": ["curve", "component", "name", "width", "thickness"],
+            "additionalProperties": False,
+        },
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -755,6 +850,221 @@ def _get_solid_bounds(arguments: dict, client: CSTClient) -> dict:
     if captured.get("status") != "ok":
         return captured
     return _parse_solid_bounds(str(captured.get("output", "")), names, include_volume)
+
+
+# ---------------------------------------------------------------------------
+# Solids along a curve (curve wire, trace)
+# ---------------------------------------------------------------------------
+
+_GAP_TYPES = {"rounded": 0, "extended": 1, "natural": 2}
+_TERMINATIONS = ("natural", "rounded", "extended")
+_CURVE_CONSUMED_NOTE = (
+    "CST used up the curve item; create the curve again before building another solid on it."
+)
+
+
+def _curve_reference(value) -> str:
+    if not isinstance(value, str) or value.count(":") != 1:
+        raise ValueError("curve must be 'curvegroup:curveitem', e.g. 'Curves:helix'")
+    group, item = value.split(":")
+    validate_name(group, "curve group")
+    validate_name(item, "curve item")
+    return value
+
+
+def _positive_expression(value, field: str) -> float | str:
+    if value is None:
+        raise ValueError(f"{field} is required")
+    return _radius_expression(value, field)
+
+
+def _curve_wire_blocks(args: dict) -> dict:
+    """The wire and conversion blocks, plus the rollback that deletes the wire."""
+    curve = _curve_reference(args.get("curve"))
+    component = validate_name(args["component"], "component")
+    name = validate_name(args["name"], "name")
+    radius = _positive_expression(args.get("radius"), "radius")
+    material = args.get("material", "PEC")
+    termination = args.get("termination", "natural")
+    if termination not in _TERMINATIONS:
+        raise ValueError(f"termination must be one of {', '.join(_TERMINATIONS)}")
+    wire = (
+        VBABuilder("Wire")
+        .call("Reset")
+        .set("Name", name)
+        .set("Type", "Curvewire")
+        .set("Curve", curve)
+        .set_expression("Radius", radius)
+        # CST 2025 refuses to convert a thin wire; the solid wire model converts exactly.
+        .set_bool("SolidWireModel", True)
+        .set("Material", material)
+        .set("Termination", termination)
+        .set_bool("AdvancedChainSelection", True)
+        .call("Add")
+        .build()
+    )
+    convert = (
+        VBABuilder("Wire")
+        .call("Reset")
+        .set("SolidName", f"{component}:{name}")
+        .set("Name", name)
+        .set("Material", material)
+        .set_bool("KeepWire", False)
+        .call("ConvertToSolidShape")
+        .build()
+    )
+    rollback = f"Wire.Delete {_vba_string_literal(name, 'name')}"
+    return {
+        "curve": curve,
+        "solid": f"{component}:{name}",
+        "blocks": [wire, convert],
+        "rollback": rollback,
+    }
+
+
+def _trace_blocks(args: dict) -> dict:
+    curve = _curve_reference(args.get("curve"))
+    component = validate_name(args["component"], "component")
+    name = validate_name(args["name"], "name")
+    width = _positive_expression(args.get("width"), "width")
+    thickness = _positive_expression(args.get("thickness"), "thickness")
+    gap_type = args.get("gap_type", "natural")
+    if gap_type not in _GAP_TYPES:
+        raise ValueError(f"gap_type must be one of {', '.join(_GAP_TYPES)}")
+    flags = {}
+    for field in ("round_start", "round_end"):
+        flags[field] = args.get(field, False)
+        if not isinstance(flags[field], bool):
+            raise ValueError(f"{field} must be a boolean")  # noqa: TRY004 - handler catches ValueError
+    trace = (
+        VBABuilder("TraceFromCurve")
+        .call("Reset")
+        .set("Name", name)
+        .set("Component", component)
+        .set("Material", args.get("material", "PEC"))
+        .set("Curve", curve)
+        .set_expression("Thickness", thickness)
+        .set_expression("Width", width)
+        .set_bool("RoundStart", flags["round_start"])
+        .set_bool("RoundEnd", flags["round_end"])
+        .set_number("GapType", _GAP_TYPES[gap_type])
+        .call("Create")
+        .build()
+    )
+    return {"curve": curve, "solid": f"{component}:{name}", "blocks": [trace]}
+
+
+def _curve_check_vba(curve: str) -> str:
+    literal = _vba_string_literal(curve, "curve")
+    return "\n".join(
+        [
+            "Dim mcpPoints As Long",
+            "On Error Resume Next",
+            "Err.Clear",
+            f"mcpPoints = Curve.GetNumberOfPoints({literal})",
+            "If Err.Number <> 0 Then",
+            '  Debug.Print "error" & vbTab & Err.Description',
+            "Else",
+            '  Debug.Print "points" & vbTab & CStr(mcpPoints)',
+            "End If",
+        ]
+    )
+
+
+def _check_curve(client: CSTClient, curve: str) -> dict | None:
+    """None when the curve item exists; otherwise the refusal (nothing was changed)."""
+    captured = client.capture_vba_output(_curve_check_vba(curve))
+    if captured.get("status") != "ok":
+        return {**captured, "stage": "curve_check", "project_changed": False}
+    for line in str(captured.get("output", "")).splitlines():
+        kind, _, detail = line.rstrip("\r").partition("\t")
+        if kind == "points":
+            return None
+        if kind == "error":
+            return {
+                "status": "error",
+                "code": "curve_not_found",
+                "message": (
+                    f"Curve item {curve!r} not found ({detail.strip() or 'no detail'}). "
+                    "Pass 'curvegroup:curveitem'; curves from cst_create_analytical_curve and "
+                    "cst_create_polygon3d are in group 'Curves'. A curve that was already "
+                    "used for a solid is gone."
+                ),
+                "project_changed": False,
+            }
+    return {
+        "status": "error",
+        "message": "CST returned no result for the curve check",
+        "stage": "curve_check",
+        "project_changed": False,
+    }
+
+
+def _measure(client: CSTClient, solid: str) -> dict:
+    captured = client.capture_vba_output(_solid_bounds_vba([solid], True))
+    if captured.get("status") != "ok":
+        return {"status": "error", "message": captured.get("message") or "Bounds query failed"}
+    return _parse_solid_bounds(str(captured.get("output", "")), [solid], True)
+
+
+def _build_along_curve(name: str, arguments: dict, client: CSTClient) -> dict:
+    plan = (
+        _curve_wire_blocks(arguments)
+        if name == "cst_create_curve_wire"
+        else _trace_blocks(arguments)
+    )
+    blocks = plan["blocks"]
+    if not client.connected or not client.has_project:
+        return {
+            "status": "offline",
+            "vba": "\n".join(blocks),
+            "history_blocks": blocks,
+            "solid": plan["solid"],
+            "message": "VBA generated; run each block as its own history entry, in order.",
+        }
+    refused = _check_curve(client, plan["curve"])
+    if refused is not None:
+        return refused
+
+    labels: list[str] = []
+    for stage, block in zip(("create", "convert"), blocks):
+        result = client.execute_vba(block)
+        if result.get("status") == "executed":
+            labels.append(result.get("label"))
+            continue
+        result = {**result, "stage": stage, "solid": plan["solid"], "history_labels": labels}
+        if result.get("status") == "timeout" or result.get("execution_state") == "unknown":
+            return result  # No further calls while CST's state is uncertain.
+        if stage == "create":
+            # A failed history command adds no entry and leaves the curve in place.
+            return {**result, "project_changed": False}
+        # The wire exists and has used up the curve; delete it so no stray wire remains.
+        cleanup = client.execute_vba(plan["rollback"])
+        removed = cleanup.get("status") == "executed"
+        return {
+            **result,
+            "wire_removed": removed,
+            "rollback": {k: cleanup.get(k) for k in ("status", "label", "message") if k in cleanup},
+            "curve_consumed": True,
+            "note": (
+                "The wire was created but its conversion failed. "
+                + (
+                    "The tool deleted the wire; the history keeps the wire and its deletion. "
+                    if removed
+                    else "Deleting the wire also failed; it is still in the project. "
+                )
+                + _CURVE_CONSUMED_NOTE
+            ),
+        }
+    return {
+        "status": "executed",
+        "solid": plan["solid"],
+        "curve": plan["curve"],
+        "curve_consumed": True,
+        "history_labels": labels,
+        "note": _CURVE_CONSUMED_NOTE,
+        "measured": _measure(client, plan["solid"]),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1489,6 +1799,13 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         except ValueError as e:
             result = {"status": "error", "message": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    if name in {"cst_create_curve_wire", "cst_create_trace_from_curve"}:
+        try:
+            result = _build_along_curve(name, arguments, client)
+        except (ValueError, ValidationError) as e:
+            result = {"status": "error", "message": str(e)}
+        return [TextContent(type="text", text=json.dumps(result))]
 
     builder_fn = _HANDLERS.get(name)
     if builder_fn is None:
