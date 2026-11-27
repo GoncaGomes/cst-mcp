@@ -38,7 +38,11 @@ TOOLS: list[Tool] = [
             "plane in the port's orientation direction, or VBA execution may hang. "
             "For microstrip feeds: place the port at the end of the feed line where "
             "the ground/substrate terminates. Use Coordinates='Free' for ports not "
-            "aligned to the bounding box. Valid orientations: xmin/xmax/ymin/ymax/zmin/zmax."
+            "aligned to the bounding box. Valid orientations: xmin/xmax/ymin/ymax/zmin/zmax. "
+            "The response reads the port back: readback.window is the mesh-snapped window, "
+            "and a warning names both coordinates when the port is not on the requested "
+            "plane (for example moved to an expanded open boundary). Boundaries changed "
+            "after the port can still move it; check with cst_list_ports before solving."
         ),
         inputSchema={
             "type": "object",
@@ -488,8 +492,97 @@ async def _handle_waveguide_port(arguments: dict, client: CSTClient) -> list[Tex
     result["orientation"] = orientation
     result["coordinates"] = coordinates
     result["port_on_bound"] = port_on_bound
+    if result.get("status") == "executed" and result.get("execution_state") != "unknown":
+        ranges = {"x": (x_min, x_max), "y": (y_min, y_max), "z": (z_min, z_max)}
+        _attach_waveguide_readback(result, client, ranges)
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+def _normal_coordinate(orientation: str) -> tuple[str, int]:
+    """Axis and range index of a port's normal coordinate: the min end for xmin, etc."""
+    return orientation[0], 0 if orientation.endswith("min") else 1
+
+
+def _max_mesh_step(client: CSTClient) -> float | None:
+    """Largest mesh edge length, or None when CST reports none (usually before meshing)."""
+    queried = client.query_values([("max_edge_length", "Mesh.GetMaximumEdgeLength")])
+    if queried.get("status") != "ok":
+        return None
+    try:
+        step = _port_float(queried["values"]["max_edge_length"])
+    except (KeyError, ValueError):
+        return None
+    return step if math.isfinite(step) and step > 0 else None
+
+
+def _attach_waveguide_readback(result: dict, client: CSTClient, ranges: dict) -> None:
+    """Read the created port back and warn when its plane is not the requested one (MCP 22).
+
+    With port_on_bound, CST puts the port on the domain face; an expanded open
+    boundary moves that face away from the structure, so the port leaves the plane
+    that was asked for. Only the read-back is reported; the port is not changed.
+    """
+    port_number = result["port_number"]
+    orientation = result["orientation"]
+    captured = client.capture_vba_output(_port_readback_vba([port_number]))
+    readback = (
+        _parse_port_readback(str(captured.get("output", "")), [port_number])
+        if captured.get("status") == "ok"
+        else captured
+    )
+    port = (readback.get("ports") or [None])[0] if readback.get("status") == "ok" else None
+    window = port.get("window") if port else None
+    if window is None:
+        reason = (
+            (port or {}).get("unavailable", {}).get("window")
+            or readback.get("message")
+            or "the port could not be read back"
+        )
+        result["readback"] = {"window": None}
+        result["note"] = (
+            f"The port was created, but its window could not be read back ({reason}). "
+            "Check its plane with cst_list_ports."
+        )
+        return
+
+    axis, index = _normal_coordinate(orientation)
+    requested = ranges[axis][index]
+    actual = window[axis][index]
+    delta = abs(actual - requested)
+    result["readback"] = {
+        "window": window,
+        "window_kind": "mesh_snapped",
+        "unit": readback.get("unit"),
+        "normal_axis": axis,
+        "requested_normal": requested,
+        "readback_normal": actual,
+        "source": readback.get("source"),
+    }
+    scale = max(1.0, *(abs(v) for pair in ranges.values() for v in pair))
+    if delta <= 1e-6 * scale:
+        return
+    step = _max_mesh_step(client)
+    result["readback"]["max_mesh_step"] = step
+    if step is not None and delta <= step:
+        return
+    unit = f" {readback['unit']}" if readback.get("unit") else ""
+    moved = (
+        f"Port {port_number} was requested at {axis} = {requested:g}{unit} but CST placed "
+        f"its window at {axis} = {actual:g}{unit}, {delta:g}{unit} away."
+    )
+    if step is None:
+        moved += (
+            " The mesh step is not known yet, so this is a move off the plane only if it is "
+            "more than mesh snapping explains."
+        )
+    if result.get("port_on_bound"):
+        moved += (
+            " port_on_bound=true puts the port on the domain boundary, which an expanded "
+            "open boundary moves away from the structure. To keep the requested plane, "
+            "delete the port and create it again with port_on_bound=false."
+        )
+    result["warning"] = moved
 
 
 async def _handle_discrete_port(arguments: dict, client: CSTClient) -> list[TextContent]:
