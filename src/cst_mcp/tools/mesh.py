@@ -43,7 +43,11 @@ TOOLS: list[Tool] = [
         description=(
             "Set global mesh density parameters controlling automatic mesh generation. "
             "Higher cells_per_wavelength gives finer mesh and better accuracy at the "
-            "cost of longer simulation time."
+            "cost of longer simulation time. For the Hex map the response includes an "
+            "estimated hexahedral cell count, computed from the model's bounding box and "
+            "the maximum frequency, assuming air (dielectrics raise the real count). "
+            "A call whose estimate exceeds the configured limit is rejected before CST "
+            "is changed."
         ),
         inputSchema={
             "type": "object",
@@ -55,7 +59,12 @@ TOOLS: list[Tool] = [
                 },
                 "min_cells": {
                     "type": "integer",
-                    "description": "Minimum number of mesh steps across any structure (default 5)",
+                    "description": (
+                        "Minimum number of mesh steps across the whole model's bounding box "
+                        "(CST StepsPerBox, counted along its longest edge; default 5). It is "
+                        "not a local setting: it sets the step everywhere in the domain. Use "
+                        "cst_add_mesh_refinement for a small feature."
+                    ),
                     "default": 5,
                 },
                 "ratio_limit": {
@@ -279,6 +288,183 @@ def _set_mesh_type(arguments: dict, client: CSTClient) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
+_SPEED_OF_LIGHT = 299_792_458.0
+_ESTIMATE_BOXES = {"calculation": "GetCalculationBox", "structure": "GetStructureBox"}
+_ESTIMATE_BOX_VARS = ("mcpX1", "mcpX2", "mcpY1", "mcpY2", "mcpZ1", "mcpZ2")
+_STEP_FROM_TEXT = {
+    "wavelength": "cells_per_wavelength at the maximum frequency",
+    "box": "min_cells across the model's longest bounding-box edge",
+}
+_ESTIMATE_ASSUMES = (
+    "Free-space wavelength: dielectric materials shorten the wavelength inside them and "
+    "raise the real cell count. Local refinements and fixpoints are not included."
+)
+
+
+def _mesh_estimate_vba() -> str:
+    """Read-only query for the inputs of the cell estimate; one failure never aborts the rest."""
+    lines = [
+        "Dim mcpX1 As Double, mcpX2 As Double, mcpY1 As Double, mcpY2 As Double",
+        "Dim mcpZ1 As Double, mcpZ2 As Double",
+        "Dim mcpText As String",
+        "On Error Resume Next",
+    ]
+    for key, expr in (
+        ("geometry_unit", "Units.GetGeometryUnitToSI()"),
+        ("frequency_unit", "Units.GetFrequencyUnitToSI()"),
+        ("fmax", "Solver.GetFmax"),
+    ):
+        lines += [
+            "Err.Clear",
+            'mcpText = ""',
+            f"mcpText = CStr({expr})",
+            "If Err.Number = 0 Then",
+            f'  Debug.Print "{key}" & vbTab & mcpText',
+            "End If",
+        ]
+    box = " & vbTab & ".join(f"CStr({v})" for v in _ESTIMATE_BOX_VARS)
+    for key, getter in _ESTIMATE_BOXES.items():
+        lines += [
+            "Err.Clear",
+            *(f"{v} = 0" for v in _ESTIMATE_BOX_VARS),
+            f"Boundary.{getter} {', '.join(_ESTIMATE_BOX_VARS)}",
+            "If Err.Number = 0 Then",
+            f'  Debug.Print "{key}" & vbTab & {box}',
+            "End If",
+        ]
+    return "\n".join(lines)
+
+
+def _parse_estimate_inputs(output: str) -> dict:
+    from cst_mcp.tools.geometry import _vba_float
+
+    values: dict = {}
+    for line in output.splitlines():
+        parts = line.rstrip("\r").split("\t")
+        key = parts[0]
+        try:
+            if key in ("geometry_unit", "frequency_unit", "fmax") and len(parts) >= 2:
+                values[key] = _vba_float(parts[1])
+            elif key in _ESTIMATE_BOXES and len(parts) >= 7:
+                x1, x2, y1, y2, z1, z2 = (_vba_float(v) for v in parts[1:7])
+                extents = (abs(x2 - x1), abs(y2 - y1), abs(z2 - z1))
+                if max(extents) > 0:  # A point box is empty or not computed yet.
+                    values[key] = extents
+        except ValueError:
+            continue
+    return values
+
+
+def _estimate_cells(
+    inputs: dict, cells_per_wavelength: int, min_cells: int, limits: tuple[int, int]
+) -> dict:
+    """Hexahedral cell estimate: one step, the finer of the wavelength and box rules.
+
+    CST's StepsPerBox counts steps along the longest edge of the structure box, and
+    StepsPerWave divides the shortest wavelength; the step is applied over the
+    calculation box, which includes the space added by open boundaries.
+    """
+    from cst_mcp.tools.drawing import _unit_from_factor
+
+    warn_cells, max_cells = limits
+    structure = inputs.get("structure")
+    if structure is None:
+        return {
+            "cells": None,
+            "reason": "CST returned no model bounding box (no geometry yet?).",
+            "limits": {"warn": warn_cells, "max": max_cells},
+        }
+    lower_bound_reasons: list[str] = []
+    domain = inputs.get("calculation")
+    box_used = "calculation"
+    if domain is None:
+        domain, box_used = structure, "structure"
+        lower_bound_reasons.append(
+            "CST returned no calculation box, so the space added by open boundaries "
+            "is not included."
+        )
+
+    notes: list[str] = []
+    geometry_unit = inputs.get("geometry_unit")
+    if geometry_unit and geometry_unit > 0:
+        unit = _unit_from_factor(geometry_unit)
+    else:
+        geometry_unit, unit = 1e-3, "mm"
+        notes.append("Geometry unit unread; assumed mm.")
+    box_step = max(structure) / min_cells
+    step, step_from = box_step, "box"
+    fmax, frequency_unit = inputs.get("fmax"), inputs.get("frequency_unit")
+    if fmax and fmax > 0 and frequency_unit and frequency_unit > 0:
+        wavelength = _SPEED_OF_LIGHT / (fmax * frequency_unit) / geometry_unit
+        wave_step = wavelength / cells_per_wavelength
+        if wave_step < box_step:
+            step, step_from = wave_step, "wavelength"
+    else:
+        lower_bound_reasons.append(
+            "Maximum frequency unread, so only the min_cells rule is applied."
+        )
+
+    per_axis = [max(1, math.ceil(extent / step - 1e-9)) for extent in domain]
+    cells = per_axis[0] * per_axis[1] * per_axis[2]
+    estimate: dict = {
+        "cells": cells,
+        "cells_per_axis": per_axis,
+        "step": step,
+        "unit": unit,
+        "step_from": step_from,
+        "box": box_used,
+        "lower_bound": bool(lower_bound_reasons),
+        "assumes": _ESTIMATE_ASSUMES,
+        "limits": {"warn": warn_cells, "max": max_cells},
+    }
+    if lower_bound_reasons:
+        estimate["lower_bound_reasons"] = lower_bound_reasons
+    if notes:
+        estimate["notes"] = notes
+    return estimate
+
+
+def _mesh_estimate(client, mesh_map: str, cells_per_wavelength: int, min_cells: int) -> dict:
+    from cst_mcp.config import mesh_cell_limits
+
+    warn_cells, max_cells = mesh_cell_limits()
+    limits = {"warn": warn_cells, "max": max_cells}
+    if mesh_map != "Hex":
+        return {"cells": None, "reason": "Not estimated for the Tet map.", "limits": limits}
+    if not getattr(client, "connected", False) or not hasattr(client, "capture_vba_output"):
+        return {"cells": None, "reason": "Not connected to CST.", "limits": limits}
+    if not getattr(client, "has_project", False):
+        return {"cells": None, "reason": "No project open.", "limits": limits}
+    captured = client.capture_vba_output(_mesh_estimate_vba())
+    if captured.get("status") != "ok":
+        return {
+            "cells": None,
+            "reason": "CST did not answer the estimate query.",
+            "limits": limits,
+        }
+    inputs = _parse_estimate_inputs(str(captured.get("output", "")))
+    return _estimate_cells(inputs, cells_per_wavelength, min_cells, (warn_cells, max_cells))
+
+
+def _mesh_estimate_warnings(estimate: dict) -> list[str]:
+    cells = estimate.get("cells")
+    if cells is None:
+        return []
+    warnings: list[str] = []
+    if cells > estimate["limits"]["warn"]:
+        warnings.append(
+            f"Large mesh: about {cells:,} hexahedral cells (warning above "
+            f"{estimate['limits']['warn']:,}). The step is set by "
+            f"{_STEP_FROM_TEXT[estimate['step_from']]}; check free memory before solving."
+        )
+    if estimate.get("lower_bound"):
+        warnings.append(
+            "The cell estimate is a lower bound: "
+            + " ".join(estimate.get("lower_bound_reasons", []))
+        )
+    return warnings
+
+
 def _set_mesh_density(arguments: dict, client: CSTClient) -> list[TextContent]:
     cells_per_wavelength = int(arguments.get("cells_per_wavelength", 15))
     min_cells = int(arguments.get("min_cells", 5))
@@ -310,7 +496,38 @@ def _set_mesh_density(arguments: dict, client: CSTClient) -> list[TextContent]:
         lines += ["With Mesh", f'  .RatioLimit "{ratio_limit:g}"', "End With"]
     script = "\n".join(lines)
 
+    estimate = _mesh_estimate(client, mesh_map, cells_per_wavelength, min_cells)
+    warnings = _mesh_estimate_warnings(estimate)
+    if estimate.get("cells") is not None and estimate["cells"] > estimate["limits"]["max"]:
+        message = (
+            f"Rejected: the estimated mesh has {estimate['cells']:,} hexahedral cells "
+            f"(limit {estimate['limits']['max']:,}), a {estimate['step']:.4g} "
+            f"{estimate['unit'] or 'geometry-unit'} step set by "
+            f"{_STEP_FROM_TEXT[estimate['step_from']]}. Nothing was changed in CST. "
+            "Lower min_cells or cells_per_wavelength; refine small features with "
+            "cst_add_mesh_refinement instead."
+        )
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "status": "error",
+                        "message": message,
+                        "cells_per_wavelength": cells_per_wavelength,
+                        "min_cells": min_cells,
+                        "mesh_type": mesh_map,
+                        "mesh_estimate": estimate,
+                    },
+                    indent=2,
+                ),
+            )
+        ]
+
     result = client.execute_vba(script)
+    result["mesh_estimate"] = estimate
+    if warnings:
+        result["warnings"] = warnings
     result["cells_per_wavelength"] = cells_per_wavelength
     result["min_cells"] = min_cells
     result["ratio_limit"] = ratio_limit if mesh_map == "Hex" else None

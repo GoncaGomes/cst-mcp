@@ -19,6 +19,8 @@ server after changes. The examples below use CST 2025; select your actual instal
 | `CST_ALLOW_RAW_VBA` | Enables connected raw VBA execution when set to `1` |
 | `CST_LOG_LEVEL` | Logging level, default `INFO` |
 | `CST_QUIET` | Defaults to `1`; does not suppress CST dialogs |
+| `CST_MESH_MAX_CELLS` | `cst_set_mesh_density` rejects a Hex setting whose estimated cell count exceeds this, default `20000000` |
+| `CST_MESH_WARN_CELLS` | `cst_set_mesh_density` warns above this estimated cell count, default `5000000` (capped at the limit) |
 
 For a server launched directly from PowerShell:
 
