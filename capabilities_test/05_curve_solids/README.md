@@ -82,6 +82,53 @@ the client reads the saved `project/Model/3D/ModelHistory.json` and records whic
 appear in it. That answers whether a failed call, such as `F1`–`F3`, leaves an entry in the
 history.
 
+## Acceptance (`run_curve_solid_acceptance.py`)
+
+Builds the task 18 geometry with the MCP tools themselves. Raw VBA is used only for units,
+creating the two components, the readback queries and, if CST needs it, the `Curves` group. It
+shares the probe's client (owned workspace, `--reset`, stop after a timeout) in its own
+workspace, `artifacts/acceptance/`.
+
+| Case | Calls | Passes when |
+| --- | --- | --- |
+| `H1_helix_pec` | `cst_create_analytical_curve`, `cst_create_curve_wire` | executed, curve consumed, volume within 3 % of 606.70 mm³, bounds match, `cst_get_solid_bounds` agrees, 2 history entries |
+| `H2_helix_copper` | `cst_load_material` (`Copper (annealed)`), curve, wire | as H1, and the solid's material is copper |
+| `T1_spiral_on_board` | `cst_load_material` (`FR-4 (lossy)`), `cst_create_brick` (top at Z = 1.6), spiral curve at Z = 1.6, `cst_create_trace_from_curve` | volume within 3 %, Z from 1.6 to 1.7, 1 history entry |
+| `P1_bent_polygon_wire` | `cst_create_polygon3d` (an L of two 10 mm segments), wire | recorded only: the volume near the corner is approximate |
+| `E1_wire_missing_curve`, `E2_trace_missing_curve` | either tool on a curve that does not exist | refused, no shape and no history entry |
+| `E3_wire_reused_curve` | wire on H1's curve again | refused: the curve was consumed |
+| `E4_wire_zero_radius` | wire with radius 0 | refused before CST |
+| `N1_new_component` | wire into a component never created | recorded: whether CST creates it or refuses. Runs last, after a save |
+
+The first curve is made without creating the `Curves` group, as the agent would. If CST refuses,
+the summary records that the group is needed, the client creates it and goes on.
+
+A disconnected curve can't be tested through the tools: they take one `group:item`, which is
+always one connected path. The probe's `F3` covered a disconnected group.
+
+Exit codes: 0 when every case with a criterion passes, 1 when one fails or the client fails, 2
+indeterminate, 130 interrupted.
+
+```powershell
+uv run python capabilities_test\05_curve_solids\run_curve_solid_acceptance.py --preflight
+uv run python capabilities_test\05_curve_solids\run_curve_solid_acceptance.py
+```
+
+The live run is for the user to start. Its `summary.md` has one row per case.
+
+### Acceptance results (CST 2025, 2026-11-27)
+
+All cases passed (exit 0), and CST logged no errors.
+
+- H1 and H2: volume 606.70 mm³ (0.00 %) in PEC and copper. The loose box is ±20.69 mm in X/Y
+  (0.19 mm beyond the exact ±20.5) and Z 3.492–172.489. 2 history entries each.
+- T1: volume 4.013 mm³ (0.00 %), Z 1.599–1.701 on the board top. 1 history entry.
+- P1: volume 15.708 mm³, exactly π r² × 20 mm; box X 199.5–210, Z 0–10.5.
+- E1–E4: refused with no shape and no history entry.
+- N1: CST creates the missing component during the conversion; the helix is correct.
+- The first analytical curve did not need the `Curves` group to exist.
+- Each tool's own measured result equals the separate `cst_get_solid_bounds` readback.
+
 ## Commands
 
 Run from the repository root. These need Python 3.12 and the CST 2025 Python libraries (default

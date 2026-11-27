@@ -694,9 +694,20 @@ def default_work(preflight: bool) -> Path:
 
 
 class ProbeTest:
+    # Subclasses (the acceptance client) override these.
+    OWNER = OWNER
+    TOOLSETS = TOOLSETS
+    FIXED_VBA = FIXED_VBA
+    PLANNED_TOOLS = PLANNED_TOOLS
+    STEPS: tuple[str, ...] = METHOD_ORDER
+
+    @classmethod
+    def default_work(cls, preflight: bool) -> Path:
+        return default_work(preflight)
+
     def __init__(self, options, work: Path | None = None):
         self.options = options
-        self.work = work or default_work(options.preflight)
+        self.work = work or self.default_work(options.preflight)
         self.project = self.work / "project.cst"
         self.invocation = uuid.uuid4().hex
         self.sequence = 0
@@ -724,7 +735,7 @@ class ProbeTest:
             CST_VERSION="2025",
             CST_PATH=options.cst_path,
             CST_WORK_DIR=str(self.work),
-            CST_TOOLSETS=TOOLSETS,
+            CST_TOOLSETS=self.TOOLSETS,
             CST_ALLOW_RAW_VBA="1",
             PYTHONPATH=os.pathsep.join(
                 [str(ROOT / "src"), str(libs), os.environ.get("PYTHONPATH", "")]
@@ -809,7 +820,7 @@ class ProbeTest:
         existing = [p for p in self.owned_paths() if p.exists()]
         if manifest_path.exists():
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(manifest, dict) or manifest.get("owner") != OWNER:
+            if not isinstance(manifest, dict) or manifest.get("owner") != self.OWNER:
                 raise StopTest("workspace.json is not owned by this probe; no deletion")
             if existing and not self.options.reset:
                 raise StopTest(
@@ -834,7 +845,7 @@ class ProbeTest:
         write_json(
             manifest_path,
             {
-                "owner": OWNER,
+                "owner": self.OWNER,
                 "version": 1,
                 "project": str(self.project),
                 "generated_paths": ["project.cst", "project", "project.*"],
@@ -858,7 +869,7 @@ class ProbeTest:
         if self.unknown:
             raise UnknownState("No further MCP requests after an indeterminate outcome")
         arguments = arguments or {}
-        if name == "cst_execute_vba" and arguments.get("code") not in FIXED_VBA:
+        if name == "cst_execute_vba" and arguments.get("code") not in self.FIXED_VBA:
             raise StopTest("Raw VBA is restricted to the probe's fixed blocks")
         if not protocol:
             self.validate(name, arguments)
@@ -922,7 +933,7 @@ class ProbeTest:
         return payload
 
     def record_outcome(self, outcome: str, duration: float, payload=None) -> None:
-        if self.step in METHOD_BLOCKS and self.step not in self.outcomes:
+        if self.step in self.STEPS and self.step not in self.outcomes:
             self.outcomes[self.step] = {
                 "outcome": outcome,
                 "duration_seconds": duration,
@@ -1006,7 +1017,7 @@ class ProbeTest:
                 raise StopTest("Repeated MCP catalog cursor")
             seen.add(cursor)
         write_json(self.work / "tool_catalog.json", list(self.catalog.values()))
-        missing = [name for name in PLANNED_TOOLS if name not in self.catalog]
+        missing = [name for name in self.PLANNED_TOOLS if name not in self.catalog]
         self.check("planned tools are in the catalog", not missing, missing=missing)
         for name, (rel, tokens) in REFERENCES.items():
             path = Path(self.options.cst_path) / rel
@@ -1040,7 +1051,7 @@ class ProbeTest:
             ("cst_project_info", {}),
         ):
             self.validate(name, args)
-        for code in sorted(FIXED_VBA):
+        for code in sorted(self.FIXED_VBA):
             payload = await self.request(session, "cst_execute_vba", {"code": code})
             self.check(
                 "fixed block passes the raw VBA screen unchanged",
