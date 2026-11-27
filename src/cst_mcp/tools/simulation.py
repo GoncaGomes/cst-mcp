@@ -538,10 +538,7 @@ async def _handle_wait_for_simulation(arguments: dict, client: CSTClient) -> lis
                     "polls": polls,
                     **extra,
                     **_finished_payload(client, pending),
-                    "hint": (
-                        "Solver is idle. Read results, e.g. with cst_get_s_parameters "
-                        "or cst_get_farfield_metrics."
-                    ),
+                    "hint": "Solver is idle; results are stored in the project result tree.",
                 }
             )
 

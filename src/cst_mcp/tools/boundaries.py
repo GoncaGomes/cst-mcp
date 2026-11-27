@@ -40,12 +40,13 @@ TOOLS: list[Tool] = [
         description=(
             "Set boundary conditions for the simulation domain. Each face of "
             "the bounding box can be assigned an independent boundary type "
-            "(open, electric, magnetic, periodic, etc.). Note: 'open' adds no space, "
-            "and CST extends geometry touching an open boundary into the PML "
-            "(virtually infinite); a waveguide port on such a face with the board "
-            "ending there leaks power into the PML (efficiency/gain unreliable). "
-            "The response warns about plain 'open' faces; prefer 'expanded open' "
-            "with an internal port (PortOnBound False) on a closed coax/SMA feed."
+            "(open, electric, magnetic, periodic, etc.). 'expanded open' is an open "
+            "boundary with space added around the structure. Plain 'open' adds no "
+            "space: the domain ends at the structure's bounding box, so CST extends "
+            "the structure into the PML on that face (efficiency/gain unreliable); "
+            "the response warns about such faces. For a feed at the board edge "
+            "(coax/SMA), also use an internal waveguide port (PortOnBound False) on "
+            "the closed feed instead of a port on the boundary."
         ),
         inputSchema={
             "type": "object",

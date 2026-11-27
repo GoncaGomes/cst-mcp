@@ -45,7 +45,11 @@ PML_EXTENSION = (
 PORT_FIX = (
     "Use 'expanded open' on this face and feed through a closed "
     "structure (coax/SMA, e.g. cst_add_sma_edge_connector) with an internal waveguide port "
-    "(PortOnBound False) on the coax back face; verify with cst_check_power_balance."
+    "(PortOnBound False) on the coax back face."
+)
+OPEN_FACE_CONSEQUENCE = (
+    "Power absorbed in the PML is neither radiated nor counted as loss, so efficiency and "
+    "gain are unreliable and S11 looks artificially broadband."
 )
 
 
@@ -58,22 +62,28 @@ def _norm_face(key: str) -> str:
     raise ValueError(f"unknown face '{key}' (use x_min..z_max or xmin..zmax)")
 
 
+def open_faces(boundaries: dict[str, str]) -> list[str]:
+    """Faces set to plain 'open', in ``FACES`` order."""
+    return [f for f in FACES if str(boundaries.get(f, "")).strip().lower() in TOUCHING_OPEN]
+
+
+def open_face_warning(faces: list[str]) -> dict[str, Any]:
+    """One warning for all faces set to plain 'open' (structure touches the PML there)."""
+    return {
+        "severity": "warning",
+        "code": "open_boundary_touches_structure",
+        "faces": list(faces),
+        "message": "'open' adds no space: the domain ends at the structure's bounding box, so "
+        f"the structure touches faces {', '.join(faces)} and is extended into the PML there. "
+        "Use 'expanded open' to add space between the structure and the boundary. "
+        + OPEN_FACE_CONSEQUENCE,
+    }
+
+
 def open_face_warnings(boundaries: dict[str, str]) -> list[dict[str, Any]]:
-    """Warnings for faces set to plain 'open' (structure touches the PML there)."""
-    out = []
-    for face in FACES:
-        btype = str(boundaries.get(face, "")).strip().lower()
-        if btype in TOUCHING_OPEN:
-            out.append(
-                {
-                    "severity": "warning",
-                    "code": "open_boundary_touches_structure",
-                    "face": face,
-                    "message": f"{face} is 'open' (no added space): structure reaching this face is "
-                    "extended into the PML. " + PML_EXTENSION,
-                }
-            )
-    return out
+    """At most one warning listing the faces set to plain 'open'."""
+    faces = open_faces(boundaries)
+    return [open_face_warning(faces)] if faces else []
 
 
 def _touches(
@@ -168,12 +178,14 @@ def check_setup(
                     "the port on the feed/coax face.",
                 }
             )
-    for w in open_face_warnings(bnd):
-        if w["face"] in port_faces:
-            continue  # already reported with the port
-        touches = _touches(structure_bbox, w["face"], None, tol)
-        if touches is not False:
-            issues.append(w)
+    touching = [
+        f
+        for f in open_faces(bnd)
+        if f not in port_faces  # already reported with the port
+        and _touches(structure_bbox, f, None, tol) is not False
+    ]
+    if touching:
+        issues.append(open_face_warning(touching))
     ff = sorted({float(f) for f in farfield_frequencies or []})
     fm = sorted({float(f) for f in field_monitor_frequencies or []})
     if power_loss_1d is not True and ff:
@@ -181,14 +193,14 @@ def check_setup(
         if missing:
             issues.append(
                 {
-                    "severity": "warning",
+                    # A fact about the result data, not a setup requirement: info, so it
+                    # does not set ``ok`` to False for a complete setup.
+                    "severity": "info",
                     "code": "losses_missing_at_farfield_frequencies",
                     "frequencies_ghz": missing,
-                    "message": "Loss in Dielectrics/Metals is computed only at 3D field-monitor frequencies "
-                    "unless Solver.ActivatePowerLoss1DMonitor True (with "
-                    "UseFarFieldMonitorForPowerLoss1DMonitor True). Without it the power balance "
-                    f"cannot be checked at {missing} GHz. Use cst_configure_time_domain_solver "
-                    "activate_power_loss_1d=true.",
+                    "message": "Loss in Dielectrics/Metals is computed only at 3D field-monitor "
+                    f"frequencies, so no 1D loss data exists at {missing} GHz unless "
+                    "Solver.ActivatePowerLoss1DMonitor is on.",
                 }
             )
     severities = {i["severity"] for i in issues}

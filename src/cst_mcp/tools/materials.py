@@ -24,6 +24,7 @@ from cst_mcp.material_library import (
 )
 from cst_mcp.validators import (
     ValidationError,
+    default_material_name,
     validate_name,
     validate_non_negative,
     validate_positive,
@@ -177,7 +178,8 @@ TOOLS: list[Tool] = [
         name="cst_load_material",
         description=(
             "Load a native CST .mtd material definition and all its properties under "
-            "the given project name. Uses CST_PATH/Library/Materials by default, "
+            "a project name ('name', derived from library_name when omitted; the "
+            "response returns the name used). Uses CST_PATH/Library/Materials by default, "
             "or the directory supplied as library_path. library_name is the .mtd file name "
             "without extension, as cst_list_library_materials returns it (e.g. "
             "'Rogers RT-duroid 5870 (lossy)', not 'Rogers RT/duroid 5870'); an unknown name "
@@ -188,7 +190,12 @@ TOOLS: list[Tool] = [
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Name for the material in the project",
+                    "description": (
+                        "Optional name for the material in the project. Letters, digits, "
+                        "space, underscore, dot and hyphen, starting with a letter or "
+                        "underscore; default: the library name with other characters "
+                        "replaced by '_' (e.g. 'Copper (annealed)' -> 'Copper_annealed')"
+                    ),
                 },
                 "library_name": {
                     "type": "string",
@@ -204,7 +211,7 @@ TOOLS: list[Tool] = [
                     ),
                 },
             },
-            "required": ["name", "library_name"],
+            "required": ["library_name"],
         },
     ),
     Tool(
@@ -892,8 +899,14 @@ def _handle_create_anisotropic_material(args: dict, client: CSTClient) -> list[T
 
 
 def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
-    mat_name = validate_name(args["name"], "material name")
     library_name = args["library_name"]
+    # An explicit name is validated as given: renaming a caller's choice would hide a
+    # mistake. Only an omitted name is derived from the library name.
+    explicit = args.get("name") is not None
+    if explicit:
+        mat_name = validate_name(args["name"], "material name")
+    else:
+        mat_name = default_material_name(library_name)
 
     library_path = args.get("library_path")
     try:
@@ -924,6 +937,8 @@ def _handle_load_material(args: dict, client: CSTClient) -> list[TextContent]:
                 {
                     "tool": "cst_load_material",
                     "material": mat_name,
+                    "name": mat_name,
+                    "name_source": "argument" if explicit else "derived from library_name",
                     "library_name": library_name,
                     "library_directory": str(directory),
                     "library_cst_version": library_cst_version(directory),

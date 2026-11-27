@@ -128,6 +128,8 @@ async def test_wait_returns_finished_when_solver_goes_idle(clock) -> None:
     assert data["polls"] == 4
     assert data["active_solver"] == "HF Time Domain"
     assert data["confirmed"] is True
+    # MCP 17: describe the state, do not point at result tools.
+    assert data["hint"] == "Solver is idle; results are stored in the project result tree."
     assert data["solve_observed"] is True
     assert client.cleared is True
     assert clock.sleeps == [2.0, 2.0, 2.0]

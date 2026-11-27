@@ -69,8 +69,8 @@ TOOLS: list[Tool] = [
                     "default": False,
                     "description": (
                         "Enable Solver.ActivatePowerLoss1DMonitor: 1D 'Loss in Dielectrics/Metals' "
-                        "curves. Without it losses exist only at 3D field-monitor frequencies, so the "
-                        "power balance (cst_check_power_balance) cannot be checked at farfield "
+                        "curves at all frequencies, needed for a power balance at far-field "
+                        "frequencies. Without it losses exist only at 3D field-monitor "
                         "frequencies. Omitted/false leaves the project setting unchanged."
                     ),
                 },
