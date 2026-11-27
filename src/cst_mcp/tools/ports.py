@@ -324,7 +324,11 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="cst_delete_port",
-        description="Delete a port by its port number.",
+        description=(
+            "Delete a port of any type (waveguide, discrete, discrete face) by its port "
+            "number. A missing port is rejected before CST is changed; the response lists "
+            "the ports that remain."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -1154,14 +1158,93 @@ def _list_ports(arguments: dict, client: CSTClient) -> dict:
     return _parse_port_readback(str(captured.get("output", "")), requested)
 
 
+_PORT_NUMBERS_LINES = (
+    "Dim mcpN As Long, mcpI As Long",
+    "On Error Resume Next",
+    "Err.Clear",
+    "mcpN = Port.StartPortNumberIteration()",
+    "If Err.Number <> 0 Then",
+    '  Debug.Print "count_error"',
+    "Else",
+    '  Debug.Print "count" & vbTab & CStr(mcpN)',
+    "  For mcpI = 1 To mcpN",
+    "    Err.Clear",
+    '    Debug.Print "port" & vbTab & CStr(Port.GetNextPortNumber())',
+    "  Next mcpI",
+    "End If",
+)
+_PORT_NUMBERS_VBA = "\n".join(_PORT_NUMBERS_LINES)
+
+
+def _existing_port_numbers(client: CSTClient) -> list[int] | None:
+    """Defined port numbers (every port type), or None when they cannot be read."""
+    if not getattr(client, "connected", False) or not getattr(client, "has_project", False):
+        return None
+    captured = client.capture_vba_output(_PORT_NUMBERS_VBA)
+    if captured.get("status") != "ok":
+        return None
+    count: int | None = None
+    numbers: list[int] = []
+    for line in str(captured.get("output", "")).splitlines():
+        parts = [p.strip() for p in line.rstrip("\r").split("\t")]
+        if parts[0] == "count_error":
+            return None
+        if parts[0] == "count" and len(parts) > 1 and parts[1].isdigit():
+            count = int(parts[1])
+        elif parts[0] == "port" and len(parts) > 1 and parts[1].isdigit():
+            number = int(parts[1])
+            if number > 0 and number not in numbers:
+                numbers.append(number)
+    if count is None or len(numbers) != count:
+        return None
+    return sorted(numbers)
+
+
 async def _handle_delete_port(arguments: dict, client: CSTClient) -> list[TextContent]:
     port_number = validate_port_number(arguments["port_number"])
 
-    vba = VBABuilder("Port").call("Reset").set_number("PortNumber", port_number).call("Delete")
-    script = vba.build()
+    # CST 2025 help (special_vbaports_port_object.htm): "Delete ( int portnumber )".
+    # It is the only port delete: DiscretePort documents none, and the Port number
+    # iteration covers every port type.
+    script = f"Port.Delete {_vba_int(port_number)}"
+
+    existing = _existing_port_numbers(client)
+    if existing is not None and port_number not in existing:
+        listed = ", ".join(str(n) for n in existing) or "none"
+        result = {
+            "status": "error",
+            "port_number": port_number,
+            "existing_ports": existing,
+            "message": (
+                f"Port {port_number} does not exist (defined ports: {listed}). "
+                "Nothing was changed in CST."
+            ),
+        }
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
     result = client.execute_vba(script)
-    result["action"] = "deleted"
     result["port_number"] = port_number
+    if result.get("status") != "executed":
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    remaining = _existing_port_numbers(client)
+    if remaining is None:
+        result["action"] = "deleted"
+        if existing is None:
+            result["warning"] = (
+                "The port list could not be read before or after the delete; "
+                "check it with cst_list_ports."
+            )
+    elif port_number in remaining:
+        result["status"] = "error"
+        result["remaining_ports"] = remaining
+        result["message"] = (
+            f"CST ran the delete, but port {port_number} is still listed; "
+            "check it with cst_list_ports."
+        )
+    else:
+        result["action"] = "deleted"
+        result["remaining_ports"] = remaining
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
