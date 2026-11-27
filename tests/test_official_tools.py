@@ -257,7 +257,10 @@ async def test_loft_3d_expressions_closed_profiles_and_separate_groups():
     refs = [line.strip() for line in code.splitlines() if ".AddCurve" in line]
     assert refs == [f'.AddCurve "{g}:{"L" * 40}_profile{i}"' for i, g in enumerate(groups)]
     assert "With LoftCurves\n  .Reset" in code and '.Solid "True"' in code
-    assert '.Material "PEC"' in code and ".Path" not in code and "DeleteCurve" not in code
+    assert '.Material "PEC"' in code and ".Path" not in code
+    # Only orphaned groups of this loft are deleted, before any profile is created.
+    assert code.count("Curve.DeleteCurve") == 1
+    assert code.index("Curve.DeleteCurve") < code.index("With Curve")
     assert code.index("already exists") < code.index("With Curve")
     tool = next(t for t in geometry.TOOLS if t.name == "cst_create_loft")
     schema = tool.model_dump(by_alias=True)["inputSchema"]

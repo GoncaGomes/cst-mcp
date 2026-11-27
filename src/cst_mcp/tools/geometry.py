@@ -281,7 +281,10 @@ TOOLS: list[Tool] = [
             "Create a capped solid with LoftCurves between two or more explicit 3D polygon "
             "profiles. Coordinates accept finite JSON numbers or nonempty single-line CST "
             "expressions, preserved for parameter rebuilds. Legacy [x, y] points are rejected; "
-            "supply [x, y, z] without inferred spacing. CST validates expressions and geometry."
+            "supply [x, y, z] without inferred spacing. CST validates expressions and geometry. "
+            "Fails if the solid component:name already exists. Profile curve groups left by an "
+            "earlier loft of the same name whose solid is gone (for example consumed by a "
+            "boolean) are deleted first, so the name can be reused."
         ),
         inputSchema={
             "type": "object",
@@ -307,8 +310,8 @@ TOOLS: list[Tool] = [
                         "a finite JSON number or nonempty single-line CST expression. "
                         "Vertex order is preserved; an optional repeated endpoint is removed "
                         "before closing exactly once. At least three vertices must remain. "
-                        "Separate auxiliary curve groups are created; existing groups are "
-                        "not adopted or deleted. No path or inferred z coordinates."
+                        "Separate auxiliary curve groups are created. No path or inferred "
+                        "z coordinates."
                     ),
                 },
             },
@@ -1763,6 +1766,51 @@ def _loft_group_prefix(component: str, name: str) -> str:
     return f"{name[:40]}_loft_{digest}_p"
 
 
+def _loft_stale_group_cleanup(component: str, name: str, group_prefix: str) -> str:
+    """VBA that refuses an existing loft solid and deletes its orphaned profile groups.
+
+    A loft consumed by a boolean leaves its ``<prefix><i>`` curve groups behind. When no
+    solid ``component:name`` exists they belong to nothing, so they are deleted and the
+    name can be used again. The check runs inside the history entry, so a parameter
+    rebuild replays the same decision.
+    """
+    solid = f"{component}:{name}"
+    exists = f"Solid {solid} already exists; use another name or delete that solid first"
+    return "\n".join(
+        (
+            "Dim loftSolidIndex As Long",
+            "For loftSolidIndex = 0 To Solid.GetNumberOfShapes() - 1",
+            (
+                "  If StrComp(Solid.GetNameOfShapeFromIndex(loftSolidIndex), "
+                f"{_vba_string_literal(solid)}, vbTextCompare) = 0 Then "
+                f'Err.Raise 513, "cst_create_loft", {_vba_string_literal(exists)}'
+            ),
+            "Next loftSolidIndex",
+            "Dim loftCurveCount As Long, loftCurveIndex As Long, loftCurveName As String",
+            "Dim loftStale() As String, loftStaleCount As Long, loftSuffix As String",
+            "loftStaleCount = 0",
+            'loftCurveCount = Curve.StartCurveNameIteration("all")',
+            "For loftCurveIndex = 1 To loftCurveCount",
+            "  loftCurveName = Curve.GetNextCurveName()",
+            (
+                f"  If StrComp(Left(loftCurveName, {len(group_prefix)}), "
+                f"{_vba_string_literal(group_prefix)}, vbTextCompare) = 0 Then"
+            ),
+            f"    loftSuffix = Mid(loftCurveName, {len(group_prefix) + 1})",
+            '    If loftSuffix <> "" And Not loftSuffix Like "*[!0-9]*" Then',
+            "      ReDim Preserve loftStale(loftStaleCount)",
+            "      loftStale(loftStaleCount) = loftCurveName",
+            "      loftStaleCount = loftStaleCount + 1",
+            "    End If",
+            "  End If",
+            "Next loftCurveIndex",
+            "For loftCurveIndex = 0 To loftStaleCount - 1",
+            "  Curve.DeleteCurve loftStale(loftCurveIndex)",
+            "Next loftCurveIndex",
+        )
+    )
+
+
 def _build_loft(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
@@ -1797,9 +1845,9 @@ def _build_loft(args: dict) -> str:
 
     script = VBAScript()
     script.add_comment(f"Loft: {component}:{name}")
-    # Reject collisions before creating any profile, including empty existing groups.
+    script.add_raw(_loft_stale_group_cleanup(component, name, group_prefix))
+    # Reject remaining collisions before creating any profile, including empty groups.
     script.add_raw(
-        "Dim loftCurveCount As Long, loftCurveIndex As Long, loftCurveName As String\n"
         'loftCurveCount = Curve.StartCurveNameIteration("all")\n'
         "For loftCurveIndex = 1 To loftCurveCount\n"
         "  loftCurveName = Curve.GetNextCurveName()\n"

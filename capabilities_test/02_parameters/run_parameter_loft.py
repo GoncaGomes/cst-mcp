@@ -820,7 +820,8 @@ class LoftTest:
                 "End With",
             ]
             and ".Path" not in code
-            and "DeleteCurve" not in code,
+            and code.count("Curve.DeleteCurve") == 1
+            and code.index("Curve.DeleteCurve") < code.index("With Curve"),
             executed_in_cst=False,
         )
         for profiles in (
