@@ -46,7 +46,7 @@ Create, open, save projects and check CST connection.
 |------|--------------|
 | `cst_create_project` | Create a new CST Studio Suite project file. In connected mode the project is created directly; in offline mode a VBA script is returned f… |
 | `cst_open_project` | Open an existing CST Studio Suite project. In connected mode the project is opened in the running instance; in offline mode a reference i… |
-| `cst_save_project` | Save the currently open CST project. Optionally provide a new path to 'Save As'. |
+| `cst_save_project` | Save the currently open CST project. Optionally provide a new path to 'Save As'. Refused with status 'busy' while a solver runs or its state is unknown, since CST's save cannot be interrupted. |
 | `cst_close_project` | Close the currently open CST project and release its resources. |
 | `cst_project_info` | Get information about the currently open CST project, including connection mode, project path, and status. |
 | `cst_get_units` | Read the project length, frequency, time and temperature units and their SI factors (read-only, no model history). |
@@ -285,7 +285,7 @@ Run, pause, resume, stop simulations.
 | `cst_wait_for_simulation` | Wait a bounded time for the running CST solve to finish, polling only the read-only 'is solver running' flag about every 2 s. Returns sta… |
 | `cst_pause_simulation` | Pause a currently running CST simulation. The simulation can be resumed later with cst_resume_simulation. |
 | `cst_resume_simulation` | Resume a previously paused CST simulation. Use after cst_pause_simulation to continue from where it stopped. |
-| `cst_stop_simulation` | Stop and abort a running CST simulation. Unlike pause, a stopped simulation cannot be resumed — it must be restarted from the beginning. |
+| `cst_stop_simulation` | Stop and abort a running CST simulation. Unlike pause, a stopped simulation cannot be resumed — it must be restarted from the beginning. If CST does not acknowledge the stop during a pending async solve, returns status 'unresponsive' with delivered='unknown'. |
 
 ### Results (22)
 

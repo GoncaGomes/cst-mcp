@@ -86,7 +86,9 @@ TOOLS: list[Tool] = [
     Tool(
         name="cst_save_project",
         description=(
-            "Save the currently open CST project. Optionally provide a new path to 'Save As'."
+            "Save the currently open CST project. Optionally provide a new path to 'Save As'. "
+            "Refused with status 'busy' while a solver runs or its state is unknown, "
+            "since CST's save cannot be interrupted."
         ),
         inputSchema={
             "type": "object",
