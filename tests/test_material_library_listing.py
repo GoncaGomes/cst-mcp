@@ -16,6 +16,7 @@ from cst_mcp.material_library import (
 )
 from cst_mcp.tools import materials
 from cst_mcp.tools.annotations import annotations_for
+from cst_mcp.validators import default_material_name, validate_name
 
 FR4_LOSSY = """[Definition]
      .FrqType "all"
@@ -416,3 +417,79 @@ def test_listing_is_read_only() -> None:
     assert getattr(ann, "readOnlyHint", getattr(ann, "read_only_hint", None)) is True
     schema = getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None)
     assert schema["additionalProperties"] is False
+
+
+# --------------------------------------------------------------------------- MCP 15: default name
+
+
+@pytest.mark.parametrize(
+    ("library_name", "expected"),
+    [
+        ("Copper (annealed)", "Copper_annealed"),
+        ("Rogers RT-duroid 5870 (lossy)", "Rogers RT-duroid 5870_lossy"),
+        ("Rogers RT/duroid 5880", "Rogers RT_duroid 5880"),
+        ("FR-4 (loss free)", "FR-4_loss free"),
+        ("5880 laminate", "_5880 laminate"),
+        ("-x", "_-x"),
+        ("((PEC))", "PEC"),
+        ("()", "material"),
+        ("Iron", "Iron"),
+    ],
+)
+def test_default_material_name_derivation(library_name, expected) -> None:
+    assert default_material_name(library_name) == expected
+    assert validate_name(expected, "material name") == expected
+
+
+def test_default_material_name_is_cut_to_100_characters() -> None:
+    name = default_material_name("A" * 99 + " (lossy)")
+    assert len(name) <= 100 and name.startswith("A" * 99)
+    assert validate_name(name) == name
+    assert default_material_name("9" * 120) == "_" + "9" * 99
+
+
+@pytest.mark.asyncio
+async def test_load_without_name_derives_it_and_assign_accepts_it(tmp_path) -> None:
+    directory = _library(tmp_path)
+    client = _client(directory)
+    data = await _call("cst_load_material", {"library_name": "Copper (annealed)"}, client)
+
+    assert data["status"] == "offline"
+    assert data["name"] == data["material"] == "Copper_annealed"
+    assert data["name_source"] == "derived from library_name"
+    assert '"Copper_annealed"' in data["vba"]
+
+    assigned = await _call(
+        "cst_assign_material",
+        {"solid": "component1:dipole", "material": data["name"]},
+        client,
+    )
+    assert assigned.get("status") != "error", assigned
+
+
+@pytest.mark.asyncio
+async def test_load_with_explicit_name_keeps_it_or_rejects_it(tmp_path) -> None:
+    directory = _library(tmp_path)
+    client = _client(directory)
+    data = await _call(
+        "cst_load_material",
+        {"name": "Copper Annealed", "library_name": "Copper (annealed)"},
+        client,
+    )
+    assert data["name"] == "Copper Annealed" and data["name_source"] == "argument"
+
+    content = await materials.handle(
+        "cst_load_material",
+        {"name": "Copper (annealed)", "library_name": "Copper (annealed)"},
+        client,
+    )
+    text = content[0].text
+    assert "Invalid material name 'Copper (annealed)'" in text
+    assert "alphanumeric, underscore, space, dot, hyphen" in text
+
+
+def test_load_material_schema_makes_name_optional() -> None:
+    tool = next(t for t in materials.TOOLS if t.name == "cst_load_material")
+    schema = getattr(tool, "input_schema", None) or tool.inputSchema
+    assert schema["required"] == ["library_name"]
+    assert "Copper_annealed" in schema["properties"]["name"]["description"]

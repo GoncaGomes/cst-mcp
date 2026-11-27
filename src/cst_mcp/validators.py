@@ -207,6 +207,28 @@ def validate_name(name: str, label: str = "name") -> str:
     return name
 
 
+_NAME_REJECTED_RUN_RE = re.compile(r"[ ]*[^A-Za-z0-9_ .-][^A-Za-z0-9_.-]*")
+_NAME_UNDERSCORES_RE = re.compile(r"_{2,}")
+
+
+def default_material_name(library_name: str) -> str:
+    """Project material name derived from a native library name.
+
+    Each run of characters ``validate_name`` rejects (with the spaces around it)
+    becomes one ``_``, repeated ``_`` collapse, ``_`` and spaces are trimmed from the
+    ends, a ``_`` is prefixed when the name does not start with a letter or
+    underscore, and the result is cut to 100 characters:
+    ``Copper (annealed)`` -> ``Copper_annealed``.
+    """
+    name = _NAME_REJECTED_RUN_RE.sub("_", str(library_name))
+    name = _NAME_UNDERSCORES_RE.sub("_", name).strip("_ ")
+    if not name:
+        name = "material"
+    if not (name[0].isascii() and (name[0].isalpha() or name[0] == "_")):
+        name = "_" + name
+    return validate_name(name[:100].rstrip(" "), "material name")
+
+
 # CST refuses a parameter named after a constant of its VBA engine (WinWrap Basic):
 # StoreParameter "Pi", ... fails with "Invalid parameter name 'Pi'. (The parameter name
 # must not be a VBA constant name.)". VBA names are case-insensitive, so the set is

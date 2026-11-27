@@ -625,3 +625,93 @@ def test_surface_current_grid_defaults_to_copper_sheet_when_export_spans_connect
     g = grid_top_view(s, cell=0.4)
     assert g["n_samples"] == 18
     assert g["max_A_per_m"] == pytest.approx(10.0)
+
+
+# --------------------------------------------------------------------------- MCP 14: one open warning
+
+
+def test_six_open_faces_give_one_short_warning_naming_the_fix():
+    res, _ = run(boundaries, "cst_set_boundary", {f: "open" for f in model_checks.FACES})
+    warnings = res["warnings"]
+    assert len(warnings) == 1
+    w = warnings[0]
+    assert w["code"] == "open_boundary_touches_structure"
+    assert w["faces"] == list(model_checks.FACES)
+    assert len(w["message"]) < 600
+    assert "'expanded open'" in w["message"]
+    assert "x_min, x_max, y_min, y_max, z_min, z_max" in w["message"]
+
+
+def test_open_warning_lists_only_open_faces():
+    faces = {f: "expanded open" for f in model_checks.FACES}
+    faces.update(z_min="open", x_max="open")
+    res, _ = run(boundaries, "cst_set_boundary", faces)
+    assert [w["faces"] for w in res["warnings"]] == [["x_max", "z_min"]]
+
+
+@pytest.mark.parametrize(
+    "faces",
+    [
+        {f: "expanded open" for f in model_checks.FACES},
+        {**{f: "expanded open" for f in model_checks.FACES}, "z_min": "electric"},
+    ],
+)
+def test_no_open_warning_without_plain_open(faces):
+    res, _ = run(boundaries, "cst_set_boundary", faces)
+    assert "warnings" not in res
+
+
+def test_open_face_with_port_is_reported_once_with_the_port():
+    faces = {f: "open" for f in model_checks.FACES}
+    rep = model_checks.check_setup(faces, [{"orientation": "ymin", "port_on_bound": True}])
+    codes = [i["code"] for i in rep["issues"]]
+    assert codes == ["waveguide_port_on_open_boundary", "open_boundary_touches_structure"]
+    assert "y_min" not in rep["issues"][1]["faces"]
+
+
+def test_set_boundary_description_explains_expanded_open_independently_of_feed():
+    tool = next(t for t in boundaries.TOOLS if t.name == "cst_set_boundary")
+    first = tool.description.split("'expanded open' is ", 1)[1].split(".", 1)[0]
+    assert first == "an open boundary with space added around the structure"
+
+
+# --------------------------------------------------------------------------- MCP 17: neutral hints
+
+# Tools the control-only agent (cst-agentic tool_groups.py) can call. Their text must not
+# point at result or analysis tools.
+_RESULT_TOOLS = (
+    "cst_get_s_parameters",
+    "cst_get_farfield_metrics",
+    "cst_check_power_balance",
+)
+
+
+def _schema(tool):
+    return getattr(tool, "input_schema", None) or tool.inputSchema
+
+
+def test_power_loss_1d_description_names_no_result_tool():
+    tool = next(t for t in solvers.TOOLS if t.name == "cst_configure_time_domain_solver")
+    text = json.dumps(_schema(tool)["properties"]["activate_power_loss_1d"])
+    assert not any(n in text for n in _RESULT_TOOLS)
+    assert "power balance at far-field frequencies" in text
+
+
+def test_port_fix_names_no_result_tool():
+    assert not any(n in model_checks.PORT_FIX for n in _RESULT_TOOLS)
+    assert "'expanded open'" in model_checks.PORT_FIX
+
+
+def test_complete_setup_without_power_loss_1d_is_ok():
+    rep = model_checks.check_setup(
+        {f: "expanded open" for f in model_checks.FACES},
+        [{"orientation": "zmin", "port_on_bound": False}],
+        power_loss_1d=False,
+        farfield_frequencies=[2.4],
+    )
+    assert rep["ok"] is True
+    [issue] = rep["issues"]
+    assert issue["severity"] == "info"
+    assert issue["code"] == "losses_missing_at_farfield_frequencies"
+    assert "cst_" not in issue["message"]
+    assert "activate_power_loss_1d" not in issue["message"]
