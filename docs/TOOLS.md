@@ -1,4 +1,4 @@
-## Full tool catalog (195 tools)
+## Full tool catalog (196 tools)
 
 This file is the Markdown tool reference for the complete registered tool catalog.
 MCP tool discovery supplies the active schemas for the configured toolsets.
@@ -186,13 +186,14 @@ Waveguide, discrete, plane wave, Floquet…
 | `cst_delete_port` | Delete a port by its port number. |
 | `cst_add_multipin_port` | Add a waveguide port with multiple mode monitoring for higher-order mode analysis. Used for multimode waveguides, mode converters, and st… |
 
-### Boundaries & setup (6)
+### Boundaries & setup (7)
 
 Open/electric walls, background, symmetry, frequency range.
 
 | Tool | What it does |
 |------|--------------|
 | `cst_set_boundary` | Set boundary conditions for the simulation domain. Each face of the bounding box can be assigned an independent boundary type (open, elec… |
+| `cst_get_boundaries` | Read back the boundary type on each face, the symmetry on each plane, the calculation and structure boxes and the space added between them on each face. Background material and open-boundary distance settings have no CST getter and are listed in `unavailable`. Read-only query through output capture (no history). |
 | `cst_set_background` | Set the background material properties of the simulation domain. The background fills all space not occupied by defined solids. |
 | `cst_set_symmetry` | Set symmetry planes to reduce computation time. Each axis can be assigned electric or magnetic symmetry, or none. Requires the model geom… |
 | `cst_set_frequency_range` | Set the simulation frequency range in GHz. This determines the bandwidth over which the solver computes results. |

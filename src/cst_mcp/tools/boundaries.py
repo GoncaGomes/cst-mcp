@@ -93,6 +93,18 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="cst_get_boundaries",
+        description=(
+            "Read back the simulation domain as CST applied it: the boundary type on each "
+            "face, the symmetry on each plane, the calculation box and structure box, and "
+            "the space between them on each face (what 'expanded open' added). Values CST "
+            "does not expose (background material, open-boundary distance settings) are "
+            "listed in 'unavailable' with the reason. Read-only query through output "
+            "capture (no history)."
+        ),
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
         name="cst_set_background",
         description=(
             "Set the background material properties of the simulation domain. "
@@ -232,6 +244,9 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
     try:
         if name == "cst_set_boundary":
             return await _handle_set_boundary(arguments, client)
+        if name == "cst_get_boundaries":
+            result = _get_boundaries(client)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
         if name == "cst_set_background":
             return await _handle_set_background(arguments, client)
         if name == "cst_set_symmetry":
@@ -299,6 +314,201 @@ async def _handle_set_boundary(arguments: dict, client: CSTClient) -> list[TextC
         result["warnings"] = check["issues"]
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+# ---------------------------------------------------------------------------
+# Boundary readback (cst_get_boundaries)
+# ---------------------------------------------------------------------------
+
+_FACE_GETTERS = {
+    "x_min": "GetXmin",
+    "x_max": "GetXmax",
+    "y_min": "GetYmin",
+    "y_max": "GetYmax",
+    "z_min": "GetZmin",
+    "z_max": "GetZmax",
+}
+# cst_set_symmetry writes x_plane/y_plane/z_plane to Xsymmetry/Ysymmetry/Zsymmetry.
+_SYMMETRY_GETTERS = {
+    "x_plane": "GetXSymmetry",
+    "y_plane": "GetYSymmetry",
+    "z_plane": "GetZSymmetry",
+}
+_BOX_GETTERS = {
+    "calculation_box": "GetCalculationBox",
+    "structure_box": "GetStructureBox",
+}
+_BOX_VARS = ("mcpX1", "mcpX2", "mcpY1", "mcpY2", "mcpZ1", "mcpZ2")
+# Checked in the CST 2025 help (special_vbasolver_background_object.htm and
+# special_vbasolver_boundary_object.htm): these objects document setters only.
+_NOT_EXPOSED = {
+    "background": "CST documents no getter for the Background object (type, epsilon, mu).",
+    "open_boundary_distance": (
+        "CST documents no getter for MinimumDistanceType, MinimumDistancePerWavelength, "
+        "SetAbsoluteDistance or the reference frequency; see added_space for the space "
+        "CST actually added."
+    ),
+}
+
+
+def _boundaries_vba() -> str:
+    """VBA printing ``<kind><TAB><key><TAB>...`` lines; one failed getter never aborts the rest.
+
+    Every ``Debug.Print`` starts its own line so output capture redirects it to the file.
+    """
+    lines = [
+        "Dim mcpX1 As Double, mcpX2 As Double, mcpY1 As Double, mcpY2 As Double",
+        "Dim mcpZ1 As Double, mcpZ2 As Double",
+        "Dim mcpText As String",
+        "On Error Resume Next",
+        "Err.Clear",
+        "mcpText = CStr(Units.GetGeometryUnitToSI())",
+        "If Err.Number = 0 Then",
+        '  Debug.Print "unit" & vbTab & mcpText',
+        "End If",
+    ]
+    for kind, getters in (("face", _FACE_GETTERS), ("symmetry", _SYMMETRY_GETTERS)):
+        for key, getter in getters.items():
+            lines += [
+                "Err.Clear",
+                'mcpText = ""',
+                f"mcpText = CStr(Boundary.{getter}())",
+                "If Err.Number = 0 Then",
+                f'  Debug.Print "{kind}" & vbTab & "{key}" & vbTab & mcpText',
+                "Else",
+                f'  Debug.Print "error" & vbTab & "{kind}.{key}" & vbTab & Err.Description',
+                "End If",
+            ]
+    box = " & vbTab & ".join(f"CStr({v})" for v in _BOX_VARS)
+    for key, getter in _BOX_GETTERS.items():
+        lines += [
+            "Err.Clear",
+            *(f"{v} = 0" for v in _BOX_VARS),
+            f"Boundary.{getter} {', '.join(_BOX_VARS)}",
+            "If Err.Number = 0 Then",
+            f'  Debug.Print "box" & vbTab & "{key}" & vbTab & {box}',
+            "Else",
+            f'  Debug.Print "error" & vbTab & "{key}" & vbTab & Err.Description',
+            "End If",
+        ]
+    return "\n".join(lines)
+
+
+def _parse_boundaries(output: str) -> dict:
+    from cst_mcp.tools.drawing import _unit_from_factor
+    from cst_mcp.tools.geometry import _vba_float
+
+    unit: str | None = None
+    unit_to_si: float | None = None
+    values: dict[str, dict[str, str]] = {"face": {}, "symmetry": {}}
+    boxes: dict[str, list[str]] = {}
+    errors: dict[str, str] = {}
+    for line in output.splitlines():
+        parts = line.rstrip("\r").split("\t")
+        if parts[0] == "unit" and len(parts) > 1:
+            try:
+                unit_to_si = _vba_float(parts[1])
+                unit = _unit_from_factor(unit_to_si)
+            except ValueError:
+                pass
+        elif parts[0] in values and len(parts) >= 3:
+            values[parts[0]][parts[1]] = "\t".join(parts[2:]).strip()
+        elif parts[0] == "box" and len(parts) >= 8:
+            boxes[parts[1]] = parts[2:8]
+        elif parts[0] == "error" and len(parts) >= 2:
+            errors[parts[1]] = "\t".join(parts[2:]).strip()
+
+    unavailable: dict[str, str] = {}
+
+    def _read(kind: str, keys) -> dict[str, str | None]:
+        out: dict[str, str | None] = {}
+        for key in keys:
+            text = values[kind].get(key)
+            if text:
+                out[key] = text
+            else:
+                out[key] = None
+                detail = errors.get(f"{kind}.{key}")
+                unavailable[f"{'boundaries' if kind == 'face' else 'symmetry'}.{key}"] = (
+                    f"CST error: {detail}" if detail else "CST returned no value"
+                )
+        return out
+
+    boundaries = _read("face", _FACE_GETTERS)
+    symmetry = _read("symmetry", _SYMMETRY_GETTERS)
+
+    parsed_boxes: dict[str, dict[str, list[float]] | None] = {}
+    for key in _BOX_GETTERS:
+        raw = boxes.get(key)
+        if raw is None:
+            detail = errors.get(key)
+            unavailable[key] = f"CST error: {detail}" if detail else "CST returned no value"
+            parsed_boxes[key] = None
+            continue
+        try:
+            x1, x2, y1, y2, z1, z2 = (_vba_float(v) for v in raw)
+        except ValueError as exc:
+            unavailable[key] = f"Unreadable box from CST: {exc}"
+            parsed_boxes[key] = None
+            continue
+        if x1 == x2 and y1 == y2 and z1 == z2:
+            # A point box: nothing to enclose, or CST has not computed the box yet.
+            unavailable[key] = (
+                "CST returned a zero-size box (empty model, or the box is not computed yet)"
+            )
+            parsed_boxes[key] = None
+            continue
+        parsed_boxes[key] = {"x": [x1, x2], "y": [y1, y2], "z": [z1, z2]}
+
+    calc, struct = parsed_boxes["calculation_box"], parsed_boxes["structure_box"]
+    added_space: dict[str, float] | None = None
+    if calc and struct:
+        added_space = {}
+        for axis in ("x", "y", "z"):
+            added_space[f"{axis}_min"] = struct[axis][0] - calc[axis][0]
+            added_space[f"{axis}_max"] = calc[axis][1] - struct[axis][1]
+    else:
+        unavailable["added_space"] = "Needs both calculation_box and structure_box."
+
+    unavailable.update(_NOT_EXPOSED)
+    read_any = (
+        any(v is not None for v in boundaries.values())
+        or any(v is not None for v in symmetry.values())
+        or any(parsed_boxes.values())
+    )
+    result: dict = {
+        "status": "ok" if read_any else "error",
+        "unit": unit,
+        "unit_to_si": unit_to_si,
+        "boundaries": boundaries,
+        "symmetry": symmetry,
+        "calculation_box": calc,
+        "structure_box": struct,
+        "added_space": added_space,
+        "background": None,
+        "open_boundary_distance": None,
+        "unavailable": unavailable,
+        "source": "VBA query via output capture (no model history)",
+    }
+    if not read_any:
+        result["message"] = "CST returned no boundary values."
+    return result
+
+
+def _get_boundaries(client: CSTClient) -> dict:
+    script = _boundaries_vba()
+    if not client.connected:
+        return {
+            "status": "offline",
+            "vba": script,
+            "message": "Not connected; boundaries are only read from a live CST project.",
+        }
+    if not client.has_project:
+        return {"status": "error", "message": "No project open"}
+    captured = client.capture_vba_output(script)
+    if captured.get("status") != "ok":
+        return captured
+    return _parse_boundaries(str(captured.get("output", "")))
 
 
 async def _handle_set_background(arguments: dict, client: CSTClient) -> list[TextContent]:
