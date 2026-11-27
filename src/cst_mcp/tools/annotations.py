@@ -109,6 +109,9 @@ _DESTRUCTIVE_EXTRA = frozenset(
         "cst_boolean_add",
         "cst_boolean_subtract",
         "cst_boolean_intersect",
+        # TraceFromCurve and the curve wire consume (delete) their curve item.
+        "cst_create_curve_wire",
+        "cst_create_trace_from_curve",
         # Arbitrary VBA can do anything, including deleting the project.
         "cst_execute_vba",
         # Dismissing a modal dialog may pick its default (e.g. discard) action.
