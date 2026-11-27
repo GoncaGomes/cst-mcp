@@ -183,7 +183,7 @@ Waveguide, discrete, plane wave, Floquet…
 | `cst_add_plane_wave` | Add a plane wave excitation source. Defines an incident plane wave with given direction and polarization for scattering / RCS analysis. |
 | `cst_add_floquet_port` | Add a Floquet port for periodic structures such as frequency selective surfaces, metamaterials, and phased arrays. |
 | `cst_list_ports` | List the ports and read back how each is defined, as CST reports it: type, label and centre; for waveguide ports the orientation, mesh-snapped window, modes and per-mode line impedance; for discrete ports the end points or face shape, excitation type and impedance. Values CST does not expose are null with a reason in `unavailable`. Optional `port_numbers` filter. Read-only query through output capture (no history). |
-| `cst_delete_port` | Delete a port by its port number. |
+| `cst_delete_port` | Delete a port of any type by its port number (`Port.Delete`). A missing port is rejected with the existing numbers before CST is changed; the response lists the remaining ports. |
 | `cst_add_multipin_port` | Add a waveguide port with multiple mode monitoring for higher-order mode analysis. Used for multimode waveguides, mode converters, and st… |
 
 ### Boundaries & setup (7)
