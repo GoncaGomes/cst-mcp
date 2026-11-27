@@ -2,7 +2,8 @@
 
 Provides MCP tools for creating 3D shapes, curves, extruded profiles and solids
 along curves in CST Studio by generating VBA scripts via VBABuilder, plus a
-read-only measured-bounds query (``cst_get_solid_bounds``).
+read-only measured-bounds query (``cst_get_solid_bounds``) and deletes for solids
+and components (``cst_delete_solid``, ``cst_delete_component``).
 """
 
 from __future__ import annotations
@@ -49,6 +50,8 @@ def _expression_field(description: str, **settings) -> dict:
 # never part of a CST shape name; line breaks are rejected separately.
 _SOLID_NAME_PATTERN = r'^[^:"]+:[^:"]+$'
 _SOLID_NAME_RE = re.compile(_SOLID_NAME_PATTERN)
+_COMPONENT_NAME_PATTERN = r'^[^:"]+$'
+_COMPONENT_NAME_RE = re.compile(_COMPONENT_NAME_PATTERN)
 _MAX_BOUNDS_SOLIDS = 100
 
 
@@ -670,6 +673,65 @@ TOOLS: list[Tool] = [
             "additionalProperties": False,
         },
     ),
+    # 17. Delete a solid
+    Tool(
+        name="cst_delete_solid",
+        description=(
+            "Delete one solid by its full name 'Component:Solid'. Use it to remove a wrong or "
+            "temporary solid instead of subtracting it into another one (a subtract of solids "
+            "that do not overlap changes nothing). A missing solid is rejected before CST is "
+            "changed, with similar names. One history entry (Solid.Delete). For a solid made by "
+            "cst_create_loft, the same entry also deletes the loft's profile curve groups, so "
+            "the name can be used for a new loft. The response lists the solids that remain "
+            "in the component. Refused while the project has results (call cst_delete_results "
+            "first) or a solver is running."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "solid": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 300,
+                    "pattern": _SOLID_NAME_PATTERN,
+                    "description": (
+                        "Full solid name as 'Component:Solid', e.g. 'antenna:patch'. "
+                        "Nested components use '/', e.g. 'antenna/feed:pin'."
+                    ),
+                },
+            },
+            "required": ["solid"],
+            "additionalProperties": False,
+        },
+    ),
+    # 18. Delete a component
+    Tool(
+        name="cst_delete_component",
+        description=(
+            "Delete a component with all its solids and sub-components (Component.Delete). "
+            "A component without solids is rejected before CST is changed, with the existing "
+            "components. One history entry, which also deletes the profile curve groups of "
+            "lofts in the component. The response lists the deleted solids. Refused while the "
+            "project has results (call cst_delete_results first) or a solver is running."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "component": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "pattern": _COMPONENT_NAME_PATTERN,
+                    "description": (
+                        "Component name, e.g. 'antenna'. Nested components use '/', "
+                        "e.g. 'antenna/feed'."
+                    ),
+                },
+            },
+            "required": ["component"],
+            "additionalProperties": False,
+        },
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -1068,6 +1130,275 @@ def _build_along_curve(name: str, arguments: dict, client: CSTClient) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Deleting solids and components
+# ---------------------------------------------------------------------------
+
+# Read-only: every shape name, then every curve group name. A failed name read
+# skips its Debug.Print, so a count mismatch marks that list as unreadable.
+_INVENTORY_LINES = (
+    "Dim mcpN As Long, mcpI As Long",
+    "On Error Resume Next",
+    "Err.Clear",
+    "mcpN = Solid.GetNumberOfShapes()",
+    "If Err.Number <> 0 Then",
+    '  Debug.Print "solids_error" & vbTab & Err.Description',
+    "Else",
+    '  Debug.Print "solids" & vbTab & CStr(mcpN)',
+    "  For mcpI = 0 To mcpN - 1",
+    "    Err.Clear",
+    '    Debug.Print "solid" & vbTab & Solid.GetNameOfShapeFromIndex(mcpI)',
+    "  Next mcpI",
+    "End If",
+    "Err.Clear",
+    'mcpN = Curve.StartCurveNameIteration("all")',
+    "If Err.Number <> 0 Then",
+    '  Debug.Print "curves_error" & vbTab & Err.Description',
+    "Else",
+    '  Debug.Print "curves" & vbTab & CStr(mcpN)',
+    "  For mcpI = 1 To mcpN",
+    "    Err.Clear",
+    '    Debug.Print "curve" & vbTab & Curve.GetNextCurveName()',
+    "  Next mcpI",
+    "End If",
+)
+_INVENTORY_VBA = "\n".join(_INVENTORY_LINES)
+
+
+def _read_inventory(client: CSTClient) -> dict:
+    """``{"status": "ok", "solids": [...] | None, "curves": [...] | None}`` or the failure.
+
+    A list is None when CST could not report it completely.
+    """
+    captured = client.capture_vba_output(_INVENTORY_VBA)
+    if captured.get("status") != "ok":
+        return captured
+    counts: dict[str, int | None] = {"solid": None, "curve": None}
+    names: dict[str, list[str]] = {"solid": [], "curve": []}
+    for line in str(captured.get("output", "")).splitlines():
+        kind, _, value = line.rstrip("\r").partition("\t")
+        if kind in ("solids", "curves") and value.strip().isdigit():
+            counts[kind[:-1]] = int(value.strip())
+        elif kind in ("solid", "curve") and value.strip():
+            names[kind].append(value.strip())
+    result: dict = {"status": "ok"}
+    for kind in ("solid", "curve"):
+        complete = counts[kind] is not None and counts[kind] == len(names[kind])
+        result[f"{kind}s"] = names[kind] if complete else None
+    return result
+
+
+def _split_solid(solid: str) -> tuple[str, str]:
+    component, _, name = solid.rpartition(":")
+    return component, name
+
+
+def _in_component(solid: str, component: str) -> bool:
+    """True for solids of the component or of one of its sub-components."""
+    owner = _split_solid(solid)[0]
+    return owner == component or owner.startswith(component + "/")
+
+
+def _loft_groups_of(solids: list[str], curves: list[str]) -> list[str]:
+    """Curve groups that ``cst_create_loft`` made for any of ``solids``."""
+    patterns = [
+        re.compile(re.escape(_loft_group_prefix(*_split_solid(s))) + r"\d+", re.IGNORECASE)
+        for s in solids
+    ]
+    return [c for c in curves if any(p.fullmatch(c) for p in patterns)]
+
+
+def _similar_solids(solid: str, solids: list[str]) -> list[str]:
+    import difflib
+
+    short = _split_solid(solid)[1].lower()
+    similar = [
+        s
+        for s in solids
+        if s.lower() == solid.lower()
+        or _split_solid(s)[1].lower() == short
+        or short in _split_solid(s)[1].lower()
+    ]
+    for s in difflib.get_close_matches(solid, solids, n=5, cutoff=0.6):
+        if s not in similar:
+            similar.append(s)
+    return similar[:5]
+
+
+def _delete_script(head: str, groups: list[str]) -> str:
+    lines = [head]
+    lines += [f"Curve.DeleteCurve {_vba_string_literal(g, 'curve group')}" for g in groups]
+    return "\n".join(lines)
+
+
+def _not_live(client: CSTClient, script: str) -> dict | None:
+    if not client.connected:
+        return {
+            "status": "offline",
+            "vba": script,
+            "message": (
+                "Not connected; nothing was deleted. Loft curve groups are only found on a "
+                "live project, so this VBA deletes the solids only."
+            ),
+        }
+    if not client.has_project:
+        return {"status": "error", "message": "No project open"}
+    return None
+
+
+def _delete_and_verify(
+    client: CSTClient, script: str, targets: list[str], groups: list[str], result: dict
+) -> dict:
+    """Run the delete entry, then read back that ``targets`` and ``groups`` are gone."""
+    executed = client.execute_vba(script)
+    result = {**executed, **result}
+    if executed.get("status") != "executed":
+        return result  # No follow-up calls after a failed or uncertain mutation.
+    after = _read_inventory(client)
+    solids_after = after.get("solids") if after.get("status") == "ok" else None
+    if solids_after is None:
+        result["action"] = "deleted"
+        result["warning"] = (
+            "CST ran the delete, but the solids could not be read back; "
+            "check them with cst_project_tree."
+        )
+        return result
+    left = [s for s in targets if s in solids_after]
+    if left:
+        result["status"] = "error"
+        result["still_present"] = left
+        result["message"] = (
+            f"CST ran the delete, but {', '.join(left)} still exist; "
+            "check them with cst_project_tree."
+        )
+        return result
+    result["action"] = "deleted"
+    curves_after = after.get("curves")
+    if groups and curves_after is not None:
+        stale = [g for g in groups if g in curves_after]
+        if stale:
+            result["warning"] = f"Loft curve groups still present: {', '.join(stale)}."
+    result["_solids_after"] = solids_after
+    return result
+
+
+def _delete_solid(arguments: dict, client: CSTClient) -> dict:
+    solid = arguments.get("solid")
+    if not isinstance(solid, str) or not _SOLID_NAME_RE.fullmatch(solid):
+        raise ValueError(
+            "solid must be a full solid name 'Component:Solid' (nested components use '/'), "
+            f"got {solid!r}"
+        )
+    head = f"Solid.Delete {_vba_string_literal(solid, 'solid')}"
+    refused = _not_live(client, head)
+    if refused is not None:
+        return {**refused, "solid": solid}
+
+    before = _read_inventory(client)
+    if before.get("status") != "ok":
+        return {**before, "stage": "solid_check", "project_changed": False}
+    solids = before["solids"]
+    if solids is None:
+        return {
+            "status": "error",
+            "solid": solid,
+            "message": "CST did not report the solid list; nothing was changed.",
+            "project_changed": False,
+        }
+    component = _split_solid(solid)[0]
+    if solid not in solids:
+        similar = _similar_solids(solid, solids)
+        hint = f" Similar: {', '.join(similar)}." if similar else ""
+        return {
+            "status": "error",
+            "code": "solid_not_found",
+            "solid": solid,
+            "similar": similar,
+            "component_solids": [s for s in solids if _split_solid(s)[0] == component],
+            "message": f"Solid {solid!r} does not exist.{hint} Nothing was changed in CST.",
+            "project_changed": False,
+        }
+
+    curves = before["curves"]
+    groups = _loft_groups_of([solid], curves or [])
+    result = _delete_and_verify(
+        client,
+        _delete_script(head, groups),
+        [solid],
+        groups,
+        {"solid": solid, "curve_groups_deleted": groups},
+    )
+    solids_after = result.pop("_solids_after", None)
+    if result.get("action") != "deleted":
+        result.pop("curve_groups_deleted", None)
+        return result
+    if solids_after is not None:
+        result["remaining_solids"] = [s for s in solids_after if _split_solid(s)[0] == component]
+    if curves is None:
+        result["note"] = "The curve list could not be read, so loft curve groups were not checked."
+    return result
+
+
+def _delete_component(arguments: dict, client: CSTClient) -> dict:
+    component = arguments.get("component")
+    if not isinstance(component, str) or not _COMPONENT_NAME_RE.fullmatch(component):
+        raise ValueError(f"component must be a component name without ':', got {component!r}")
+    head = f"Component.Delete {_vba_string_literal(component, 'component')}"
+    refused = _not_live(client, head)
+    if refused is not None:
+        return {**refused, "component": component}
+
+    before = _read_inventory(client)
+    if before.get("status") != "ok":
+        return {**before, "stage": "component_check", "project_changed": False}
+    solids = before["solids"]
+    if solids is None:
+        return {
+            "status": "error",
+            "component": component,
+            "message": "CST did not report the solid list; nothing was changed.",
+            "project_changed": False,
+        }
+    targets = [s for s in solids if _in_component(s, component)]
+    if not targets:
+        existing = sorted({_split_solid(s)[0] for s in solids})
+        listed = ", ".join(existing) or "none"
+        return {
+            "status": "error",
+            "code": "component_not_found",
+            "component": component,
+            "existing_components": existing,
+            "message": (
+                f"Component {component!r} has no solids (components with solids: {listed}). "
+                "Nothing was changed in CST."
+            ),
+            "project_changed": False,
+        }
+
+    curves = before["curves"]
+    groups = _loft_groups_of(targets, curves or [])
+    result = _delete_and_verify(
+        client,
+        _delete_script(head, groups),
+        targets,
+        groups,
+        {"component": component, "deleted_solids": targets, "curve_groups_deleted": groups},
+    )
+    result.pop("_solids_after", None)
+    if result.get("action") != "deleted":
+        result.pop("deleted_solids", None)
+        result.pop("curve_groups_deleted", None)
+    elif curves is None:
+        result["note"] = "The curve list could not be read, so loft curve groups were not checked."
+    return result
+
+
+_DELETE_HANDLERS: dict[str, Callable[[dict, CSTClient], dict]] = {
+    "cst_delete_solid": _delete_solid,
+    "cst_delete_component": _delete_component,
+}
+
+
+# ---------------------------------------------------------------------------
 # VBA generation helpers
 # ---------------------------------------------------------------------------
 
@@ -1420,9 +1751,19 @@ def _build_extrude(args: dict) -> str:
     return script.build()
 
 
-def _build_loft(args: dict) -> str:
+def _loft_group_prefix(component: str, name: str) -> str:
+    """Start of every profile curve group name of the loft ``component:name``.
+
+    The groups are ``<prefix><i>`` for profile index ``i``; the digest of the full
+    solid name keeps lofts with the same leading 40 characters apart.
+    """
     import hashlib
 
+    digest = hashlib.sha256(f"{component}:{name}".encode()).hexdigest()[:16]
+    return f"{name[:40]}_loft_{digest}_p"
+
+
+def _build_loft(args: dict) -> str:
     component = validate_name(args["component"], "component")
     name = validate_name(args["name"], "name")
     material = validate_name(args.get("material", "PEC"), "material")
@@ -1430,7 +1771,7 @@ def _build_loft(args: dict) -> str:
     if not isinstance(profiles, list) or len(profiles) < 2:
         raise ValueError("profiles must contain at least two explicit 3D profiles")
 
-    digest = hashlib.sha256(f"{component}:{name}".encode()).hexdigest()[:16]
+    group_prefix = _loft_group_prefix(component, name)
     prepared = []
     for i, profile in enumerate(profiles):
         if not isinstance(profile, list) or len(profile) < 3:
@@ -1450,7 +1791,7 @@ def _build_loft(args: dict) -> str:
             points.pop()
         if len(points) < 3:
             raise ValueError(f"profiles[{i}] requires at least three vertices without the endpoint")
-        group = validate_name(f"{name[:40]}_loft_{digest}_p{i}", "loft curve group")
+        group = validate_name(f"{group_prefix}{i}", "loft curve group")
         item = validate_name(f"{name[:40]}_profile{i}", "loft curve item")
         prepared.append((group, item, points))
 
@@ -1797,6 +2138,13 @@ async def handle(name: str, arguments: dict, client: CSTClient) -> list[TextCont
         try:
             result = _get_solid_bounds(arguments, client)
         except ValueError as e:
+            result = {"status": "error", "message": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    if name in _DELETE_HANDLERS:
+        try:
+            result = _DELETE_HANDLERS[name](arguments, client)
+        except (ValueError, ValidationError) as e:
             result = {"status": "error", "message": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

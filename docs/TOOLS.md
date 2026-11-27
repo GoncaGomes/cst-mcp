@@ -1,4 +1,4 @@
-## Full tool catalog (196 tools)
+## Full tool catalog (198 tools)
 
 This file is the Markdown tool reference for the complete registered tool catalog.
 MCP tool discovery supplies the active schemas for the configured toolsets.
@@ -55,9 +55,9 @@ Create, open, save projects and check CST connection.
 | `cst_export_project` | Export the current CST project or its geometry to another format such as STL, STEP, IGES, SAT, OBJ, or NASTRAN. |
 | `cst_connection_status` | Get the current CST Studio connection status, including mode (connected/offline), CST availability, version, and work directory. |
 
-### Geometry (14)
+### Geometry (16)
 
-3D shapes: bricks, cylinders, spheres, extrusions, wires… and measured solid bounds
+3D shapes: bricks, cylinders, spheres, extrusions, wires… measured solid bounds, and deleting solids or components
 
 | Tool | What it does |
 |------|--------------|
@@ -77,6 +77,8 @@ Create, open, save projects and check CST connection.
 | `cst_create_ecylinder` | Create an elliptical cylinder in CST Studio. |
 | `cst_create_polygon_extrude` | Polygon extrusion with numeric/mixed CST expressions and independent profile/hole winding evaluation on every rebuild. |
 | `cst_get_solid_bounds` | Read-only, no history: measured loose bounding box (an outer bound from CST), material and volume of named solids, in project units. |
+| `cst_delete_solid` | Delete one solid by 'Component:Solid' (Solid.Delete). A missing solid is rejected before CST is changed, with similar names; a loft's profile curve groups are deleted in the same history entry; returns the solids left in the component. |
+| `cst_delete_component` | Delete a component with its solids and sub-components (Component.Delete), plus the curve groups of its lofts. A component without solids is rejected before CST is changed; returns the deleted solids. |
 
 Both extrusion tools support expressions in height, every profile/hole coordinate
 and the active-axis offset. Inactive symbolic offsets are rejected. Double-valued
