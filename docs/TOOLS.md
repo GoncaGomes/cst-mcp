@@ -179,7 +179,7 @@ Waveguide, discrete, plane wave, Floquet…
 
 | Tool | What it does |
 |------|--------------|
-| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Optional `port_on_bound` defaults to `true`. Set it to `false` with `coordinates="Free"` to preserve the supplied normal coordinate inside the domain. CST ignores this setting for picked ports. `mode_number` is the number of calculated modes. |
+| `cst_add_waveguide_port` | Add a waveguide port for S-parameter excitation. Optional `port_on_bound` defaults to `true`. Set it to `false` with `coordinates="Free"` to preserve the supplied normal coordinate inside the domain. CST ignores this setting for picked ports. `mode_number` is the number of calculated modes. The response reads the port back (`readback.window`, mesh-snapped) and warns when the port is not on the requested plane, e.g. moved to an expanded open boundary. |
 | `cst_add_discrete_port` | Add a discrete (lumped) port between two points. Used for circuit-level excitation with a defined impedance. |
 | `cst_add_lumped_element` | Add a lumped R, L, C, or RLC element between two points. Value is in ohms for R, henries for L, farads for C. |
 | `cst_add_plane_wave` | Add a plane wave excitation source. Defines an incident plane wave with given direction and polarization for scattering / RCS analysis. |
